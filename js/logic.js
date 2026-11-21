@@ -24,7 +24,9 @@ var RB = (function () {
   var CAR_R = 0.55;
   var BOOST_MUL = 1.4, BOOST_ACC = 4;
   var DRIFT_MIN_V = 5, DRIFT_T1 = 0.6, DRIFT_T2 = 1.4;
-  var HOP_T = 0.22, HOP_H = 0.35; // pressing drift on the ground hops first; the drift starts on landing
+  var HOP_T = 0.22, HOP_H = 0.35; // holding drift on the ground hops first; the drift starts on landing
+  var DRIFT_HOLD = 0.25;        // drift held shorter than this on the ground is a brake tap; longer hops into a drift
+  var DRIFT_TURN = 1.1, DRIFT_WIDE = 0.35; // drift turn rate × grip steering in, and with the stick fully against the drift
   var SLOW_MUL = 0.55;
   var BEE_SPEED = 17, BEE_TURN = 6, BEE_LIFE = 6;
   var GOO_LIFE = 25;
@@ -334,7 +336,7 @@ var RB = (function () {
       var car = { i: c, ai: ai, name: ai ? names[c - 1] : 'You', carId: id, look: look,
         stats: ai ? statsFor(id) : carStats(s, id), skill: ai ? W.skill[c - 1] : 1, lane: ai ? (R() * 2 - 1) * 1.6 : 0,
         x: 0, z: 0, h: 0, v: 0, y: 0, vy: 0, air: false, s: 0, prog: 0, lap: 1, place: c + 1, done: false, finishT: 0,
-        boostT: 0, slowT: 0, shieldT: 0, magnetT: 0, drift: 0, driftDir: 0, hopT: 0, hopY: 0, trick: false, trickT: 0, fallT: 0, onRamp: -1,
+        boostT: 0, slowT: 0, shieldT: 0, magnetT: 0, drift: 0, driftDir: 0, holdT: 0, tapBrake: 0, hopUsed: false, driftReady: false, hopT: 0, hopY: 0, trick: false, trickT: 0, fallT: 0, onRamp: -1,
         item: null, rollT: 0, itemDelay: 0, coins: 0, inp: {}, prevDrift: false, prevItem: false, pad: -1, bumpT: 0, steerOut: 0, botSteer: 0 };
       var slot = gridOrder[c], row = Math.floor(slot / 2), col = slot % 2;
       place(r, car, -2.5 - row * 2.6 - col * 1.3, col ? 1.5 : -1.5);
@@ -446,9 +448,21 @@ var RB = (function () {
     var q = g.query(car.x, car.z);
     var surf = car.air ? 1 : surfaceSpeed(r, car, q.d);
     // drifting and braking: a fresh press on the ground hops, and the drift starts once the hop lands
-    if (driftPress && !car.air && !hopping && !car.driftDir && car.onRamp < 0) { car.hopT = HOP_T; car.hopY = 0; ev(r, 'hop', car); }
-    if (!car.air && !hopping && car.hopT <= 0 && drift && Math.abs(steer) >= 0.3 && car.v > DRIFT_MIN_V) {
-      if (!car.driftDir) { car.driftDir = steer > 0 ? 1 : -1; car.drift = 0; ev(r, 'drift', car); }
+    // a press let go within DRIFT_HOLD is a brake tap (felt at once when not steering, on release when steering, so
+    // a drift costs no speed). Held longer while steering, the car hops once per press and the drift starts on
+    // landing; a drift keeps the direction it starts in until drift is let go. Drift held in the air drifts on landing.
+    var steering = Math.abs(steer) >= 0.3;
+    if (!drift) {
+      if (car.holdT > 0 && car.holdT < DRIFT_HOLD) car.v = Math.max(0, car.v - car.tapBrake);
+      car.holdT = 0; car.tapBrake = 0; car.hopUsed = false; car.driftReady = false;
+    } else car.holdT += DT;
+    if (car.air) { car.holdT = drift ? DRIFT_HOLD : 0; car.hopUsed = car.driftReady = drift; car.tapBrake = 0; }
+    var holding = drift && car.holdT >= DRIFT_HOLD;
+    if (holding && steering && !car.air && !hopping && !car.hopUsed && !car.driftDir && car.onRamp < 0) {
+      car.hopT = HOP_T; car.hopY = 0; car.hopUsed = car.driftReady = true; ev(r, 'hop', car);
+    }
+    if (!car.air && !hopping && car.hopT <= 0 && holding && car.v > DRIFT_MIN_V && (car.driftDir || (car.driftReady && steering))) {
+      if (!car.driftDir) { car.driftDir = steer > 0 ? 1 : -1; car.drift = 0; car.driftReady = false; ev(r, 'drift', car); }
       car.drift += DT;
     } else if (car.driftDir) {
       if (car.drift >= DRIFT_T1) {
@@ -463,14 +477,17 @@ var RB = (function () {
     var vmax = top * surf * (car.slowT > 0 ? SLOW_MUL : 1) * (car.boostT > 0 ? st.boostMul : 1) * (car.air && st.glide ? 1 + 0.04 * st.glide : 1);
     if (r.phase !== 'race' && !car.done) vmax = 0;
     var acc = st.accel * (car.boostT > 0 ? BOOST_ACC : 1);
-    if (!car.air && !hopping && car.hopT <= 0 && drift && !car.driftDir && Math.abs(steer) < 0.3) car.v = Math.max(0, car.v - 14 * DT); // brake
+    var braking = !car.air && !hopping && car.hopT <= 0 && drift && !car.driftDir;
+    if (braking && !holding && steering) car.tapBrake += 14 * DT; // a tap while steering brakes when let go
+    if (braking && !steering) car.v = Math.max(0, car.v - 14 * DT); // brake
     else if (car.v < vmax) car.v = Math.min(vmax, car.v + acc * DT * (1 - 0.4 * car.v / Math.max(1, vmax)));
     else car.v = Math.max(vmax, car.v - (2.5 + (car.v - vmax) * 2) * DT);
     if (car.driftDir) car.v *= 1 - 0.12 * DT;
     // turning
     var rate = st.grip * Math.min(1, car.v / 4) * (car.air ? 0.3 + 0.1 * (st.glide || 0) : 1);
-    if (car.driftDir) rate *= 1.35 * (0.6 + 0.4 * Math.max(0, steer * car.driftDir) + 0.4);
-    car.h += steer * rate * DT;
+    // in a drift the car always turns its own way: steering in tightens it, steering against widens it
+    if (car.driftDir) car.h += car.driftDir * rate * (DRIFT_WIDE + (DRIFT_TURN - DRIFT_WIDE) * (1 + steer * car.driftDir) / 2) * DT;
+    else car.h += steer * rate * DT;
     // move
     car.x += Math.cos(car.h) * car.v * DT; car.z += Math.sin(car.h) * car.v * DT;
     q = g.query(car.x, car.z);
@@ -831,7 +848,7 @@ var RB = (function () {
   }
 
   return {
-    DT: DT, RUNOFF: RUNOFF, RAMP_LEN: RAMP_LEN, PAD_LEN: PAD_LEN, PAD_W: PAD_W, MAGNET_R: MAGNET_R, ROLL_T: ROLL_T, START_CAR: START_CAR,
+    DT: DT, DRIFT_HOLD: DRIFT_HOLD, RUNOFF: RUNOFF, RAMP_LEN: RAMP_LEN, PAD_LEN: PAD_LEN, PAD_W: PAD_W, MAGNET_R: MAGNET_R, ROLL_T: ROLL_T, START_CAR: START_CAR,
     PLACE_PAY: PLACE_PAY, PART_PAY: PART_PAY, PARTS: PARTS, ITEMS: ITEMS, ITEM_KEYS: ITEM_KEYS, UPGRADES: UPGRADES, UP_KEYS: UP_KEYS,
     PERKS: PERKS, CARS: CARS, LOOKS: LOOKS, LOOK_KEYS: LOOK_KEYS, TRACKS: TRACKS, WORLDS: WORLDS, HUB: HUB,
     rng: rng, angDiff: angDiff, clamp: clamp, track: track, pointAt: pointAt, headingAt: headingAt, lookOpt: lookOpt,
