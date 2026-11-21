@@ -1,9 +1,9 @@
-// Dig Through Worlds: HD-2D post-process (DTWPost). The 2D renderer draws the pixel-art scene and a
+// Racing Boy: HD-2D post-process, copied from Dig Through Worlds (RBPost). The 2D renderer draws the pixel-art scene and a
 // half-size emissive layer into offscreen canvases; this WebGL2 pass lights the scene with screen-space
 // point lights, blurs it with a tilt-shift depth of field around the working layer, adds bloom from the
 // emissive layer, and grades the colours. init() returns false when WebGL2 is unavailable, and the
 // renderer then draws straight to the visible canvas instead.
-var DTWPost = (function () {
+var RBPost = (function () {
   'use strict';
   var MAXL = 24;
   var gl = null, prog = {}, vbo, tex = {}, fb = {}, W = 0, H = 0;
