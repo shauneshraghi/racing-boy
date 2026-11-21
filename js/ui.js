@@ -60,11 +60,11 @@
     $('hCoins').textContent = '🪙 ' + fmt(S.coins);
     $('hParts').innerHTML = D.PARTS.map(function (p, i) { return S.parts[i] || i === 0 ? p.icon + ' ' + fmt(S.parts[i]) : ''; }).filter(Boolean).join(' &nbsp;');
   }
-  var station = null, tab = { paint: 'paint' }, panelKey = '';
+  var station = null, fromMenu = false, tab = { paint: 'paint' }, panelKey = '';
   var TITLES = { garage: '🔧 Garage', paint: '🎨 Paint shop', lot: '🚗 Car lot', track: '🏁 Races', menu: '☰ Menu' };
   function openStation(st) {
     if (station === st) return;
-    station = st; panelKey = '';
+    station = st; panelKey = ''; fromMenu = false;
     $('panel').classList.toggle('show', !!st);
     $('hubHint').classList.toggle('show', mode === 'hub' && !st);
     if (st) { A.sfx('click'); renderPanel(); }
@@ -153,7 +153,7 @@
     } else if (station === 'menu') {
       [['🔧 Garage', 'garage'], ['🎨 Paint shop', 'paint'], ['🚗 Car lot', 'lot'], ['🏁 Races', 'track']].forEach(function (p) {
         var b = document.createElement('button'); b.className = 'btn'; b.style.cssText = 'width:100%;margin-bottom:8px'; b.textContent = p[0];
-        b.onclick = function () { station = null; openStation(p[1]); }; body.appendChild(b);
+        b.onclick = function () { station = null; openStation(p[1]); fromMenu = true; }; body.appendChild(b);
       });
       var m = document.createElement('button'); m.className = 'btn'; m.style.cssText = 'width:100%;margin-bottom:8px';
       m.textContent = A.isMuted() ? '🔇 Sound off' : '🔊 Sound on'; m.onclick = function () { A.setMute(!A.isMuted()); renderPanel(); }; body.appendChild(m);
@@ -356,8 +356,8 @@
       D.hubStep(hub, dt, hubDir());
       var st = D.hubStation(hub);
       if (padLock && st !== padLock) padLock = null;
-      if (st && st !== padLock && station !== st && station !== 'menu') openStation(st);
-      if (!st && station && station !== 'menu') openStation(null);
+      if (st && st !== padLock && station !== st && station !== 'menu' && !fromMenu) openStation(st);
+      if (!st && station && station !== 'menu' && !fromMenu) openStation(null);
       if (draw) { R.drawHub(S, hub, dt); hudT -= dt; if (hudT <= 0) { updateHubHud(); hudT = 0.25; } }
     }
   }
