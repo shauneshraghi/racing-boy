@@ -120,6 +120,69 @@ var RBSprites = (function () {
     cv.ax = ox; cv.ay = oy;
     return cv;
   }
+  // a box model seen from a chase camera: rel is the model's heading relative to the line of sight (0 = seen from
+  // behind), elev the camera's elevation angle, ppc the sprite pixels per cell. Anchor (ax, ay) is the ground point
+  // under the model's centre.
+  function renderView(boxes, rel, elev, ppc) {
+    var cr = Math.cos(rel), sr = Math.sin(rel), ce = Math.cos(elev), se = Math.sin(elev);
+    function proj(x, y, z) { var d = x * cr - z * sr, rr = x * sr + z * cr; return [rr * ppc, (-y * ce - d * se) * ppc, -d * ce + y * se]; }
+    var minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9, faces = [];
+    boxes.forEach(function (B) {
+      var c = proj((B.x0 + B.x1) / 2, (B.y0 + B.y1) / 2, (B.z0 + B.z1) / 2);
+      var defs = [
+        { n: [0, 1, 0], v: [[B.x0, B.y1, B.z0], [B.x1, B.y1, B.z0], [B.x1, B.y1, B.z1], [B.x0, B.y1, B.z1]], col: B.top },
+        { n: [1, 0, 0], v: [[B.x1, B.y0, B.z0], [B.x1, B.y1, B.z0], [B.x1, B.y1, B.z1], [B.x1, B.y0, B.z1]], col: B.front },
+        { n: [-1, 0, 0], v: [[B.x0, B.y0, B.z0], [B.x0, B.y1, B.z0], [B.x0, B.y1, B.z1], [B.x0, B.y0, B.z1]], col: B.side },
+        { n: [0, 0, 1], v: [[B.x0, B.y0, B.z1], [B.x1, B.y0, B.z1], [B.x1, B.y1, B.z1], [B.x0, B.y1, B.z1]], col: B.side },
+        { n: [0, 0, -1], v: [[B.x0, B.y0, B.z0], [B.x1, B.y0, B.z0], [B.x1, B.y1, B.z0], [B.x0, B.y1, B.z0]], col: B.side }
+      ];
+      defs.forEach(function (f) {
+        var nd = f.n[0] * cr - f.n[2] * sr, nr = f.n[0] * sr + f.n[2] * cr;
+        if (!f.n[1] && nd >= -0.001) return;
+        var k = f.n[1] ? 1.08 : 0.8 + 0.14 * -nd + 0.1 * nr;
+        var pts = f.v.map(function (p) { var q = proj(p[0], p[1], p[2]); minX = Math.min(minX, q[0]); maxX = Math.max(maxX, q[0]); minY = Math.min(minY, q[1]); maxY = Math.max(maxY, q[1]); return q; });
+        faces.push({ pts: pts, col: shadeRGB(hex3(f.col), k), depth: c[2] + (B.y0 + B.y1) * 0.12 + (f.n[1] ? 0.001 : 0) });
+      });
+    });
+    faces.sort(function (a, b) { return a.depth - b.depth; });
+    var pad = 2, ox = Math.ceil(-minX) + pad, oy = Math.ceil(-minY) + pad;
+    var cv = mkCanvas(Math.ceil(maxX - minX) + pad * 2 + 1, Math.ceil(maxY - minY) + pad * 2 + 1), x = cv.getContext('2d');
+    faces.forEach(function (f) {
+      x.fillStyle = f.col; x.beginPath();
+      f.pts.forEach(function (p, i) { if (i) x.lineTo(ox + p[0], oy + p[1]); else x.moveTo(ox + p[0], oy + p[1]); });
+      x.closePath(); x.fill();
+    });
+    crisp(cv, ppc >= 5);
+    cv.ax = ox; cv.ay = oy;
+    return cv;
+  }
+  // chase-camera sprites come in fixed sizes, like the pre-scaled sprites of 16-bit racers, so outlines stay crisp
+  var PPC = [3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 19, 22, 26, 30, 35, 40, 46, 53, 60];
+  function ppcStep(ppc) { var best = PPC[0]; for (var i = 0; i < PPC.length; i++) if (Math.abs(PPC[i] - ppc) < Math.abs(best - ppc)) best = PPC[i]; return best; }
+  var viewCache = {}, viewN = 0;
+  function viewed(key, boxesFn, rel, elev, ppc, bins) {
+    bins = bins || HEADINGS;
+    var b = ((Math.round(rel / (Math.PI * 2) * bins) % bins) + bins) % bins, e = Math.round(elev / 0.07), p = ppcStep(ppc);
+    var k = key + '|' + b + '|' + e + '|' + p;
+    if (!viewCache[k]) {
+      if (++viewN > 4000) { viewCache = {}; viewN = 1; }
+      viewCache[k] = renderView(boxesFn(), b / bins * Math.PI * 2, e * 0.07, p);
+      viewCache[k].ppc = p;
+    }
+    return viewCache[k];
+  }
+  // a car seen from the chase camera
+  function carView(id, look, rel, elev, ppc) { return viewed('car|' + id + '|' + lookKey(look), function () { return carBoxes(id, look); }, rel, elev, ppc); }
+  // a glider wing, opened above a car in the air
+  function gliderView(col, rel, elev, ppc) {
+    return viewed('glider|' + col, function () {
+      return [box(-0.1, 0.1, -0.05, 0.05, 0.6, 1.25, DARK), box(-0.45, 0.25, -1.3, 1.3, 1.25, 1.33, col, shadeHex(col, 0.8)),
+        box(-0.42, 0.2, -1.32, -1.0, 1.2, 1.35, LIGHT), box(-0.42, 0.2, 1.0, 1.32, 1.2, 1.35, LIGHT)];
+    }, rel, elev, ppc, 16);
+  }
+  var MODELS = {};
+  // buildings, the crate, the windmill tower and the grandstand seen from the chase camera
+  function modelView(name, rel, elev, ppc) { return viewed('m|' + name, function () { return MODELS[name](); }, rel, elev, ppc, 16); }
   var carCache = {};
   function lookKey(look) { return D.LOOK_KEYS.map(function (k) { return look[k]; }).join('|'); }
   // the car at heading h (radians), cached per one of HEADINGS directions
@@ -206,20 +269,31 @@ var RBSprites = (function () {
   var crateC = null;
   function crate() {
     if (crateC) return crateC;
-    var b = [box(-0.32, 0.32, -0.32, 0.32, 0, 0.64, '#c9853a', '#a8622a', '#b87230'),
-      box(-0.33, 0.33, -0.33, 0.33, 0.27, 0.37, '#7a421a'), box(-0.12, 0.12, 0.33, 0.34, 0.2, 0.44, '#ffd23f'), box(0.33, 0.34, -0.12, 0.12, 0.2, 0.44, '#ffd23f'),
-      box(-0.1, 0.1, -0.1, 0.1, 0.64, 0.65, '#ffd23f')];
-    crateC = renderModel(b, 0.3);
+    crateC = renderModel(crateBoxes(), 0.3);
     return crateC;
   }
+  function crateBoxes() {
+    return [box(-0.32, 0.32, -0.32, 0.32, 0, 0.64, '#c9853a', '#a8622a', '#b87230'),
+      box(-0.33, 0.33, -0.33, 0.33, 0.27, 0.37, '#7a421a'), box(-0.12, 0.12, 0.33, 0.34, 0.2, 0.44, '#ffd23f'), box(0.33, 0.34, -0.12, 0.12, 0.2, 0.44, '#ffd23f'),
+      box(-0.1, 0.1, -0.1, 0.1, 0.64, 0.65, '#ffd23f')];
+  }
   // a building made of a box and a pitched roof, for the plaza and the trackside
-  function building(w, d, h, wall, roof, door) {
+  function buildingBoxes(w, d, h, wall, roof, door) {
     var b = [box(-w / 2, w / 2, -d / 2, d / 2, 0, h, wall, shadeHex(wall, 0.92), wall)];
     var steps = 6;
     for (var i = 0; i < steps; i++) { var f = i / steps, inset = f * d / 2; b.push(box(-w / 2 - 0.15, w / 2 + 0.15, -d / 2 - 0.15 + inset, d / 2 + 0.15 - inset, h + f * d * 0.45, h + (f + 1 / steps) * d * 0.45, roof)); }
     if (door) b.push(box(w / 2, w / 2 + 0.04, -Math.min(1.2, d * 0.3), Math.min(1.2, d * 0.3), 0, Math.min(h * 0.75, 1.6), door));
-    return renderModel(b, 0, 1);
+    return b;
   }
+  function building(w, d, h, wall, roof, door) { return renderModel(buildingBoxes(w, d, h, wall, roof, door), 0, 1); }
+  var BLD = {
+    barn: [4, 3, 2.2, '#c0392b', '#6a3a2a', '#f4ecd6'], house: [3, 2.6, 1.8, '#f4ecd6', '#3f6fb0', '#7a4f2a'],
+    house2: [2.6, 2.6, 1.7, '#ffe9a8', '#c0392b', '#3f8f4a']
+  };
+  Object.keys(BLD).forEach(function (k) { MODELS[k] = function () { return buildingBoxes.apply(null, BLD[k]); }; });
+  MODELS.stand = function () { var b = []; for (var i = 0; i < 3; i++) b.push(box(-3, 3, -0.6 + i * 0.5, -0.1 + i * 0.5, 0, 0.35 + i * 0.35, i % 2 ? '#3fa8ff' : '#e5483a', '#9aa3b2')); return b; };
+  MODELS.crate = function () { return crateBoxes(); };
+  MODELS.mill = function () { return millBoxes(); };
   function shadeHex(h, k) { return '#' + hex3(h).map(function (v) { var s = Math.max(0, Math.min(255, Math.round(v * k))).toString(16); return s.length < 2 ? '0' + s : s; }).join(''); }
   var bldCache = {};
   function building1(name) {
@@ -239,17 +313,21 @@ var RBSprites = (function () {
   var millC = null;
   function windmill() {
     if (millC) return millC;
+    millC = renderModel(millBoxes(), 0.25);
+    millC.hubX = 0.9; millC.hubY = 3.85;
+    return millC;
+  }
+  function millBoxes() {
     var b = [];
     for (var i = 0; i < 6; i++) { var k = 1 - i * 0.09; b.push(box(-0.9 * k, 0.9 * k, -0.9 * k, 0.9 * k, i * 0.6, (i + 1) * 0.6, '#f4ecd6', '#d8ccb0')); }
     b.push(box(-0.6, 0.6, -0.6, 0.6, 3.6, 4.1, '#c0392b'));
     b.push(box(0.55, 0.95, -0.2, 0.2, 3.65, 4.05, '#7a4f2a'));
-    millC = renderModel(b, 0.25);
-    millC.hubX = 0.9; millC.hubY = 3.85;
-    return millC;
+    return b;
   }
   var beeC = null;
   function bee() { if (!beeC) beeC = grid(['.ww.ww.', '..ww...', 'kykyky.', 'ykykyke', 'kykyky.'], { w: '#e8f6ff', k: '#2a2630', y: '#ffd23f', e: '#2a2630' }); return beeC; }
 
   return { HW: HW, HH: HH, BH: BH, HEADINGS: HEADINGS, car: car, carPreview: carPreview, kid: kid, scenery: scenery, crate: crate,
-    building: building1, windmill: windmill, bee: bee, renderModel: renderModel, box: box, crisp: crisp };
+    building: building1, windmill: windmill, bee: bee, renderModel: renderModel, box: box, crisp: crisp,
+    carView: carView, gliderView: gliderView, modelView: modelView };
 })();

@@ -157,7 +157,7 @@
       });
       var m = document.createElement('button'); m.className = 'btn'; m.style.cssText = 'width:100%;margin-bottom:8px';
       m.textContent = A.isMuted() ? '🔇 Sound off' : '🔊 Sound on'; m.onclick = function () { A.setMute(!A.isMuted()); renderPanel(); }; body.appendChild(m);
-      body.insertAdjacentHTML('beforeend', '<p class="note">Keys: ← → steer · ↓ or Space drift, brake, and trick in the air · ↑ or X use item · H horn · Esc pause. On a phone, hold ◀ ▶, or drag anywhere on the track to point the car.</p>');
+      body.insertAdjacentHTML('beforeend', '<p class="note">Keys: ← → steer · ↓ or Space drift, brake, and trick in the air · ↑ or X use item · H horn · Esc pause. On a phone, hold ◀ ▶, or drag left or right anywhere on the track to steer.</p>');
       var so = document.createElement('button'); so.className = 'btn'; so.style.cssText = 'font-size:14px;background:#5a2030'; so.textContent = 'Start over…';
       so.onclick = function () {
         if ($('confirm')) return;
@@ -291,7 +291,7 @@
   }
   holdBtn('bLeft', 'left'); holdBtn('bRight', 'right'); holdBtn('bDrift', 'drift');
   $('bItem').addEventListener('pointerdown', function (e) { e.preventDefault(); audio(); itemTap = true; });
-  // the scene: in a race a drag points the car; on the plaza a tap walks there and a drag walks that way
+  // the scene: in a race a sideways drag steers; on the plaza a tap walks there and a drag walks that way
   var cvEl = $('cv'), down = null;
   cvEl.addEventListener('pointerdown', function (e) {
     audio();
@@ -318,7 +318,7 @@
     var p = r.cars[0], inp = {};
     var steer = (keys.ArrowLeft || keys.a || held.left ? -1 : 0) + (keys.ArrowRight || keys.d || held.right ? 1 : 0);
     if (steer) inp.steer = steer;
-    else if (stick) inp.aim = R.screenDirToHeading(stick.dx, stick.dy);
+    else if (stick) inp.steer = Math.max(-1, Math.min(1, stick.dx / 45)); // the chase camera: drag left or right to steer
     inp.drift = !!(keys.ArrowDown || keys.s || keys[' '] || keys.Shift || held.drift);
     inp.item = itemTap; itemTap = false;
     D.input(r, inp);

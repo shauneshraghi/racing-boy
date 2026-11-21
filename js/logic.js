@@ -608,7 +608,7 @@ var RB = (function () {
     var L = r.g.L;
     r.cars.forEach(function (c) {
       if (c.done) return;
-      var lap = Math.floor(c.prog / L) + 2;
+      var lap = Math.floor(c.prog / L) + 1; // prog is 0 on the start line and negative on the grid
       if (lap > c.lap) { c.lap = lap; if (c.lap <= r.laps) ev(r, 'lap', c, { lap: c.lap }); }
       if (c.prog >= r.laps * L) { c.done = true; c.finishT = r.t; r.finished++; ev(r, 'finish', c); }
     });

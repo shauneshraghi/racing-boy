@@ -321,3 +321,14 @@ test('an item press is kept until a logic step uses it, even on a short frame', 
   assert.equal(p.item, null, 'item used');
   assert.ok(p.boostT > 0);
 });
+
+test('lap counter: lap 1 after the start line, then one lap event per lap crossed', () => {
+  const { r } = freshRace('meadow');
+  const p = r.cars[0], laps = [];
+  while (!p.done && r.t < 400) {
+    R.input(r, R.botInput(r, p, 'clean')); R.stepRace(r, 1 / 20);
+    r.events.forEach(e => { if (e.type === 'lap' && e.car === 0) laps.push(e.lap); }); r.events.length = 0;
+    if (r.t > 2 && r.t < 3) assert.equal(p.lap, 1, 'still on lap 1 just after the start');
+  }
+  assert.deepEqual(laps, [2, 3]);
+});
