@@ -241,9 +241,10 @@ test('only a win unlocks the next track; winning all three opens world 2', () =>
   assert.equal(s.best[W1[0]], 1, 'best place kept');
 });
 
-test('cars: five unique cars, one owned at start, buy with coins and parts', () => {
+test('cars: five starter cars plus faster ones to unlock, one owned at start, buy with coins and parts', () => {
   const ids = Object.keys(R.CARS);
-  assert.equal(ids.length, 5);
+  assert.equal(ids.filter(i => !R.CARS[i].unlock).length, 5);
+  assert.ok(ids.length >= 7);
   const perks = new Set(ids.map(id => R.CARS[id].perk));
   assert.ok(perks.size >= 4);
   const s = R.newState(1);
@@ -331,4 +332,71 @@ test('lap counter: lap 1 after the start line, then one lap event per lap crosse
     if (r.t > 2 && r.t < 3) assert.equal(p.lap, 1, 'still on lap 1 just after the start');
   }
   assert.deepEqual(laps, [2, 3]);
+});
+
+test('faster cars unlock by winning races, cost only bolts and gears, and are faster than every starter', () => {
+  const starters = Object.keys(R.CARS).filter(i => !R.CARS[i].unlock), locked = Object.keys(R.CARS).filter(i => R.CARS[i].unlock);
+  const top = Math.max(...starters.map(i => R.CARS[i].base.speed));
+  for (const id of locked) {
+    const K = R.CARS[id];
+    assert.ok(K.base.speed > top, id + ' is faster');
+    assert.deepEqual([...K.cost.parts.slice(2)], [0, 0, 0], id + ' costs only bolts and gears');
+    for (const k of R.UP_KEYS) assert.ok(K.caps[k] >= 0, id + ' cap ' + k);
+    const s = R.newState(1); s.coins = 1e9; s.parts = [1e6, 1e6, 1e6, 1e6, 1e6];
+    assert.ok(!R.carUnlocked(s, id)); assert.ok(R.carLockReason(s, id)); assert.ok(!R.buyCar(s, id), 'locked');
+    for (const t of R.WORLDS[0].tracks) s.best[t] = 1;
+    assert.ok(R.carUnlocked(s, id)); assert.ok(R.buyCar(s, id));
+  }
+  for (const id of starters) assert.ok(R.carUnlocked(R.newState(1), id));
+  // the fastest car opens last
+  const s = R.newState(1); s.best[R.WORLDS[0].tracks[0]] = 1; s.best[R.WORLDS[0].tracks[1]] = 1;
+  assert.ok(locked.some(id => R.carUnlocked(s, id)) && locked.some(id => !R.carUnlocked(s, id)));
+});
+
+test('rivals only drive starter cars', () => {
+  for (let seed = 1; seed < 30; seed++) { const s = R.newState(seed); s.races = seed; const r = R.startRace(s, 'meadow'); for (const c of r.cars.slice(1)) assert.ok(!R.CARS[c.carId].unlock, c.carId); }
+});
+
+test('every car has a cap for every upgrade, and a new car starts at level 0 on all of them', () => {
+  assert.ok(R.UP_KEYS.includes('turbo') && R.UP_KEYS.includes('glider'));
+  for (const id of Object.keys(R.CARS)) { const c = R._newCar(id); for (const k of R.UP_KEYS) { assert.equal(c.up[k], 0); assert.ok(R.CARS[id].caps[k] > 0, id + ' ' + k); } }
+});
+
+test('turbo upgrade: faster pick-up and a boost off the start line', () => {
+  const s = R.newState(1); s.coins = 1e9; s.parts = [1e6, 1e6, 1e6, 1e6, 1e6];
+  const id = s.car, base = R.carStats(s, id);
+  for (let i = 0; i < 3; i++) assert.ok(R.buyUpgrade(s, id, 'turbo'));
+  const up = R.carStats(s, id);
+  assert.ok(up.accel > base.accel); assert.equal(up.speed, base.speed);
+  assert.ok(up.launch > 0 && base.launch === 0);
+  const r = R.startRace(s, 'meadow');
+  while (r.phase === 'count') { R.input(r, {}); R.stepRace(r, 1 / 60); }
+  R.input(r, {}); R.stepRace(r, 1 / 60);
+  assert.ok(r.cars[0].boostT > 0, 'launch boost at GO');
+});
+
+// seconds in the air off the first ramp of a track, driving straight
+function airTime(level) {
+  const s = R.newState(1); s.cars[s.car].up.glider = level;
+  const r = R.startRace(s, 'meadow', { noAI: true }), p = r.cars[0], m = r.g.ramps[0];
+  R._place(r, p, m.s - 6, 0); r.phase = 'race'; r.cd = 0; p.v = p.stats.speed;
+  let t = 0, flying = false;
+  for (let i = 0; i < 600; i++) {
+    R.input(r, { aim: R.headingAt(r.g, p.s) }); R.stepRace(r, 1 / 60);
+    if (p.air) { flying = true; t += 1 / 60; } else if (flying) break;
+  }
+  return t;
+}
+test('glider upgrade: longer air time off ramps, none at level 0', () => {
+  const t0 = airTime(0), t3 = airTime(3);
+  assert.ok(t0 > 0.2, 'jumps at level 0: ' + t0);
+  assert.ok(t3 > t0 * 1.3, 'glider stays up longer: ' + t0 + ' vs ' + t3);
+  assert.equal(R.statsFor(R.START_CAR).glide, 0);
+});
+
+test('old saves without the new upgrades load at level 0', () => {
+  const s = R.newState(1); const raw = JSON.parse(R.serialize(s));
+  for (const id in raw.cars) { delete raw.cars[id].up.turbo; delete raw.cars[id].up.glider; }
+  const back = R.deserialize(JSON.stringify(raw));
+  assert.equal(back.cars[back.car].up.turbo, 0); assert.equal(back.cars[back.car].up.glider, 0);
 });

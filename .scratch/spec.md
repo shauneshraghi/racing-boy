@@ -4,7 +4,10 @@ A sibling of Dig Through Worlds (`~/dig`): plain HTML/JS, no build step, pixel a
 post-process copied from Dig, phone and desktop, hosted on GitHub Pages (`shauneshraghi/racing-boy`).
 
 ## User decisions (settled; do not re-ask)
-- Camera: fixed isometric chase camera that follows the player's car.
+- Camera: a third-person chase camera behind the player's car, like Super Nintendo kart racers ("Mode 7" ground,
+  scrolling backdrop, distance-scaled sprites). Changed 2026-11-21 from the original fixed isometric camera; the plaza stays isometric.
+- Progression (2026-11-21): faster cars unlocked by winning races, Turbo (acceleration) and Glider (ramp air time)
+  upgrades alongside Engine, Tires, Boost and Armor.
 - Platform: phone and desktop. Phone: the car accelerates on its own; left/right steer buttons (or a drag stick
   that points the car), a brake/drift button, an item button. Keyboard on desktop.
 - Structure: themed worlds of 3 tracks. First build: one world (Grassy Hills Town), the world table sized for 5
