@@ -205,7 +205,6 @@ var RBRender = (function () {
     ctx.imageSmoothingEnabled = false; ctx.drawImage(gc, 0, 0);
     ctx.restore();
   }
-  function onScreen(p, m) { m = m || hw * 4; return p[0] > -m && p[0] < vw + m && p[1] > -m && p[1] < vh + m * 1.5; }
   function sprite(c, x, y, z, k, alpha) {
     var p = P(x, y, z), s = (hw / S.HW) * (k || 1);
     var ax = c.ax !== undefined ? c.ax : c.width / 2, ay = c.ay !== undefined ? c.ay : c.height;
@@ -215,7 +214,6 @@ var RBRender = (function () {
     return p;
   }
   function shadow(x, z, rx, a) { var p = P(x, 0, z); ctx.fillStyle = 'rgba(20,30,10,' + (a || 0.28) + ')'; ctx.beginPath(); ctx.ellipse(p[0], p[1], rx * hw, rx * hh, 0, 0, Math.PI * 2); ctx.fill(); }
-  function poly(pts, fill) { ctx.beginPath(); pts.forEach(function (p, i) { if (i) ctx.lineTo(p[0], p[1]); else ctx.moveTo(p[0], p[1]); }); ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); }
 
   // ---------- race ----------
   var TRAIL = {
@@ -246,6 +244,7 @@ var RBRender = (function () {
       if (e.type === 'hit') { burst(c.x, 0.8, c.z, e.kind === 'goo' ? ['#58e07a', '#9dff8a'] : ['#ffd23f', '#2a2630'], 14, 2, 0.15, false); if (c.i === 0) shake = 0.35; }
       if (e.type === 'blocked') burst(c.x, 0.7, c.z, ['#bff7ff', '#ffffff'], 16, 3, 0.15, true);
       if (e.type === 'boost' && c.i === 0 && e.from === 'trick') floater(c.x, 1.6, c.z, 'Trick boost!', '#8fd8ff');
+      if (e.type === 'boost' && c.i === 0 && e.from === 'glide') floater(c.x, 1.6, c.z, 'Glide boost!', '#ffd23f');
       if (e.type === 'boost' && c.i === 0 && e.from === 'drift') floater(c.x, 1.6, c.z, e.big ? 'Super drift!' : 'Drift boost!', e.big ? '#ff8a1c' : '#8fd8ff');
       if (e.type === 'box') burst(c.x, 0.8, c.z, ['#ffd23f', '#c9853a', '#fff3b0'], 10, 2.5, 0.14, true);
       if (e.type === 'wall' && c.i === 0) shake = Math.max(shake, 0.18);
@@ -427,7 +426,7 @@ var RBRender = (function () {
     if (c.fallT <= 0) shadow7(c.x, c.z, 0.7, c.air ? 0.18 : 0.3);
     var spr = S.carView(c.carId, c.look, hv - va, el, p.k), alpha = c.fallT > 0 ? Math.max(0, c.fallT / 1.1) : undefined;
     // a rival between the camera and the player turns see-through so it never hides the player's car
-    if (c.i !== 0 && p.d < rc.playerD - 0.4) alpha = Math.min(alpha === undefined ? 1 : alpha, 0.55);
+    if (c.i !== 0 && p.d < rc.playerD - 0.4) alpha = Math.min(alpha === undefined ? 1 : alpha, 0.3);
     // a little squash just after landing
     if (c.landT > 0 && alpha === undefined) { var sq = 1 - 0.18 * c.landT / 0.2, x = lo.ctx, w2 = spr.width * p.k / spr.ppc, h2 = spr.height * p.k / spr.ppc * sq;
       x.drawImage(spr, Math.round(p.x - spr.ax * p.k / spr.ppc * (2 - sq)), Math.round(p.y - spr.ay * p.k / spr.ppc * sq), Math.round(w2 * (2 - sq)), Math.round(h2)); }
@@ -481,6 +480,13 @@ var RBRender = (function () {
     var big = it.kind === 'bld' || it.kind === 'mill' || it.kind === 'stand';
     if (!vis(p, big ? p.k * 6 : p.k * 3)) return;
     items.push({ d: p.d, f: function () {
+      lo.ctx.globalAlpha = p.d < rc.playerD - 0.5 ? 0.4 : 1; // see-through between the camera and the player
+      drawDecor7(it, p);
+      lo.ctx.globalAlpha = 1;
+    } });
+  }
+  function drawDecor7(it, p) {
+    {
       if (it.kind === 'spr') { shadow7(it.x, it.z, it.name === 'oak' ? 0.9 : 0.5, 0.22); bill(S.scenery(it.name), p, BILL_H[it.name] || 1); return; }
       if (it.kind === 'post' || it.kind === 'tyres') {
         if (it.kind === 'post') {
@@ -502,7 +508,7 @@ var RBRender = (function () {
           x2.lineTo(hub.x + ex + nxp, hub.y - ey - nyp); x2.lineTo(hub.x + ex, hub.y - ey); x2.closePath(); x2.fill();
         }
       }
-    } });
+    }
   }
   function drawRace(r, dt) {
     time += dt; sailT += dt * 0.8;
@@ -554,7 +560,7 @@ var RBRender = (function () {
     var items = [];
     decor[r.id].forEach(function (it) { decorItem(it, items); });
     drawFinish7(g, items);
-    g.ramps.forEach(function (m) { var a = D.pointAt(g, m.s + m.len * 0.5, 0), q = proj(a.x, 0, a.z); if (q) items.push({ d: q.d + 1, f: function () { drawRamp7(g, m); } }); });
+    g.ramps.forEach(function (m) { var a = D.pointAt(g, m.s + m.len * 0.5, 0), q = proj(a.x, 0, a.z); if (q) items.push({ d: q.d + 1, f: function () { lo.ctx.globalAlpha = q.d + 1.5 < rc.playerD ? 0.4 : 1; drawRamp7(g, m); lo.ctx.globalAlpha = 1; } }); });
     g.boxes.forEach(function (b, i) {
       if (r.boxes[i].t > 0) return;
       var y = 0.35 + Math.sin(time * 3 + i) * 0.12, q = proj(b.x, y, b.z); if (!vis(q, 20)) return;
@@ -698,5 +704,5 @@ var RBRender = (function () {
   function setView(right, bottom) { view.right = right || 0; view.bottom = bottom || 0; }
 
   return { setView: setView, init: init, resize: resize, drawRace: drawRace, drawHub: drawHub, drawMinimap: drawMinimap, events: events,
-    screenToWorld: screenToWorld, screenDirToHeading: screenDirToHeading, warm: ground, isHD: function () { return post; } };
+    screenToWorld: screenToWorld, screenDirToHeading: screenDirToHeading, warm: groundData, isHD: function () { return post; } };
 })();

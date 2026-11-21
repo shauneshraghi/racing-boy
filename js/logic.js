@@ -107,12 +107,12 @@ var RB = (function () {
     // faster cars that open by winning races (unlock: the tracks to win first)
     bolt: { name: 'Bolt', kind: 'rally car', desc: 'A quick rally car with a big wing. Opens when you win Creek Jump.', perk: 'start',
       unlock: ['creek'], base: { speed: 10.7, accel: 6.4, grip: 2.45, weight: 1.05 }, caps: { engine: 7, turbo: 6, tires: 6, boost: 7, glider: 5, armor: 5 },
-      cost: { coins: 2600, parts: [26, 8, 0, 0, 0] }, price: 1.45,
+      cost: { coins: 1900, parts: [22, 4, 0, 0, 0] }, price: 1.45,
       model: { len: 1.65, wid: 1.0, h: 0.36, cab: { x: -0.15, len: 0.7, wid: 0.8, h: 0.3 }, wheel: 0.27, open: false },
       look: { paint: 'tangerine', trim: 'coal', wheels: 'star', spoiler: 'wing', exhaust: 'twin', horn: 'beep', trail: 'flame' } },
     nova: { name: 'Nova', kind: 'rocket racer', desc: 'The fastest car in town. Opens when you win every Grassy Hills race.', perk: 'air',
       unlock: ['meadow', 'creek', 'windmill'], base: { speed: 11.5, accel: 6.2, grip: 2.4, weight: 0.95 }, caps: { engine: 8, turbo: 6, tires: 6, boost: 8, glider: 6, armor: 4 },
-      cost: { coins: 4200, parts: [34, 14, 0, 0, 0] }, price: 1.7,
+      cost: { coins: 3000, parts: [28, 7, 0, 0, 0] }, price: 1.7,
       model: { len: 1.95, wid: 1.0, h: 0.28, cab: { x: -0.3, len: 0.36, wid: 0.36, h: 0.32 }, wheel: 0.25, open: true, nose: true },
       look: { paint: 'grape', trim: 'sun', wheels: 'gold', spoiler: 'tall', exhaust: 'stack', horn: 'tune', trail: 'stars' } }
   };
@@ -456,7 +456,7 @@ var RB = (function () {
     if (car.air && driftPress && !car.trick) { car.trick = true; car.trickT = 0.45; ev(r, 'trick', car); }
     // speed
     var top = car.ai ? aiTop(r, car) : st.speed;
-    var vmax = top * surf * (car.slowT > 0 ? SLOW_MUL : 1) * (car.boostT > 0 ? st.boostMul : 1);
+    var vmax = top * surf * (car.slowT > 0 ? SLOW_MUL : 1) * (car.boostT > 0 ? st.boostMul : 1) * (car.air && st.glide ? 1 + 0.04 * st.glide : 1);
     if (r.phase !== 'race' && !car.done) vmax = 0;
     var acc = st.accel * (car.boostT > 0 ? BOOST_ACC : 1);
     if (!car.air && drift && !car.driftDir && Math.abs(steer) < 0.3) car.v = Math.max(0, car.v - 14 * DT); // brake
@@ -488,6 +488,7 @@ var RB = (function () {
       if (car.y <= 0) {
         car.y = 0; car.air = false; car.vy = 0;
         if (car.trick) { car.boostT = Math.max(car.boostT, 0.9 * st.boostDur * (st.perk === 'air' ? 1.6 : 1)); ev(r, 'boost', car, { from: 'trick' }); }
+        else if (st.glide) { car.boostT = Math.max(car.boostT, 0.15 * st.glide * st.boostDur); ev(r, 'boost', car, { from: 'glide' }); } // the wings fold into a little boost
         car.trick = false; ev(r, 'land', car);
       }
     }
@@ -663,7 +664,8 @@ var RB = (function () {
   }
   function finishRace(s, r) {
     var p = r.cars[0], place = p.place, W = WORLDS[r.world];
-    var wasT = WORLDS[r.world].tracks.map(function (t) { return trackUnlocked(s, t); }), wasW = WORLDS.map(function (w, i) { return worldUnlocked(s, i); });
+    var wasT = WORLDS[r.world].tracks.map(function (t) { return trackUnlocked(s, t); }), wasW = WORLDS.map(function (w, i) { return worldUnlocked(s, i); }), wasC = {};
+    Object.keys(CARS).forEach(function (id) { wasC[id] = carUnlocked(s, id); });
     var coins = Math.round(PLACE_PAY[place - 1] * W.pay) + p.coins, parts = [0, 0, 0, 0, 0];
     parts[r.world] += PART_PAY[place - 1];
     if (place === 1 && r.world + 1 < parts.length) parts[r.world + 1] += 1;
@@ -674,6 +676,7 @@ var RB = (function () {
     var unlocked = [];
     WORLDS[r.world].tracks.forEach(function (t, k) { if (!wasT[k] && trackUnlocked(s, t)) unlocked.push(TRACKS[t].name); });
     WORLDS.forEach(function (w, k) { if (!wasW[k] && worldUnlocked(s, k)) unlocked.push(w.name); });
+    Object.keys(CARS).forEach(function (id) { if (!wasC[id] && carUnlocked(s, id)) unlocked.push(CARS[id].name + ' at the car lot'); });
     s.race = null;
     return { place: place, coins: coins, trackCoins: p.coins, parts: parts, time: p.finishT, newBest: newBest, unlocked: unlocked };
   }

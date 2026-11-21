@@ -400,3 +400,18 @@ test('old saves without the new upgrades load at level 0', () => {
   const back = R.deserialize(JSON.stringify(raw));
   assert.equal(back.cars[back.car].up.turbo, 0); assert.equal(back.cars[back.car].up.glider, 0);
 });
+
+test('glider pays off: a clean drive with wings beats the same drive without', () => {
+  for (const t of ['creek', 'windmill']) {
+    const time = lv => { const s = R.newState(3); s.cars[s.car].up.glider = lv; const r = R.startRace(s, t, { noAI: true }), p = r.cars[0];
+      while (!p.done && r.t < 400) { R.input(r, R.botInput(r, p, 'clean')); R.stepRace(r, 1 / 20); } return p.finishT; };
+    assert.ok(time(4) < time(0) - 0.5, t);
+  }
+});
+
+test('a win that opens a faster car says so', () => {
+  const s = R.newState(1); s.best.meadow = 1;
+  const r = R.startRace(s, 'creek'); r.cars[0].place = 1; r.cars[0].finishT = 100;
+  const res = R.finishRace(s, r);
+  assert.ok(res.unlocked.some(u => u.includes(R.CARS.bolt.name)), JSON.stringify(res.unlocked));
+});

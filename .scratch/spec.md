@@ -26,7 +26,7 @@ post-process copied from Dig, phone and desktop, hosted on GitHub Pages (`shaune
   tier per world) for upgrades and cars, like Dig's materials.
 - Cars: 5 to start, own several; start with one, buy the rest at the car lot. Each has base stats (speed, accel,
   grip, weight), its own upgrade caps and one perk.
-- Upgrades per car: Engine (top speed), Tires (grip, less off-road slowdown), Boost (pad, drift and turbo
+- Upgrades per car (Turbo and Glider added 2026-11-21, see above): Engine (top speed), Tires (grip, less off-road slowdown), Boost (pad, drift and turbo
   strength), Armor (shorter slowdowns from hits).
 - Customisation per car: paint and trim colours, parts (wheels, spoiler, exhaust, horn) and the boost trail.
 - Hub: one kid driver walks a garage plaza like Dig's: garage (upgrades), paint shop (customise), car lot
