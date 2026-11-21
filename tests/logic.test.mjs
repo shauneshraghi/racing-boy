@@ -415,3 +415,20 @@ test('a win that opens a faster car says so', () => {
   const res = R.finishRace(s, r);
   assert.ok(res.unlocked.some(u => u.includes(R.CARS.bolt.name)), JSON.stringify(res.unlocked));
 });
+
+test('pressing drift on the ground hops first; the drift starts on landing in the direction held', () => {
+  const { r } = freshRace(W1[0]);
+  r.phase = 'race';
+  const p = r.cars[0]; p.v = 10;
+  R.input(r, { steer: 0, drift: true }); R.stepRace(r, 1 / 60);
+  assert.ok(p.hopT > 0, 'hop started'); assert.equal(p.driftDir, 0, 'no drift in the hop');
+  let top = 0;
+  // steer left during the hop: the drift goes left once the wheels are down
+  while (p.hopT > 0) { R.input(r, { steer: -1, drift: true }); R.stepRace(r, 1 / 60); top = Math.max(top, p.hopY); assert.equal(p.driftDir, 0); }
+  assert.ok(top > 0.1, 'hop height ' + top);
+  assert.equal(p.hopY, 0);
+  R.input(r, { steer: -1, drift: true }); R.stepRace(r, 1 / 60);
+  assert.equal(p.driftDir, -1);
+  // holding drift does not hop again
+  for (let i = 0; i < 30; i++) { R.input(r, { steer: -1, drift: true }); R.stepRace(r, 1 / 60); assert.equal(p.hopT, 0); }
+});

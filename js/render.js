@@ -419,7 +419,7 @@ var RBRender = (function () {
     if (pt.glow) G(p.x, p.y, s * 2.2, pt.col, 0.5);
   }
   function drawCar7(r, c) {
-    var ry = c.y; if (c.fallT > 0) ry = Math.min(0, c.y);
+    var ry = c.y + (c.hopY || 0); if (c.fallT > 0) ry = Math.min(0, c.y);
     var p = proj(c.x, ry, c.z); if (!vis(p, 60)) return null;
     var hv = c.h + (c.driftDir ? c.driftDir * 0.38 : 0) + (c.trickT > 0 ? (1 - c.trickT / 0.45) * Math.PI * 2 : 0);
     var va = viewAngle(c.x, c.z), el = elevTo(ry, p.d);

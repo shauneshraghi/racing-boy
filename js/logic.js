@@ -24,6 +24,7 @@ var RB = (function () {
   var CAR_R = 0.55;
   var BOOST_MUL = 1.4, BOOST_ACC = 4;
   var DRIFT_MIN_V = 5, DRIFT_T1 = 0.6, DRIFT_T2 = 1.4;
+  var HOP_T = 0.22, HOP_H = 0.35; // pressing drift on the ground hops first; the drift starts on landing
   var SLOW_MUL = 0.55;
   var BEE_SPEED = 17, BEE_TURN = 6, BEE_LIFE = 6;
   var GOO_LIFE = 25;
@@ -333,7 +334,7 @@ var RB = (function () {
       var car = { i: c, ai: ai, name: ai ? names[c - 1] : 'You', carId: id, look: look,
         stats: ai ? statsFor(id) : carStats(s, id), skill: ai ? W.skill[c - 1] : 1, lane: ai ? (R() * 2 - 1) * 1.6 : 0,
         x: 0, z: 0, h: 0, v: 0, y: 0, vy: 0, air: false, s: 0, prog: 0, lap: 1, place: c + 1, done: false, finishT: 0,
-        boostT: 0, slowT: 0, shieldT: 0, magnetT: 0, drift: 0, driftDir: 0, trick: false, trickT: 0, fallT: 0, onRamp: -1,
+        boostT: 0, slowT: 0, shieldT: 0, magnetT: 0, drift: 0, driftDir: 0, hopT: 0, hopY: 0, trick: false, trickT: 0, fallT: 0, onRamp: -1,
         item: null, rollT: 0, itemDelay: 0, coins: 0, inp: {}, prevDrift: false, prevItem: false, pad: -1, bumpT: 0, steerOut: 0, botSteer: 0 };
       var slot = gridOrder[c], row = Math.floor(slot / 2), col = slot % 2;
       place(r, car, -2.5 - row * 2.6 - col * 1.3, col ? 1.5 : -1.5);
@@ -347,7 +348,7 @@ var RB = (function () {
   function place(r, car, s, off) {
     var p = pointAt(r.g, s, off);
     car.x = p.x; car.z = p.z; car.h = p.h; car.s = wrapS(r.g, s); car.prog = car.s;
-    car.air = false; car.y = 0; car.vy = 0; car.onRamp = -1; car.fallT = 0; car.drift = 0; car.driftDir = 0;
+    car.air = false; car.y = 0; car.vy = 0; car.onRamp = -1; car.fallT = 0; car.drift = 0; car.driftDir = 0; car.hopT = 0; car.hopY = 0;
   }
   // a press is latched until a fixed step uses it, so a frame too short for a step cannot drop it
   function input(r, inp) { var p = r.cars[0]; p.inp = inp || {}; if (p.inp.item) p.itemQueued = true; }
@@ -421,6 +422,8 @@ var RB = (function () {
     car.itemQueued = false;
     car.prevDrift = drift; car.prevItem = item;
     // timers
+    var hopping = car.hopT > 0;
+    car.hopT = Math.max(0, car.hopT - DT); car.hopY = car.hopT > 0 ? Math.sin(Math.PI * (1 - car.hopT / HOP_T)) * HOP_H : 0;
     car.boostT = Math.max(0, car.boostT - DT); car.slowT = Math.max(0, car.slowT - DT); car.shieldT = Math.max(0, car.shieldT - DT);
     car.magnetT = Math.max(0, car.magnetT - DT); car.rollT = Math.max(0, car.rollT - DT); car.trickT = Math.max(0, car.trickT - DT); car.bumpT = Math.max(0, car.bumpT - DT);
     if (car.fallT > 0) {
@@ -442,8 +445,9 @@ var RB = (function () {
     car.steerOut = steer;
     var q = g.query(car.x, car.z);
     var surf = car.air ? 1 : surfaceSpeed(r, car, q.d);
-    // drifting and braking
-    if (!car.air && drift && Math.abs(steer) >= 0.3 && car.v > DRIFT_MIN_V) {
+    // drifting and braking: a fresh press on the ground hops, and the drift starts once the hop lands
+    if (driftPress && !car.air && !hopping && !car.driftDir && car.onRamp < 0) { car.hopT = HOP_T; car.hopY = 0; ev(r, 'hop', car); }
+    if (!car.air && !hopping && car.hopT <= 0 && drift && Math.abs(steer) >= 0.3 && car.v > DRIFT_MIN_V) {
       if (!car.driftDir) { car.driftDir = steer > 0 ? 1 : -1; car.drift = 0; ev(r, 'drift', car); }
       car.drift += DT;
     } else if (car.driftDir) {
@@ -459,7 +463,7 @@ var RB = (function () {
     var vmax = top * surf * (car.slowT > 0 ? SLOW_MUL : 1) * (car.boostT > 0 ? st.boostMul : 1) * (car.air && st.glide ? 1 + 0.04 * st.glide : 1);
     if (r.phase !== 'race' && !car.done) vmax = 0;
     var acc = st.accel * (car.boostT > 0 ? BOOST_ACC : 1);
-    if (!car.air && drift && !car.driftDir && Math.abs(steer) < 0.3) car.v = Math.max(0, car.v - 14 * DT); // brake
+    if (!car.air && !hopping && car.hopT <= 0 && drift && !car.driftDir && Math.abs(steer) < 0.3) car.v = Math.max(0, car.v - 14 * DT); // brake
     else if (car.v < vmax) car.v = Math.min(vmax, car.v + acc * DT * (1 - 0.4 * car.v / Math.max(1, vmax)));
     else car.v = Math.max(vmax, car.v - (2.5 + (car.v - vmax) * 2) * DT);
     if (car.driftDir) car.v *= 1 - 0.12 * DT;

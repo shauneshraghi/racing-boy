@@ -49,6 +49,15 @@ button { font:inherit; }
 @keyframes ready { 50% { box-shadow:0 0 0 4px #ffd23f88, 0 0 18px 6px #ffd23f88; } }
 #stick { position:absolute; z-index:2; display:none; width:130px; height:130px; transform:translate(-50%,-50%); border-radius:50%; background:radial-gradient(#ffffff14 0 40%, #1a1328a0 41%); border:2px solid #8fb8ff88; pointer-events:none; }
 #stick.show { display:block; }
+/* phones: the left half is a joystick that appears under the thumb (resting faintly bottom-left), the right half
+   held is drift; the steer and drift buttons go, and the drift button stays as a lamp that lights while held */
+#bDrift .touch { display:none; }
+@media (pointer: coarse) {
+  #bLeft, #bRight { display:none; }
+  #bDrift { pointer-events:none !important; opacity:.75; }
+  #bDrift .keys { display:none; } #bDrift .touch { display:block; }
+  #stick.idle { display:block; opacity:.35; left:110px; top:calc(100% - 120px - env(safe-area-inset-bottom)); }
+}
 #knob { position:absolute; left:50%; top:50%; width:54px; height:54px; margin:-27px 0 0 -27px; border-radius:50%; background:radial-gradient(circle at 40% 35%, #8fb8ff, #3a6fd0); box-shadow:0 3px 8px #000a; }
 #count { position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); z-index:4; font-size:120px; font-weight:700; color:#fff; text-shadow:0 6px 0 #7a3b10, 0 0 30px #000; pointer-events:none; display:none; }
 #count.show { display:block; animation:pop .9s ease-out; }
