@@ -56,6 +56,7 @@ var RBAudio = (function () {
     wall: function () { noise(0.1, 0.18, 400); },
     bump: function () { tone(140, 0.08, 'square', 0.06); },
     jump: function () { tone(300, 0.3, 'triangle', 0.12, 0, 2.2); },
+    hop: function () { tone(420, 0.12, 'triangle', 0.08, 0, 1.6); },
     land: function () { noise(0.12, 0.2, 500); },
     trick: function () { seq([784, 988, 1175], 0.05, 'triangle', 0.1); },
     splash: function () { noise(0.6, 0.3, 1400, 'bandpass'); tone(500, 0.4, 'sine', 0.1, 0, 0.3); },

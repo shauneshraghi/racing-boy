@@ -51,6 +51,7 @@
     $('hubHint').classList.toggle('show', m === 'hub' && !station);
     $('raceHud').classList.toggle('show', m === 'race');
     $('raceCtl').classList.toggle('show', m === 'race');
+    $('stick').classList.toggle('idle', m === 'race'); $('stick').classList.remove('show');
     A.setMood(m === 'race' ? 'race' : 'hub');
     if (m !== 'race') A.setEngine(false, 0, false);
   }
@@ -158,7 +159,7 @@
       });
       var m = document.createElement('button'); m.className = 'btn'; m.style.cssText = 'width:100%;margin-bottom:8px';
       m.textContent = A.isMuted() ? '🔇 Sound off' : '🔊 Sound on'; m.onclick = function () { A.setMute(!A.isMuted()); renderPanel(); }; body.appendChild(m);
-      body.insertAdjacentHTML('beforeend', '<p class="note">Keys: ← → steer · ↓ or Space drift, brake, and trick in the air · ↑ or X use item · H horn · Esc pause. On a phone, hold ◀ ▶, or drag left or right anywhere on the track to steer.</p>');
+      body.insertAdjacentHTML('beforeend', '<p class="note">Keys: ← → steer · ↓ or Space drift, brake, and trick in the air · ↑ or X use item · H horn · Esc pause. On a phone, put a thumb on the left half of the screen and slide it left or right to steer; hold anywhere on the right half to drift (tap it to hop).</p>');
       var so = document.createElement('button'); so.className = 'btn'; so.style.cssText = 'font-size:14px;background:#5a2030'; so.textContent = 'Start over…';
       so.onclick = function () {
         if ($('confirm')) return;
@@ -213,6 +214,7 @@
       else if (e.type === 'jump') A.sfx('jump');
       else if (e.type === 'land') A.sfx('land');
       else if (e.type === 'trick') A.sfx('trick');
+      else if (e.type === 'hop') A.sfx('hop');
       else if (e.type === 'splash') { A.sfx('splash'); banner('Splash!'); }
       else if (e.type === 'drift') A.sfx('drift');
       else if (e.type === 'lap') { if (e.lap === r.laps) { banner('Final lap!'); A.sfx('finalLap'); } else { banner('Lap ' + e.lap); A.sfx('lap'); } }
@@ -283,7 +285,7 @@
     if (k.indexOf('Arrow') === 0 || k === ' ') e.preventDefault();
   });
   window.addEventListener('keyup', function (e) { var k = e.key; keys[k.length === 1 ? k.toLowerCase() : k] = false; });
-  window.addEventListener('blur', function () { keys = {}; held.left = held.right = held.drift = false; stick = null; $('stick').classList.remove('show'); });
+  window.addEventListener('blur', function () { keys = {}; held.left = held.right = held.drift = false; stick = null; stickId = null; down = null; driftIds = {}; if (typeof stickHome === 'function') stickHome(); });
   function holdBtn(id, name) {
     var b = $(id);
     function on(e) { e.preventDefault(); audio(); held[name] = true; b.classList.add('held'); try { b.setPointerCapture(e.pointerId); } catch (er) {} }
@@ -292,27 +294,42 @@
   }
   holdBtn('bLeft', 'left'); holdBtn('bRight', 'right'); holdBtn('bDrift', 'drift');
   $('bItem').addEventListener('pointerdown', function (e) { e.preventDefault(); audio(); itemTap = true; });
-  // the scene: in a race a sideways drag steers; on the plaza a tap walks there and a drag walks that way
-  var cvEl = $('cv'), down = null;
+  // the scene. In a race the screen is split: a finger on the left half is a joystick that appears where it lands
+  // (left and right steer), and a finger held on the right half drifts (brake when not steering, trick in the air).
+  // On the plaza a tap walks there and a drag walks that way.
+  var cvEl = $('cv'), down = null, stickId = null, driftIds = {};
+  function driftHeld() { for (var k in driftIds) return true; return false; }
+  function showDrift() { $('bDrift').classList.toggle('held', held.drift || driftHeld()); }
+  function stickHome() { var st = $('stick'); st.style.left = ''; st.style.top = ''; st.classList.toggle('idle', mode === 'race'); st.classList.remove('show'); $('knob').style.transform = ''; }
   cvEl.addEventListener('pointerdown', function (e) {
     audio();
-    down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, moved: false };
     try { cvEl.setPointerCapture(e.pointerId); } catch (er) {}
+    if (mode === 'race') {
+      e.preventDefault();
+      if (e.clientX >= cvEl.getBoundingClientRect().width / 2) { driftIds[e.pointerId] = true; showDrift(); return; }
+      if (stickId !== null) return;
+      stickId = e.pointerId; down = { x: e.clientX, y: e.clientY, id: e.pointerId, moved: true };
+      var st = $('stick'); st.style.left = e.clientX + 'px'; st.style.top = e.clientY + 'px'; st.classList.remove('idle'); st.classList.add('show');
+      return;
+    }
+    down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, moved: false };
   });
   cvEl.addEventListener('pointermove', function (e) {
     if (!down || e.pointerId !== down.id) return;
     var dx = e.clientX - down.x, dy = e.clientY - down.y;
     if (!down.moved && Math.hypot(dx, dy) > 12) { down.moved = true; var st = $('stick'); st.style.left = down.x + 'px'; st.style.top = down.y + 'px'; st.classList.add('show'); }
     if (down.moved) {
-      var l = Math.hypot(dx, dy), m = Math.min(l, 50), kx = l ? dx / l * m : 0, ky = l ? dy / l * m : 0;
-      $('knob').style.transform = 'translate(' + kx + 'px,' + ky + 'px)';
+      if (mode === 'race') { var kx = Math.max(-50, Math.min(50, dx)); $('knob').style.transform = 'translate(' + kx + 'px,0)'; stick = Math.abs(dx) > 6 ? { dx: dx, dy: 0 } : null; return; }
+      var l = Math.hypot(dx, dy), m = Math.min(l, 50), kx2 = l ? dx / l * m : 0, ky = l ? dy / l * m : 0;
+      $('knob').style.transform = 'translate(' + kx2 + 'px,' + ky + 'px)';
       stick = l > 14 ? { dx: dx, dy: dy } : null;
     }
   });
   function upHandler(e) {
+    if (driftIds[e.pointerId]) { delete driftIds[e.pointerId]; showDrift(); return; }
     if (!down || e.pointerId !== down.id) return;
     if (!down.moved && mode === 'hub' && !station) { var w = R.screenToWorld(e.clientX - cvEl.getBoundingClientRect().left, e.clientY - cvEl.getBoundingClientRect().top); if (D.hubWalkTo(hub, w.x, w.z)) padLock = null; }
-    down = null; stick = null; $('stick').classList.remove('show'); $('knob').style.transform = '';
+    down = null; stick = null; stickId = null; stickHome();
   }
   cvEl.addEventListener('pointerup', upHandler); cvEl.addEventListener('pointercancel', upHandler);
   function raceInput(r) {
@@ -320,7 +337,7 @@
     var steer = (keys.ArrowLeft || keys.a || held.left ? -1 : 0) + (keys.ArrowRight || keys.d || held.right ? 1 : 0);
     if (steer) inp.steer = steer;
     else if (stick) inp.steer = Math.max(-1, Math.min(1, stick.dx / 45)); // the chase camera: drag left or right to steer
-    inp.drift = !!(keys.ArrowDown || keys.s || keys[' '] || keys.Shift || held.drift);
+    inp.drift = !!(keys.ArrowDown || keys.s || keys[' '] || keys.Shift || held.drift || driftHeld());
     inp.item = itemTap; itemTap = false;
     D.input(r, inp);
     if (p.inp) p.inp = inp;
