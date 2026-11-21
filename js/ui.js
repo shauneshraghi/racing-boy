@@ -86,7 +86,7 @@
     var car = S.car, C = D.CARS[car];
     if (station === 'garage') {
       body.appendChild(previewCanvas(car, S.cars[car].look, 0.6));
-      body.insertAdjacentHTML('beforeend', '<p class="note">Upgrading <b>' + C.name + '</b>. Each car keeps its own upgrades. Higher levels need ⚙️ gears, won by finishing 1st.</p>');
+      body.insertAdjacentHTML('beforeend', '<p class="note">Upgrading <b>' + C.name + '</b>. Each car keeps its own upgrades. Higher levels need ⚙️ gears, won by finishing 1st. Win races to open faster cars at the car lot.</p>');
       D.UP_KEYS.forEach(function (k) {
         var U = D.UPGRADES[k], lvl = S.cars[car].up[k], cap = C.caps[k], cost = D.upgradeCost(S, car, k);
         var pips = ''; for (var i = 0; i < cap; i++) pips += i < lvl ? '■' : '<i>■</i>';
@@ -109,6 +109,7 @@
         row.appendChild(info);
         var b = document.createElement('button'); b.className = 'btn' + (own ? '' : ' go');
         if (own) { b.textContent = id === S.car ? '✓ Driving' : 'Drive'; b.disabled = id === S.car; b.onclick = function () { D.selectCar(S, id); A.horn(S.cars[id].look.horn); save(); renderPanel(); }; }
+        else if (!D.carUnlocked(S, id)) { b.textContent = '🔒'; b.disabled = true; info.insertAdjacentHTML('beforeend', '<p class="note">🔒 ' + D.carLockReason(S, id) + '</p>'); }
         else { b.textContent = 'Buy'; b.disabled = !D.canAfford(S, K.cost); b.onclick = function () { if (D.buyCar(S, id)) { D.selectCar(S, id); A.sfx('unlock'); toast('🚗 ' + K.name + ' is yours!'); save(); renderPanel(); } else A.sfx('no'); }; }
         row.appendChild(b); body.appendChild(row);
       });

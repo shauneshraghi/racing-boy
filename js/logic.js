@@ -61,11 +61,13 @@ var RB = (function () {
   }
 
   // ---------- cars ----------
-  var UP_KEYS = ['engine', 'tires', 'boost', 'armor'];
+  var UP_KEYS = ['engine', 'turbo', 'tires', 'boost', 'glider', 'armor'];
   var UPGRADES = {
     engine: { name: 'Engine', icon: '🔧', desc: 'Top speed and pick-up' },
+    turbo: { name: 'Turbo', icon: '⚡', desc: 'Faster pick-up, and a boost off the start line' },
     tires: { name: 'Tires', icon: '🛞', desc: 'Grip, and less slowing on grass' },
     boost: { name: 'Boost', icon: '🔥', desc: 'Stronger, longer boosts' },
+    glider: { name: 'Glider', icon: '🪂', desc: 'Wings open off ramps: longer air time and more steering in the air' },
     armor: { name: 'Armor', icon: '🛡️', desc: 'Shorter slowdowns from hits' }
   };
   var PERKS = {
@@ -78,30 +80,41 @@ var RB = (function () {
   // body: length, width, height of the body box; cab: cabin box (or helmet for open cars); colours are defaults
   var CARS = {
     pip: { name: 'Pip', kind: 'hatchback', desc: 'A cheerful little hatchback. Good at everything.', perk: 'start',
-      base: { speed: 9, accel: 6, grip: 2.4, weight: 1 }, caps: { engine: 6, tires: 6, boost: 6, armor: 6 },
+      base: { speed: 9, accel: 6, grip: 2.4, weight: 1 }, caps: { engine: 6, turbo: 5, tires: 6, boost: 6, glider: 4, armor: 6 },
       cost: { coins: 0, parts: [0, 0, 0, 0, 0] }, price: 1,
       model: { len: 1.5, wid: 0.95, h: 0.42, cab: { x: -0.1, len: 0.8, wid: 0.8, h: 0.36 }, wheel: 0.26, open: false },
       look: { paint: 'cherry', trim: 'snow', wheels: 'stock', spoiler: 'none', exhaust: 'none', horn: 'beep', trail: 'flame' } },
     rumble: { name: 'Rumble', kind: 'truck', desc: 'A big friendly pickup. Slow to start, hard to stop.', perk: 'tough',
-      base: { speed: 8.9, accel: 4.6, grip: 2.15, weight: 1.8 }, caps: { engine: 5, tires: 6, boost: 5, armor: 9 },
+      base: { speed: 8.9, accel: 4.6, grip: 2.15, weight: 1.8 }, caps: { engine: 5, turbo: 6, tires: 6, boost: 5, glider: 2, armor: 9 },
       cost: { coins: 700, parts: [12, 0, 0, 0, 0] }, price: 1.1,
       model: { len: 1.85, wid: 1.1, h: 0.5, cab: { x: 0.15, len: 0.75, wid: 1.0, h: 0.42 }, wheel: 0.34, open: false, bed: true },
       look: { paint: 'forest', trim: 'sun', wheels: 'chunky', spoiler: 'none', exhaust: 'pipe', horn: 'honk', trail: 'flame' } },
     hopper: { name: 'Hopper', kind: 'buggy', desc: 'A springy dune buggy that loves to fly.', perk: 'air',
-      base: { speed: 9.1, accel: 6.6, grip: 2.5, weight: 0.8 }, caps: { engine: 6, tires: 7, boost: 6, armor: 4 },
+      base: { speed: 9.1, accel: 6.6, grip: 2.5, weight: 0.8 }, caps: { engine: 6, turbo: 5, tires: 7, boost: 6, glider: 6, armor: 4 },
       cost: { coins: 900, parts: [14, 2, 0, 0, 0] }, price: 1.15,
       model: { len: 1.4, wid: 1.0, h: 0.3, cab: { x: -0.15, len: 0.36, wid: 0.36, h: 0.38 }, wheel: 0.32, open: true },
       look: { paint: 'lime', trim: 'coal', wheels: 'chunky', spoiler: 'none', exhaust: 'none', horn: 'toot', trail: 'leaves' } },
     comet: { name: 'Comet', kind: 'speedster', desc: 'A low racer. Very fast, a bit slippery.', perk: 'pads',
-      base: { speed: 10.1, accel: 5.6, grip: 2.05, weight: 0.9 }, caps: { engine: 8, tires: 5, boost: 7, armor: 4 },
+      base: { speed: 10.1, accel: 5.6, grip: 2.05, weight: 0.9 }, caps: { engine: 8, turbo: 4, tires: 5, boost: 7, glider: 4, armor: 4 },
       cost: { coins: 1600, parts: [20, 5, 0, 0, 0] }, price: 1.3,
       model: { len: 1.75, wid: 0.95, h: 0.3, cab: { x: -0.25, len: 0.36, wid: 0.36, h: 0.32 }, wheel: 0.24, open: true, nose: true },
       look: { paint: 'sky', trim: 'snow', wheels: 'stock', spoiler: 'wing', exhaust: 'twin', horn: 'beep', trail: 'stars' } },
     clover: { name: 'Clover', kind: 'van', desc: 'A roomy camper van with a lucky streak.', perk: 'luck',
-      base: { speed: 9.2, accel: 5, grip: 2.3, weight: 1.3 }, caps: { engine: 5, tires: 5, boost: 6, armor: 6 },
+      base: { speed: 9.2, accel: 5, grip: 2.3, weight: 1.3 }, caps: { engine: 5, turbo: 5, tires: 5, boost: 6, glider: 3, armor: 6 },
       cost: { coins: 1100, parts: [16, 3, 0, 0, 0] }, price: 1.15,
       model: { len: 1.7, wid: 1.0, h: 0.4, cab: { x: -0.05, len: 1.3, wid: 0.95, h: 0.5 }, wheel: 0.26, open: false, van: true },
-      look: { paint: 'mint', trim: 'snow', wheels: 'stock', spoiler: 'none', exhaust: 'none', horn: 'tune', trail: 'bubbles' } }
+      look: { paint: 'mint', trim: 'snow', wheels: 'stock', spoiler: 'none', exhaust: 'none', horn: 'tune', trail: 'bubbles' } },
+    // faster cars that open by winning races (unlock: the tracks to win first)
+    bolt: { name: 'Bolt', kind: 'rally car', desc: 'A quick rally car with a big wing. Opens when you win Creek Jump.', perk: 'start',
+      unlock: ['creek'], base: { speed: 10.7, accel: 6.4, grip: 2.45, weight: 1.05 }, caps: { engine: 7, turbo: 6, tires: 6, boost: 7, glider: 5, armor: 5 },
+      cost: { coins: 2600, parts: [26, 8, 0, 0, 0] }, price: 1.45,
+      model: { len: 1.65, wid: 1.0, h: 0.36, cab: { x: -0.15, len: 0.7, wid: 0.8, h: 0.3 }, wheel: 0.27, open: false },
+      look: { paint: 'tangerine', trim: 'coal', wheels: 'star', spoiler: 'wing', exhaust: 'twin', horn: 'beep', trail: 'flame' } },
+    nova: { name: 'Nova', kind: 'rocket racer', desc: 'The fastest car in town. Opens when you win every Grassy Hills race.', perk: 'air',
+      unlock: ['meadow', 'creek', 'windmill'], base: { speed: 11.5, accel: 6.2, grip: 2.4, weight: 0.95 }, caps: { engine: 8, turbo: 6, tires: 6, boost: 8, glider: 6, armor: 4 },
+      cost: { coins: 4200, parts: [34, 14, 0, 0, 0] }, price: 1.7,
+      model: { len: 1.95, wid: 1.0, h: 0.28, cab: { x: -0.3, len: 0.36, wid: 0.36, h: 0.32 }, wheel: 0.25, open: true, nose: true },
+      look: { paint: 'grape', trim: 'sun', wheels: 'gold', spoiler: 'tall', exhaust: 'stack', horn: 'tune', trail: 'stars' } }
   };
   var START_CAR = 'pip';
 
@@ -283,16 +296,19 @@ var RB = (function () {
   function newCar(id) {
     var look = {}, d = CARS[id].look;
     LOOK_KEYS.forEach(function (k) { look[k] = d[k]; });
-    return { up: { engine: 0, tires: 0, boost: 0, armor: 0 }, look: look };
+    var up = {}; UP_KEYS.forEach(function (k) { up[k] = 0; });
+    return { up: up, look: look };
   }
   function statsFor(id, up) {
     var C = CARS[id], b = C.base;
-    up = up || { engine: 0, tires: 0, boost: 0, armor: 0 };
+    up = up || {};
+    var L = function (k) { return up[k] || 0; };
     return {
-      speed: b.speed * (1 + 0.035 * up.engine), accel: b.accel * (1 + 0.05 * up.engine), grip: b.grip * (1 + 0.045 * up.tires),
-      weight: b.weight, grass: Math.min(0.85, GRASS + 0.035 * up.tires),
-      boostMul: BOOST_MUL + 0.025 * up.boost, boostDur: 1 + 0.08 * up.boost,
-      armor: Math.pow(0.88, up.armor) * (C.perk === 'tough' ? 0.5 : 1), perk: C.perk
+      speed: b.speed * (1 + 0.035 * L('engine')), accel: b.accel * (1 + 0.05 * L('engine')) * (1 + 0.07 * L('turbo')),
+      launch: 0.25 * L('turbo'), glide: L('glider'), grip: b.grip * (1 + 0.045 * L('tires')),
+      weight: b.weight, grass: Math.min(0.85, GRASS + 0.035 * L('tires')),
+      boostMul: BOOST_MUL + 0.025 * L('boost'), boostDur: 1 + 0.08 * L('boost'),
+      armor: Math.pow(0.88, L('armor')) * (C.perk === 'tough' ? 0.5 : 1), perk: C.perk
     };
   }
   function carStats(s, id) { return statsFor(id, s.cars[id] ? s.cars[id].up : null); }
@@ -307,7 +323,7 @@ var RB = (function () {
     var r = { s: s, id: trackId, g: g, world: T.world, laps: T.laps, rng: R, t: 0, phase: 'count', cd: COUNTDOWN, cars: [], events: [],
       boxes: g.boxes.map(function () { return { t: 0 }; }), coins: g.coins.map(function () { return { t: 0 }; }), goos: [], bees: [], finished: 0 };
     // rivals: names and cars picked by the race seed
-    var names = RIVALS.slice(), carIds = Object.keys(CARS), paints = LOOKS.paint.map(function (p) { return p.id; });
+    var names = RIVALS.slice(), carIds = Object.keys(CARS).filter(function (id) { return !CARS[id].unlock; }), paints = LOOKS.paint.map(function (p) { return p.id; });
     for (var i = names.length - 1; i > 0; i--) { var j = Math.floor(R() * (i + 1)), tmp = names[i]; names[i] = names[j]; names[j] = tmp; }
     var gridOrder = [1, 2, 3, 0, 4, 5]; // grid slot of each car: the player starts fourth
     for (var c = 0; c < 6; c++) {
@@ -448,7 +464,7 @@ var RB = (function () {
     else car.v = Math.max(vmax, car.v - (2.5 + (car.v - vmax) * 2) * DT);
     if (car.driftDir) car.v *= 1 - 0.12 * DT;
     // turning
-    var rate = st.grip * Math.min(1, car.v / 4) * (car.air ? 0.3 : 1);
+    var rate = st.grip * Math.min(1, car.v / 4) * (car.air ? 0.3 + 0.1 * (st.glide || 0) : 1);
     if (car.driftDir) rate *= 1.35 * (0.6 + 0.4 * Math.max(0, steer * car.driftDir) + 0.4);
     car.h += steer * rate * DT;
     // move
@@ -467,7 +483,8 @@ var RB = (function () {
       car.onRamp = on;
     }
     if (car.air) {
-      car.vy -= G * DT; car.y += car.vy * DT;
+      // the glider opens on the way down and slows the fall
+      car.vy -= G * DT * (car.vy < 0 && st.glide ? Math.max(0.25, 1 - 0.22 * st.glide) : 1); car.y += car.vy * DT;
       if (car.y <= 0) {
         car.y = 0; car.air = false; car.vy = 0;
         if (car.trick) { car.boostT = Math.max(car.boostT, 0.9 * st.boostDur * (st.perk === 'air' ? 1.6 : 1)); ev(r, 'boost', car, { from: 'trick' }); }
@@ -596,7 +613,7 @@ var RB = (function () {
       if (Math.ceil(r.cd) !== before && r.cd > 0) ev(r, 'count', null, { n: Math.ceil(r.cd) });
       if (r.cd <= 0) {
         r.phase = 'race'; ev(r, 'go');
-        r.cars.forEach(function (c) { if (c.stats.perk === 'start') c.boostT = 1; });
+        r.cars.forEach(function (c) { c.boostT = Math.max(c.stats.perk === 'start' ? 1 : 0, c.stats.launch || 0); });
       }
       r.cars.forEach(function (c) { c.v = 0; });
       return;
@@ -680,8 +697,15 @@ var RB = (function () {
     pay(s, cost); s.cars[id].up[key]++;
     return true;
   }
+  function carUnlocked(s, id) { var u = CARS[id] && CARS[id].unlock; return !u || u.every(function (t) { return s.best[t] === 1; }); }
+  // what is left to win before a car opens, or null
+  function carLockReason(s, id) {
+    if (carUnlocked(s, id)) return null;
+    var left = CARS[id].unlock.filter(function (t) { return s.best[t] !== 1; }).map(function (t) { return TRACKS[t].name; });
+    return 'Win ' + (left.length > 1 ? left.slice(0, -1).join(', ') + ' and ' + left[left.length - 1] : left[0]) + ' to open';
+  }
   function buyCar(s, id) {
-    if (!CARS[id] || s.owned.indexOf(id) >= 0) return false;
+    if (!CARS[id] || s.owned.indexOf(id) >= 0 || !carUnlocked(s, id)) return false;
     var cost = CARS[id].cost; if (!canAfford(s, cost)) return false;
     pay(s, cost); s.owned.push(id); s.cars[id] = newCar(id);
     return true;
@@ -807,7 +831,7 @@ var RB = (function () {
     rollItem: rollItem, carStats: carStats, statsFor: statsFor, startRace: startRace, input: input, stepRace: stepRace,
     surfaceSpeed: surfaceSpeed, hit: hit, botInput: botInput, finishRace: finishRace, trackUnlocked: trackUnlocked,
     worldUnlocked: worldUnlocked, canAfford: canAfford, upgradeCost: upgradeCost, buyUpgrade: buyUpgrade, buyCar: buyCar,
-    selectCar: selectCar, buyLook: buyLook, equip: equip, newState: newState, serialize: serialize, deserialize: deserialize,
+    selectCar: selectCar, carUnlocked: carUnlocked, carLockReason: carLockReason, buyLook: buyLook, equip: equip, newState: newState, serialize: serialize, deserialize: deserialize,
     newHub: newHub, hubStep: hubStep, hubWalkTo: hubWalkTo, hubStation: hubStation, hubOpen: hubOpen, hubCell: hubCell,
     _place: place, _record: record, _newCar: newCar
   };
