@@ -121,8 +121,8 @@ test('walls keep cars near the road', () => {
 test('drifting charges and releases a mini-boost', () => {
   const { r } = freshRace(W1[0]);
   r.phase = 'race';
-  const p = r.cars[0]; p.v = 10;
-  for (let i = 0; i < 90; i++) { R.input(r, { steer: 1, drift: true }); R.stepRace(r, 1 / 60); }
+  const p = r.cars[0], x0 = p.x, z0 = p.z;
+  for (let i = 0; i < 90; i++) { p.x = x0; p.z = z0; p.v = 10; R.input(r, { steer: 1, drift: true }); R.stepRace(r, 1 / 60); }
   assert.ok(p.drift > 0.6, 'charge ' + p.drift);
   R.input(r, { steer: 0, drift: false }); R.stepRace(r, 1 / 60);
   assert.ok(p.boostT > 0);
@@ -416,14 +416,17 @@ test('a win that opens a faster car says so', () => {
   assert.ok(res.unlocked.some(u => u.includes(R.CARS.bolt.name)), JSON.stringify(res.unlocked));
 });
 
-test('pressing drift on the ground hops first; the drift starts on landing in the direction held', () => {
+test('holding drift on the ground hops after a moment; the drift starts on landing in the direction held', () => {
   const { r } = freshRace(W1[0]);
   r.phase = 'race';
   const p = r.cars[0]; p.v = 10;
-  R.input(r, { steer: 0, drift: true }); R.stepRace(r, 1 / 60);
-  assert.ok(p.hopT > 0, 'hop started'); assert.equal(p.driftDir, 0, 'no drift in the hop');
+  let n = 0;
+  while (p.hopT <= 0 && n < 60) { R.input(r, { steer: 0.5, drift: true }); R.stepRace(r, 1 / 60); n++; }
+  assert.ok(p.hopT > 0, 'hop started');
+  assert.ok(Math.abs(n / 60 - R.DRIFT_HOLD) < 0.04, 'hop after the hold ' + n / 60);
+  assert.equal(p.driftDir, 0, 'no drift in the hop');
   let top = 0;
-  // steer left during the hop: the drift goes left once the wheels are down
+  // steer the other way during the hop: the drift goes left once the wheels are down
   while (p.hopT > 0) { R.input(r, { steer: -1, drift: true }); R.stepRace(r, 1 / 60); top = Math.max(top, p.hopY); assert.equal(p.driftDir, 0); }
   assert.ok(top > 0.1, 'hop height ' + top);
   assert.equal(p.hopY, 0);
@@ -431,4 +434,38 @@ test('pressing drift on the ground hops first; the drift starts on landing in th
   assert.equal(p.driftDir, -1);
   // holding drift does not hop again
   for (let i = 0; i < 30; i++) { R.input(r, { steer: -1, drift: true }); R.stepRace(r, 1 / 60); assert.equal(p.hopT, 0); }
+});
+
+test('a quick tap on drift brakes and does not hop', () => {
+  const { r } = freshRace(W1[0]);
+  r.phase = 'race';
+  const p = r.cars[0]; p.v = 10;
+  const taps = Math.floor(R.DRIFT_HOLD * 60) - 2;
+  for (let i = 0; i < taps; i++) { R.input(r, { steer: 0.8, drift: true }); R.stepRace(r, 1 / 60); assert.equal(p.hopT, 0); }
+  R.input(r, { steer: 0.8, drift: false }); R.stepRace(r, 1 / 60);
+  assert.ok(p.v < 9, 'braked to ' + p.v);
+  for (let i = 0; i < 30; i++) { R.input(r, { steer: 0.8 }); R.stepRace(r, 1 / 60); assert.equal(p.hopT, 0); assert.equal(p.driftDir, 0); }
+});
+
+test('a drift keeps its direction while held and turns no harder than plain driving', () => {
+  const { r } = freshRace(W1[0]);
+  r.phase = 'race';
+  const p = r.cars[0]; p.v = 10;
+  const x0 = p.x, z0 = p.z, keep = () => { p.x = x0; p.z = z0; p.v = 10; }; // stay on the grid, clear of the walls
+  let n = 0;
+  while (!p.driftDir && n < 120) { keep(); R.input(r, { steer: 1, drift: true }); R.stepRace(r, 1 / 60); n++; }
+  assert.equal(p.driftDir, 1);
+  // counter-steering widens the drift but does not turn the car the other way or end the drift
+  for (let i = 0; i < 30; i++) {
+    const h0 = p.h; keep();
+    R.input(r, { steer: -1, drift: true }); R.stepRace(r, 1 / 60);
+    assert.equal(p.driftDir, 1); assert.ok(p.h - h0 >= 0, 'turned against the drift');
+  }
+  // letting go of the stick keeps the drift going
+  for (let i = 0; i < 10; i++) { keep(); R.input(r, { steer: 0, drift: true }); R.stepRace(r, 1 / 60); assert.equal(p.driftDir, 1); }
+  // steering into the drift turns at most a little faster than full lock on the ground
+  const h0 = p.h; keep();
+  R.input(r, { steer: 1, drift: true }); R.stepRace(r, 1 / 60);
+  const rate = (p.h - h0) * 60;
+  assert.ok(rate <= p.stats.grip * 1.2, 'drift turn rate ' + rate + ' vs grip ' + p.stats.grip);
 });

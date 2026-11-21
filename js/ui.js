@@ -159,7 +159,7 @@
       });
       var m = document.createElement('button'); m.className = 'btn'; m.style.cssText = 'width:100%;margin-bottom:8px';
       m.textContent = A.isMuted() ? '🔇 Sound off' : '🔊 Sound on'; m.onclick = function () { A.setMute(!A.isMuted()); renderPanel(); }; body.appendChild(m);
-      body.insertAdjacentHTML('beforeend', '<p class="note">Keys: ← → steer · ↓ or Space drift, brake, and trick in the air · ↑ or X use item · H horn · Esc pause. On a phone, put a thumb on the left half of the screen and slide it left or right to steer; hold anywhere on the right half to drift (tap it to hop).</p>');
+      body.insertAdjacentHTML('beforeend', '<p class="note">Keys: ← → steer · ↓ or Space drift, brake, and trick in the air · ↑ or X use item · H horn · Esc pause. On a phone, put a thumb on the left half of the screen and slide it left or right to steer; tap anywhere on the right half to brake, or hold it while steering to hop into a drift.</p>');
       var so = document.createElement('button'); so.className = 'btn'; so.style.cssText = 'font-size:14px;background:#5a2030'; so.textContent = 'Start over…';
       so.onclick = function () {
         if ($('confirm')) return;
@@ -295,9 +295,13 @@
   holdBtn('bLeft', 'left'); holdBtn('bRight', 'right'); holdBtn('bDrift', 'drift');
   $('bItem').addEventListener('pointerdown', function (e) { e.preventDefault(); audio(); itemTap = true; });
   // the scene. In a race the screen is split: a finger on the left half is a joystick that appears where it lands
-  // (left and right steer), and a finger held on the right half drifts (brake when not steering, trick in the air).
+  // (left and right steer), and a finger on the right half is the drift button (a tap brakes, a hold drifts, trick in the air).
   // On the plaza a tap walks there and a drag walks that way.
   var cvEl = $('cv'), down = null, stickId = null, driftIds = {};
+  // race stick: no steering within STICK_DEAD px of where the thumb landed, full lock at STICK_FULL px, and a
+  // curve (power STICK_CURVE) so small movements turn gently
+  var STICK_DEAD = 18, STICK_FULL = 56, STICK_CURVE = 1.6;
+  function stickSteer(dx) { var a = Math.min(1, Math.max(0, (Math.abs(dx) - STICK_DEAD) / (STICK_FULL - STICK_DEAD))); return (dx < 0 ? -1 : 1) * Math.pow(a, STICK_CURVE); }
   function driftHeld() { for (var k in driftIds) return true; return false; }
   function showDrift() { $('bDrift').classList.toggle('held', held.drift || driftHeld()); }
   function stickHome() { var st = $('stick'); st.style.left = ''; st.style.top = ''; st.classList.toggle('idle', mode === 'race'); st.classList.remove('show'); $('knob').style.transform = ''; }
@@ -319,7 +323,7 @@
     var dx = e.clientX - down.x, dy = e.clientY - down.y;
     if (!down.moved && Math.hypot(dx, dy) > 12) { down.moved = true; var st = $('stick'); st.style.left = down.x + 'px'; st.style.top = down.y + 'px'; st.classList.add('show'); }
     if (down.moved) {
-      if (mode === 'race') { var kx = Math.max(-50, Math.min(50, dx)); $('knob').style.transform = 'translate(' + kx + 'px,0)'; stick = Math.abs(dx) > 6 ? { dx: dx, dy: 0 } : null; return; }
+      if (mode === 'race') { var kx = Math.max(-50, Math.min(50, dx)); $('knob').style.transform = 'translate(' + kx + 'px,0)'; stick = Math.abs(dx) > STICK_DEAD ? { dx: dx, dy: 0 } : null; return; }
       var l = Math.hypot(dx, dy), m = Math.min(l, 50), kx2 = l ? dx / l * m : 0, ky = l ? dy / l * m : 0;
       $('knob').style.transform = 'translate(' + kx2 + 'px,' + ky + 'px)';
       stick = l > 14 ? { dx: dx, dy: dy } : null;
@@ -336,7 +340,7 @@
     var p = r.cars[0], inp = {};
     var steer = (keys.ArrowLeft || keys.a || held.left ? -1 : 0) + (keys.ArrowRight || keys.d || held.right ? 1 : 0);
     if (steer) inp.steer = steer;
-    else if (stick) inp.steer = Math.max(-1, Math.min(1, stick.dx / 45)); // the chase camera: drag left or right to steer
+    else if (stick) inp.steer = stickSteer(stick.dx); // the chase camera: drag left or right to steer
     inp.drift = !!(keys.ArrowDown || keys.s || keys[' '] || keys.Shift || held.drift || driftHeld());
     inp.item = itemTap; itemTap = false;
     D.input(r, inp);
