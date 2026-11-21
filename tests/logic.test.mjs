@@ -311,3 +311,13 @@ test('every car can finish every world-1 track', () => {
     assert.ok(r.cars[0].done && t < 220, carId + ' ' + t);
   }
 });
+
+test('an item press is kept until a logic step uses it, even on a short frame', () => {
+  const { r } = freshRace(W1[0]);
+  r.phase = 'race';
+  const p = r.cars[0]; p.item = 'turbo';
+  R.input(r, { item: true }); R.stepRace(r, 1 / 240); // too short for a fixed step
+  R.input(r, {}); R.stepRace(r, 1 / 60);
+  assert.equal(p.item, null, 'item used');
+  assert.ok(p.boostT > 0);
+});

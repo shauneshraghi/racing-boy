@@ -333,7 +333,8 @@ var RB = (function () {
     car.x = p.x; car.z = p.z; car.h = p.h; car.s = wrapS(r.g, s); car.prog = car.s;
     car.air = false; car.y = 0; car.vy = 0; car.onRamp = -1; car.fallT = 0; car.drift = 0; car.driftDir = 0;
   }
-  function input(r, inp) { r.cars[0].inp = inp || {}; }
+  // a press is latched until a fixed step uses it, so a frame too short for a step cannot drop it
+  function input(r, inp) { var p = r.cars[0]; p.inp = inp || {}; if (p.inp.item) p.itemQueued = true; }
   function surfaceSpeed(r, car, d) { return Math.abs(d) <= r.g.hw ? 1 : car.stats.grass; }
   function ev(r, type, car, extra) { var e = { type: type, car: car ? car.i : -1 }; if (extra) for (var k in extra) e[k] = extra[k]; r.events.push(e); if (r.events.length > 200) r.events.shift(); }
 
@@ -400,7 +401,8 @@ var RB = (function () {
     var g = r.g, st = car.stats, inp = car.ai ? aiInput(r, car) : (car.done ? { aim: aimAhead(r, car, 3 + car.v * 0.35, 0) } : car.inp);
     car.inp = inp;
     var drift = !!inp.drift, item = !!inp.item;
-    var driftPress = drift && !car.prevDrift, itemPress = item && !car.prevItem;
+    var driftPress = drift && !car.prevDrift, itemPress = car.ai ? item && !car.prevItem : !!car.itemQueued;
+    car.itemQueued = false;
     car.prevDrift = drift; car.prevItem = item;
     // timers
     car.boostT = Math.max(0, car.boostT - DT); car.slowT = Math.max(0, car.slowT - DT); car.shieldT = Math.max(0, car.shieldT - DT);
