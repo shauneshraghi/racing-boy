@@ -416,17 +416,14 @@ test('a win that opens a faster car says so', () => {
   assert.ok(res.unlocked.some(u => u.includes(R.CARS.bolt.name)), JSON.stringify(res.unlocked));
 });
 
-test('holding drift on the ground hops after a moment; the drift starts on landing in the direction held', () => {
+test('pressing drift on the ground hops at once; the drift starts on landing in the direction steered', () => {
   const { r } = freshRace(W1[0]);
   r.phase = 'race';
   const p = r.cars[0]; p.v = 10;
-  let n = 0;
-  while (p.hopT <= 0 && n < 60) { R.input(r, { steer: 0.5, drift: true }); R.stepRace(r, 1 / 60); n++; }
-  assert.ok(p.hopT > 0, 'hop started');
-  assert.ok(Math.abs(n / 60 - R.DRIFT_HOLD) < 0.04, 'hop after the hold ' + n / 60);
-  assert.equal(p.driftDir, 0, 'no drift in the hop');
+  R.input(r, { steer: 0, drift: true }); R.stepRace(r, 1 / 60);
+  assert.ok(p.hopT > 0, 'hop started'); assert.equal(p.driftDir, 0, 'no drift in the hop');
   let top = 0;
-  // steer the other way during the hop: the drift goes left once the wheels are down
+  // steer left during the hop: the drift goes left once the wheels are down
   while (p.hopT > 0) { R.input(r, { steer: -1, drift: true }); R.stepRace(r, 1 / 60); top = Math.max(top, p.hopY); assert.equal(p.driftDir, 0); }
   assert.ok(top > 0.1, 'hop height ' + top);
   assert.equal(p.hopY, 0);
@@ -436,15 +433,15 @@ test('holding drift on the ground hops after a moment; the drift starts on landi
   for (let i = 0; i < 30; i++) { R.input(r, { steer: -1, drift: true }); R.stepRace(r, 1 / 60); assert.equal(p.hopT, 0); }
 });
 
-test('a quick tap on drift brakes and does not hop', () => {
-  const { r } = freshRace(W1[0]);
-  r.phase = 'race';
-  const p = r.cars[0]; p.v = 10;
-  const taps = Math.floor(R.DRIFT_HOLD * 60) - 2;
-  for (let i = 0; i < taps; i++) { R.input(r, { steer: 0.8, drift: true }); R.stepRace(r, 1 / 60); assert.equal(p.hopT, 0); }
-  R.input(r, { steer: 0.8, drift: false }); R.stepRace(r, 1 / 60);
-  assert.ok(p.v < 9, 'braked to ' + p.v);
-  for (let i = 0; i < 30; i++) { R.input(r, { steer: 0.8 }); R.stepRace(r, 1 / 60); assert.equal(p.hopT, 0); assert.equal(p.driftDir, 0); }
+test('the drift button never brakes: a hop without steering is only a hop', () => {
+  const a = freshRace(W1[0]).r, b = freshRace(W1[0]).r;
+  a.phase = b.phase = 'race'; a.cars[0].v = b.cars[0].v = 6;
+  for (let i = 0; i < 40; i++) {
+    R.input(a, { steer: 0, drift: true }); R.stepRace(a, 1 / 60);
+    R.input(b, { steer: 0 }); R.stepRace(b, 1 / 60);
+    assert.equal(a.cars[0].driftDir, 0);
+  }
+  assert.ok(Math.abs(a.cars[0].v - b.cars[0].v) < 1e-9, a.cars[0].v + ' vs ' + b.cars[0].v);
 });
 
 test('a drift keeps its direction while held and turns no harder than plain driving', () => {
@@ -468,4 +465,65 @@ test('a drift keeps its direction while held and turns no harder than plain driv
   R.input(r, { steer: 1, drift: true }); R.stepRace(r, 1 / 60);
   const rate = (p.h - h0) * 60;
   assert.ok(rate <= p.stats.grip * 1.2, 'drift turn rate ' + rate + ' vs grip ' + p.stats.grip);
+});
+
+// start a right-hand drift on the start straight; keep() holds the car in place at a fixed speed, clear of the walls.
+// The rivals are left out so no bump moves the car.
+function startDrift() {
+  const { r } = freshRace(W1[0]);
+  r.phase = 'race'; r.cars.length = 1;
+  const p = r.cars[0], x0 = p.x, z0 = p.z, keep = () => { p.x = x0; p.z = z0; p.v = 10; };
+  for (let n = 0; !p.driftDir && n < 120; n++) { keep(); R.input(r, { steer: 1, drift: true }); R.stepRace(r, 1 / 60); }
+  assert.equal(p.driftDir, 1);
+  return { r, p, keep, x0, z0 };
+}
+
+test('steering into a drift charges the boost faster than steering out of it', () => {
+  const charge = steer => {
+    const { r, p, keep } = startDrift();
+    const c0 = p.drift;
+    for (let i = 0; i < 40; i++) { keep(); R.input(r, { steer, drift: true }); R.stepRace(r, 1 / 60); }
+    return p.drift - c0;
+  };
+  const tight = charge(1), wide = charge(-1);
+  assert.ok(tight > wide * 1.4, 'tight ' + tight + ' wide ' + wide);
+});
+
+test('a drift boost has three tiers, each longer than the last', () => {
+  assert.equal(R.DRIFT_TIERS.length, 3);
+  const boosts = R.DRIFT_TIERS.map(t => {
+    const { r, p, keep } = startDrift();
+    const evs = [];
+    while (p.drift < t + 0.05) { keep(); R.input(r, { steer: 1, drift: true }); R.stepRace(r, 1 / 60); }
+    r.events.length = 0;
+    R.input(r, { steer: 0, drift: false }); R.stepRace(r, 1 / 60);
+    const e = r.events.find(x => x.type === 'boost' && x.from === 'drift');
+    assert.ok(e, 'boost event at ' + t);
+    return { boostT: p.boostT, tier: e.tier };
+  });
+  assert.equal(boosts.map(b => b.tier).join(), '1,2,3');
+  assert.ok(boosts[0].boostT < boosts[1].boostT && boosts[1].boostT < boosts[2].boostT, JSON.stringify(boosts));
+});
+
+test('a drift slides the car outward', () => {
+  const { r, p, keep, x0, z0 } = startDrift();
+  for (let i = 0; i < 20; i++) { keep(); R.input(r, { steer: 0, drift: true }); R.stepRace(r, 1 / 60); }
+  keep(); const h0 = p.h;
+  R.input(r, { steer: 0, drift: true }); R.stepRace(r, 1 / 60);
+  // + is the driver's right, the inside of a right-hand drift
+  const side = (p.x - x0) * -Math.sin(h0) + (p.z - z0) * Math.cos(h0);
+  assert.ok(side < -0.005, 'sideways ' + side);
+});
+
+test('on/off steering (keys and buttons) eases in to full lock instead of snapping', () => {
+  const { r } = freshRace(W1[0]);
+  r.phase = 'race';
+  const p = r.cars[0]; p.v = 8;
+  R.input(r, { steer: 1, ease: true }); R.stepRace(r, 1 / 60);
+  assert.ok(p.steerOut > 0 && p.steerOut < 0.5, 'first step ' + p.steerOut);
+  for (let i = 0; i < 11; i++) { R.input(r, { steer: 1, ease: true }); R.stepRace(r, 1 / 60); }
+  assert.equal(p.steerOut, 1);
+  // the stick and the bots steer directly
+  R.input(r, { steer: -0.6 }); R.stepRace(r, 1 / 60);
+  assert.equal(p.steerOut, -0.6);
 });

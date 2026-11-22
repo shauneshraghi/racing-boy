@@ -8,8 +8,10 @@ post-process copied from Dig, phone and desktop, hosted on GitHub Pages (`shaune
   scrolling backdrop, distance-scaled sprites). Changed 2026-11-21 from the original fixed isometric camera; the plaza stays isometric.
 - Progression (2026-11-21): faster cars unlocked by winning races, Turbo (acceleration) and Glider (ramp air time)
   upgrades alongside Engine, Tires, Boost and Armor.
-- Phone controls (2026-11-21): left half of the screen is a floating joystick, right half is the drift button: a
-  tap brakes, a hold while steering hops into a drift whose direction stays fixed until let go (2026-11-21).
+- Phone controls (2026-11-21): left half of the screen is a floating joystick, right half is the drift button. Like
+  classic kart drifting (2026-11-21): a press hops at once, steering on landing starts a drift whose direction stays
+  fixed until let go, steering into it charges faster, three boost tiers (blue, orange, pink sparks), the car slides
+  outward; no brake; keys and buttons ease in to full lock.
 - Platform: phone and desktop. Phone: the car accelerates on its own; left/right steer buttons (or a drag stick
   that points the car), a brake/drift button, an item button. Keyboard on desktop.
 - Structure: themed worlds of 3 tracks. First build: one world (Grassy Hills Town), the world table sized for 5

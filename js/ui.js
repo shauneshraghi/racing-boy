@@ -159,7 +159,7 @@
       });
       var m = document.createElement('button'); m.className = 'btn'; m.style.cssText = 'width:100%;margin-bottom:8px';
       m.textContent = A.isMuted() ? '🔇 Sound off' : '🔊 Sound on'; m.onclick = function () { A.setMute(!A.isMuted()); renderPanel(); }; body.appendChild(m);
-      body.insertAdjacentHTML('beforeend', '<p class="note">Keys: ← → steer · ↓ or Space drift, brake, and trick in the air · ↑ or X use item · H horn · Esc pause. On a phone, put a thumb on the left half of the screen and slide it left or right to steer; tap anywhere on the right half to brake, or hold it while steering to hop into a drift.</p>');
+      body.insertAdjacentHTML('beforeend', '<p class="note">Keys: ← → steer · ↓ or Space hop and drift, and trick in the air · ↑ or X use item · H horn · Esc pause. On a phone, put a thumb on the left half of the screen and slide it left or right to steer; press anywhere on the right half to hop, and keep holding while steering to drift; let go for a boost (blue, then orange, then pink sparks).</p>');
       var so = document.createElement('button'); so.className = 'btn'; so.style.cssText = 'font-size:14px;background:#5a2030'; so.textContent = 'Start over…';
       so.onclick = function () {
         if ($('confirm')) return;
@@ -295,7 +295,7 @@
   holdBtn('bLeft', 'left'); holdBtn('bRight', 'right'); holdBtn('bDrift', 'drift');
   $('bItem').addEventListener('pointerdown', function (e) { e.preventDefault(); audio(); itemTap = true; });
   // the scene. In a race the screen is split: a finger on the left half is a joystick that appears where it lands
-  // (left and right steer), and a finger on the right half is the drift button (a tap brakes, a hold drifts, trick in the air).
+  // (left and right steer), and a finger on the right half is the drift button (a press hops, held while steering it drifts, trick in the air).
   // On the plaza a tap walks there and a drag walks that way.
   var cvEl = $('cv'), down = null, stickId = null, driftIds = {};
   // race stick: no steering within STICK_DEAD px of where the thumb landed, full lock at STICK_FULL px, and a
@@ -339,7 +339,7 @@
   function raceInput(r) {
     var p = r.cars[0], inp = {};
     var steer = (keys.ArrowLeft || keys.a || held.left ? -1 : 0) + (keys.ArrowRight || keys.d || held.right ? 1 : 0);
-    if (steer) inp.steer = steer;
+    if (steer) { inp.steer = steer; inp.ease = true; }
     else if (stick) inp.steer = stickSteer(stick.dx); // the chase camera: drag left or right to steer
     inp.drift = !!(keys.ArrowDown || keys.s || keys[' '] || keys.Shift || held.drift || driftHeld());
     inp.item = itemTap; itemTap = false;
