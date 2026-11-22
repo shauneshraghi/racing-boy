@@ -1,6 +1,7 @@
-// Drift lab: drives an ideal drifting bot through every bend of the world-1 tracks and reports how the drift's
+// Drift lab: drives an ideal drifting bot through every bend of a world's tracks (world 1 unless told) and reports how the drift's
 // turn envelope fits the bends. Run from the repo root:
-//   node .claude/skills/drift-tune/drift-lab.mjs [--set NAME=value,...] [--car pip] [--mode stick|keys|hands] [--tracks meadow,creek] [--v 9]
+//   node .claude/skills/drift-tune/drift-lab.mjs [--set NAME=value,...] [--car pip] [--mode stick|keys|hands] [--world 1|2|desert] [--tracks meadow,creek] [--up 2] [--v 9]
+// --world picks a world by number (1 = Grassy Hills) or id; --tracks (or --track) names tracks instead; --up sets every upgrade to that level.
 // --set overrides tuning vars at the top of js/logic.js for this run only (e.g. --set DRIFT_TURN=0.8,DRIFT_WIDE=0.2).
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -17,7 +18,10 @@ const num = name => { const m = src.match(new RegExp('\\b' + name + ' = ([-\\d.]
 const K = { TURN: num('DRIFT_TURN'), WIDE: num('DRIFT_WIDE'), HOP_T: num('HOP_T'), SLIDE: num('DRIFT_SLIDE'), RUNOFF: num('RUNOFF') };
 const ctx = {}; vm.createContext(ctx); vm.runInContext(src, ctx, { filename: 'js/logic.js' });
 const R = ctx.RB, DT = R.DT, angDiff = R.angDiff, clamp = R.clamp;
-const tracks = (args.tracks || R.WORLDS[0].tracks.join(',')).split(',');
+const world = args.world ? R.WORLDS.find((w, i) => w.id === args.world || String(i + 1) === args.world) : R.WORLDS[0];
+if (!world) { console.error('no world ' + args.world); process.exit(1); }
+const tracks = (args.tracks || args.track || world.tracks.join(',')).split(',');
+const upLevel = +(args.up || 0);
 const carId = args.car || R.START_CAR;
 const mode = args.mode || "stick"; // stick (analog), keys (-1/0/+1 eased, like desktop), hands (stick let go once drifting)
 
@@ -39,6 +43,7 @@ function bends(g) {
 function freshRace(id) {
   const s = R.newState(3);
   if (carId !== s.car) { s.owned.push(carId); s.cars[carId] = R._newCar(carId); s.car = carId; }
+  for (const k of R.UP_KEYS) s.cars[carId].up[k] = Math.min(upLevel, R.CARS[carId].caps[k]);
   const r = R.startRace(s, id, { noAI: true }); r.phase = 'race'; return r;
 }
 const inBend = (g, s, b, lead) => { const a = ((s - (b.s0 - lead)) % g.L + g.L) % g.L; return a <= b.s1 - b.s0 + lead; };
@@ -78,7 +83,7 @@ function run(id, drift) {
 }
 const tierOf = c => R.DRIFT_TIERS.filter(x => c >= x).length;
 
-console.log(`car ${carId}  mode ${mode}  DRIFT_TURN ${K.TURN}  DRIFT_WIDE ${K.WIDE}  DRIFT_SLIDE ${K.SLIDE}` + (sets.length ? '  (overrides: ' + args.set + ')' : ''));
+console.log(`car ${carId}${upLevel ? ' (upgrades ' + upLevel + ')' : ''}  mode ${mode}  DRIFT_TURN ${K.TURN}  DRIFT_WIDE ${K.WIDE}  DRIFT_SLIDE ${K.SLIDE}` + (sets.length ? '  (overrides: ' + args.set + ')' : ''));
 const f = (x, n = 2) => x.toFixed(n).padStart(5);
 let all = { n: 0, u: 0, against: 0, into: 0, off: 0, wall: 0 }, worst = 0;
 for (const id of tracks) {
