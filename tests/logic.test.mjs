@@ -31,7 +31,7 @@ test('world table: five worlds, the first has three tracks of 2 or 3 laps', () =
 });
 
 test('every track is a closed loop with sane geometry', () => {
-  for (const id of W1) {
+  for (const id of Object.keys(R.TRACKS)) {
     const g = R.track(id);
     assert.ok(g.L > 150, id + ' lap length ' + g.L);
     const a = g.samples[0], b = g.samples[g.samples.length - 1];
@@ -40,6 +40,29 @@ test('every track is a closed loop with sane geometry', () => {
     const m = g.samples[Math.floor(g.samples.length / 3)];
     const q = g.query(m.x, m.z);
     assert.ok(Math.abs(q.s - m.s) < 1 && Math.abs(q.d) < 0.3, id + ' query');
+  }
+});
+
+test('separate parts of every track are at least 16 cells apart, and query snaps to the right stretch out to the walls', () => {
+  for (const id of Object.keys(R.TRACKS)) {
+    const g = R.track(id), S = g.samples.slice(0, g.n), lim = g.hw + R.RUNOFF;
+    // stretches 40+ cells apart along the loop (more than a hairpin's turn) must be 16+ cells apart on the ground
+    for (let i = 0; i < S.length; i += 2) for (let j = i + 2; j < S.length; j += 2) {
+      const along = Math.min(Math.abs(S[i].s - S[j].s), g.L - Math.abs(S[i].s - S[j].s));
+      if (along >= 40) assert.ok(Math.hypot(S[i].x - S[j].x, S[i].z - S[j].z) >= 16, `${id}: s ${S[i].s} and ${S[j].s} too close`);
+    }
+    // a point across the road and the runoff maps back to its own s and offset; on the inside of a bend tighter
+    // than the wall the offsets overlap, so only out to 80% of the bend radius there
+    for (const m of S) {
+      let kR = 0, kL = 0; // the sharpest right and left curvature within 6 cells; + offset is the inside of a right bend
+      for (let a = -6; a <= 6; a++) { const k = R.pointAt(g, m.s + a, 0).k; kR = Math.max(kR, k); kL = Math.max(kL, -k); }
+      const reach = { 1: Math.min(lim, 0.8 / kR), '-1': Math.min(lim, 0.8 / kL) };
+      for (const f of [-1, -0.5, 0.5, 1]) {
+        const off = f * reach[Math.sign(f)], x = m.x - m.tz * off, z = m.z + m.tx * off, q = g.query(x, z);
+        const ds = Math.min(Math.abs(q.s - m.s), g.L - Math.abs(q.s - m.s));
+        assert.ok(ds < 1.5 && Math.abs(q.d - off) < 0.6, `${id}: s ${m.s} off ${off.toFixed(1)} snapped to s ${q.s.toFixed(1)} d ${q.d.toFixed(1)}`);
+      }
+    }
   }
 });
 
