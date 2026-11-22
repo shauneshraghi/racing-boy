@@ -46,7 +46,7 @@ var RBPost = (function () {
       'uniform vec3 shadowTint, hiTint;\n' +
       'uniform int hasDep; uniform vec4 dof; uniform vec2 dofK; uniform float skyK; uniform vec3 fogCol, fog;\n' +
       'uniform vec4 camA, camB; uniform float cloudK; uniform vec2 wind; uniform float shaftK, speedK, grain;\n' +
-      'uniform int iso; uniform vec2 dap, carD; uniform vec3 dapCol, lift;\n' +
+      'uniform int iso; uniform vec2 dap, carD; uniform vec3 dapCol, lift; uniform vec2 tone;\n' +
       'vec3 knee(vec3 c) { vec3 e = max(c - 0.82, 0.0); return min(c, 0.82) + e / (1.0 + e / 0.18); }\n' +
       'float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\n' +
       'float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);\n' +
@@ -102,6 +102,8 @@ var RBPost = (function () {
       '  if (world) c = mix(c, fogCol, smoothstep(fog.x, fog.y, d) * fog.z);\n' +
       '  if (shaftK > 0.0) c += texture(sh, uv).rgb * shaftK;\n' +
       '  c += texture(bl, uv).rgb * bloomK;\n' +
+      // low-key tone curve: a gamma above 1 sinks the mid-tones and shadows so lit pools stand out (tone = gamma, exposure)
+      '  c = pow(max(c, 0.0), vec3(tone.x)) * tone.y;\n' +
       '  float l = dot(c, vec3(0.299, 0.587, 0.114));\n' +
       '  c = mix(vec3(l), c, sat);\n' +
       '  c *= mix(shadowTint, hiTint, smoothstep(0.05, 0.75, l));\n' +
@@ -188,7 +190,7 @@ var RBPost = (function () {
     } catch (e) { console.warn('HD-2D post-process off:', e.message); gl = null; return false; }
   }
   // p: { lights: [{x, y, r, i, c: [r, g, b]}], amb: [r, g, b], focus: [top, bottom, ramp, strength],
-  //      bloom, thr, sat, vig, caustic, shadowTint, hiTint, lift (added to the darkest tones), time, scale (blur radius in scene texels),
+  //      bloom, thr, sat, vig, caustic, shadowTint, hiTint, lift (added to the darkest tones), tone: [gamma, exposure], time, scale (blur radius in scene texels),
   //      carD: [depth, half-window] of the player's car, which near blur never bleeds onto,
   //      dapple: [strength, cells^-1 frequency] and dapCol (the lit pools' tint) for dappled light on the world,
   //      cloud and wind for cloud shadows; on the plaza iso: [ox, oy, hw, hh] (canvas pixels) places the world under each pixel,
@@ -236,7 +238,7 @@ var RBPost = (function () {
       gl.uniform3fv(u.fogCol, p.fogCol || [1, 1, 1]); gl.uniform3fv(u.fog, p.fog || [1e4, 2e4, 0]);
       gl.uniform4f(u.camA, cam[0], cam[1], cam[2], cam[3]); gl.uniform4f(u.camB, cam[4], cam[5], cam[6], cam[7]);
       gl.uniform1f(u.cloudK, hasDep || iso ? p.cloud || 0 : 0); gl.uniform2fv(u.wind, p.wind || [0, 0]);
-      gl.uniform1i(u.iso, iso && !hasDep ? 1 : 0); gl.uniform2fv(u.dap, dap); gl.uniform3fv(u.dapCol, p.dapCol || [1.2, 1.1, 0.9]); gl.uniform3fv(u.lift, p.lift || [0, 0, 0]); gl.uniform2fv(u.carD, p.carD || [-1e4, 0]);
+      gl.uniform1i(u.iso, iso && !hasDep ? 1 : 0); gl.uniform2fv(u.dap, dap); gl.uniform3fv(u.dapCol, p.dapCol || [1.2, 1.1, 0.9]); gl.uniform3fv(u.lift, p.lift || [0, 0, 0]); gl.uniform2fv(u.carD, p.carD || [-1e4, 0]); gl.uniform2fv(u.tone, p.tone || [1, 1]);
       gl.uniform1f(u.shaftK, shaft); gl.uniform1f(u.speedK, p.speed || 0); gl.uniform1f(u.grain, p.grain || 0);
     });
   }
