@@ -13,6 +13,15 @@ var RBPost = (function () {
   var HEAD = '#version 300 es\nprecision highp float; in vec2 uv; out vec4 o;\n';
   var FS = {
     copy: HEAD + 'uniform sampler2D t; void main() { o = texture(t, uv); }',
+    // the scene with its near circle of confusion in alpha, so the blur chain spreads a near object's blur past its
+    // own silhouette (near-field bleed). Only things standing up count, not the ground (nearer than the ground in
+    // their row, from gc = f, camY, horizon row, scene height), so the soft ground at the bottom of the view does not
+    // creep up the player's car; open sky and the plaza (no depth buffer) carry none
+    near: HEAD + 'uniform sampler2D t, dep; uniform int hasDep; uniform vec2 nr; uniform vec4 gc; void main() {' +
+      ' float a = 0.0; if (hasDep == 1) { float v = texture(dep, uv).r; float d = v * v * ' + DMAX.toFixed(1) + ';' +
+      '   float row = floor((1.0 - uv.y) * gc.w) - gc.z; float zg = row > 0.0 ? gc.x * gc.y / (row + 0.5) : 1e9;' +
+      '   a = v > 0.995 || d > zg * 0.93 ? 0.0 : 1.0 - smoothstep(nr.x, nr.y, d); }' +
+      ' o = vec4(texture(t, uv).rgb, a); }',
     // 9-tap gaussian folded into 5 linear samples; dir is one step in uv
     blur: HEAD + 'uniform sampler2D t; uniform vec2 dir; void main() {' +
       ' vec4 c = texture(t, uv) * 0.2270270;' +
@@ -31,12 +40,13 @@ var RBPost = (function () {
       ' float fall = 1.0 - smoothstep(0.0, 0.9, length((sun - uv) * vec2(1.6, 1.0)));' +
       ' o = vec4(col * acc / 14.0 * fall, 1.0); }',
     final: HEAD +
-      'uniform sampler2D s, hb, qb, bl, dep, sh; uniform vec2 res, sres; uniform float time;\n' +
+      'uniform sampler2D s, hb, qb, eb, bl, dep, sh; uniform vec2 res, sres; uniform float time;\n' +
       'uniform vec4 L[' + MAXL + ']; uniform vec3 LC[' + MAXL + ']; uniform int nL;\n' +
       'uniform vec3 amb; uniform vec4 focus; uniform float bloomK, sat, vig, caustic;\n' +
       'uniform vec3 shadowTint, hiTint;\n' +
       'uniform int hasDep; uniform vec4 dof; uniform vec2 dofK; uniform float skyK; uniform vec3 fogCol, fog;\n' +
       'uniform vec4 camA, camB; uniform float cloudK; uniform vec2 wind; uniform float shaftK, speedK, grain;\n' +
+      'uniform int iso; uniform vec2 dap, carD; uniform vec3 dapCol, lift;\n' +
       'vec3 knee(vec3 c) { vec3 e = max(c - 0.82, 0.0); return min(c, 0.82) + e / (1.0 + e / 0.18); }\n' +
       'float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\n' +
       'float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);\n' +
@@ -48,8 +58,14 @@ var RBPost = (function () {
       '  if (hasDep == 0) { float y = (1.0 - q.y) * res.y; return clamp(max(focus.x - y, y - focus.y) / focus.z, 0.0, 1.0) * focus.w; }\n' +
       '  if (texture(dep, q).r > 0.995) return skyK;\n' + // open sky stays only a little soft, so clouds and the sun read
       '  float d = depthAt(q); return max((1.0 - smoothstep(dof.x, dof.y, d)) * dofK.x, smoothstep(dof.z, dof.w, d) * dofK.y); }\n' +
+      // coc 0..1 runs sharp -> half -> quarter blur, 1..2 on to the eighth-size blur (near objects and the plaza);
+      // near bleed: a pixel next to something near takes that thing's spread-out blur, so its edge goes soft too
+      'bool standing(vec2 q) { float row = floor((1.0 - q.y) * sres.y) - camB.z; return row <= 0.0 || depthAt(q) < camB.x * camB.y / (row + 0.5) * 0.93; }\n' +
       'vec3 dofAt(vec2 q) { float coc = cocAt(q); vec3 c = texture(s, q).rgb;\n' +
-      '  if (coc > 0.0) { vec3 h = texture(hb, q).rgb, b = texture(qb, q).rgb; c = coc < 0.5 ? mix(c, h, coc * 2.0) : mix(h, b, coc * 2.0 - 1.0); }\n' +
+      // (not onto the cars round the player's distance carD.x ± carD.y, so the player's car stays sharp past a near tree)
+      '  vec4 e = texture(eb, q); if (hasDep == 1 && e.a > 0.0 && !(abs(depthAt(q) - carD.x) < carD.y && standing(q))) coc = max(coc, min(1.0, e.a * 2.2) * dofK.x);\n' +
+      '  if (coc > 0.0) { vec3 h = texture(hb, q).rgb, b = texture(qb, q).rgb;\n' +
+      '    c = coc < 0.5 ? mix(c, h, coc * 2.0) : coc < 1.0 ? mix(h, b, coc * 2.0 - 1.0) : mix(b, e.rgb, min(1.0, (coc - 1.0) * 1.8)); }\n' +
       '  return c; }\n' +
       'void main() {\n' +
       '  vec2 px = vec2(uv.x * res.x, (1.0 - uv.y) * res.y);\n' +
@@ -61,11 +77,20 @@ var RBPost = (function () {
       '    c = mix(c, z / 6.0, clamp(speedK * smoothstep(0.12, 0.55, length(dv)), 0.0, 0.85)); }\n' +
       '  else c = dofAt(uv);\n' +
       '  bool world = hasDep == 1 && texture(dep, uv).r < 0.995; float d = hasDep == 1 ? depthAt(uv) : 0.0;\n' +
-      // cloud shadows: the world point under this pixel (camera forward camA.zw, right = (-fz, fx); camB = f, camY, y0, cx)
-      '  if (world && cloudK > 0.0) { float sx = uv.x * sres.x; float lat = (sx - camB.w) * d / camB.x;\n' +
-      '    vec2 w = camA.xy + camA.zw * d + vec2(-camA.w, camA.z) * lat;\n' +
+      // the world point under this pixel. Races: camera forward camA.zw, right = (-fz, fx); camB = f, camY, y0, cx.
+      // The plaza (iso): camA = origin x, y, half-tile width, height in canvas pixels, as RBRender.screenToWorld
+      // under a blurred near thing the cloud shadows and dapple fade out, or they would print its sharp silhouette
+      '  vec2 w = vec2(0.0); float nearF = hasDep == 1 ? 1.0 - min(1.0, texture(eb, uv).a * 4.0) : 1.0, dapF = nearF;\n' +
+      '  if (world) { float sx = uv.x * sres.x; float lat = (sx - camB.w) * d / camB.x; w = camA.xy + camA.zw * d + vec2(-camA.w, camA.z) * lat;\n' +
+      '    dapF *= 1.0 - smoothstep(25.0, 60.0, d); }\n' +
+      '  else if (iso == 1) { float a = (px.x - camA.x) / camA.z, b = (px.y - camA.y) / camA.w; w = vec2(a + b, b - a) * 0.5; world = true; }\n' +
+      // cloud shadows drifting over everything, and dappled light: warm pools and soft leaf shade that sway a little
+      '  if (world && cloudK > 0.0) {\n' +
       '    float n = vnoise(w * 0.03 + wind * time) * 0.65 + vnoise(w * 0.08 - wind * time * 1.4 + 7.0) * 0.35;\n' +
-      '    c *= 1.0 - cloudK * smoothstep(0.52, 0.64, n); }\n' +
+      '    c *= 1.0 - cloudK * nearF * smoothstep(0.52, 0.64, n); }\n' +
+      '  if (world && dap.x > 0.0) { vec2 sw = vec2(sin(time * 0.6), cos(time * 0.45)) * 0.06;\n' +
+      '    float n = vnoise(w * dap.y + sw);\n' +
+      '    c *= mix(vec3(1.0), mix(vec3(0.72, 0.78, 0.8), dapCol, smoothstep(0.38, 0.62, n)), dap.x * dapF); }\n' +
       // lighting: ambient plus screen-space point lights (xy = centre, z = radius, w = intensity)
       '  vec3 lit = amb;\n' +
       '  for (int i = 0; i < ' + MAXL + '; i++) { if (i >= nL) break;\n' +
@@ -80,6 +105,7 @@ var RBPost = (function () {
       '  float l = dot(c, vec3(0.299, 0.587, 0.114));\n' +
       '  c = mix(vec3(l), c, sat);\n' +
       '  c *= mix(shadowTint, hiTint, smoothstep(0.05, 0.75, l));\n' +
+      '  c += lift * (1.0 - smoothstep(0.0, 0.45, l));\n' +
       '  c = knee(c);\n' +
       '  vec2 v = (uv - 0.5) * vec2(res.x / res.y, 1.0) * 0.9; c *= 1.0 - vig * smoothstep(0.35, 1.05, length(v));\n' +
       '  if (grain > 0.0) c += (hash(floor(px / 2.0) + fract(time * 7.0) * 61.0) - 0.5) * grain;\n' +
@@ -119,8 +145,9 @@ var RBPost = (function () {
     if (w === SW && h === SH) return;
     SW = w; SH = h;
     Object.keys(fb).forEach(function (k) { gl.deleteFramebuffer(fb[k].f); gl.deleteTexture(fb[k].t); });
-    var hw = Math.max(1, w >> 1), hh = Math.max(1, h >> 1), qw = Math.max(1, w >> 2), qh = Math.max(1, h >> 2);
-    fb = { h1: mkFb(hw, hh), h2: mkFb(hw, hh), q1: mkFb(qw, qh), q2: mkFb(qw, qh), b1: mkFb(qw, qh), b2: mkFb(qw, qh), s1: mkFb(qw, qh), s2: mkFb(qw, qh) };
+    var hw = Math.max(1, w >> 1), hh = Math.max(1, h >> 1), qw = Math.max(1, w >> 2), qh = Math.max(1, h >> 2), ew = Math.max(1, w >> 3), eh = Math.max(1, h >> 3);
+    fb = { h1: mkFb(hw, hh), h2: mkFb(hw, hh), q1: mkFb(qw, qh), q2: mkFb(qw, qh), e1: mkFb(ew, eh), e2: mkFb(ew, eh),
+      b1: mkFb(qw, qh), b2: mkFb(qw, qh), s1: mkFb(qw, qh), s2: mkFb(qw, qh) };
   }
   function pass(pr, target, binds, set) {
     gl.useProgram(pr.p);
@@ -161,7 +188,10 @@ var RBPost = (function () {
     } catch (e) { console.warn('HD-2D post-process off:', e.message); gl = null; return false; }
   }
   // p: { lights: [{x, y, r, i, c: [r, g, b]}], amb: [r, g, b], focus: [top, bottom, ramp, strength],
-  //      bloom, thr, sat, vig, caustic, shadowTint, hiTint, time, scale (blur radius in scene texels),
+  //      bloom, thr, sat, vig, caustic, shadowTint, hiTint, lift (added to the darkest tones), time, scale (blur radius in scene texels),
+  //      carD: [depth, half-window] of the player's car, which near blur never bleeds onto,
+  //      dapple: [strength, cells^-1 frequency] and dapCol (the lit pools' tint) for dappled light on the world,
+  //      cloud and wind for cloud shadows; on the plaza iso: [ox, oy, hw, hh] (canvas pixels) places the world under each pixel,
   //      and for races: depth (canvas, same size as the scene), dof: [nearFull, nearSharp, farSharp, farFull],
   //      dofK: [near, far], skyK (blur of open sky), fogCol, fog: [start, end, max], cam: [x, z, fx, fz, f, camY, y0, cx] (scene pixels),
   //      cloud, wind: [x, z], sun: [x, y] (canvas pixels) or null, shaft, shaftCol, speed, grain },
@@ -171,11 +201,15 @@ var RBPost = (function () {
     var k = p.scale || 1, hasDep = !!p.depth;
     upload(tex.scene, scene); upload(tex.emit, emit);
     if (hasDep) upload(tex.dep, p.depth);
-    // depth-of-field sources: half- and quarter-size blurs of the scene
-    pass(prog.copy, fb.h1, { t: tex.scene });
+    // depth-of-field sources: half-, quarter- and eighth-size blurs of the scene, carrying the near CoC in alpha
+    var nr = p.dof ? [p.dof[0], p.dof[1]] : [0, 1];
+    pass(prog.near, fb.h1, { t: tex.scene, dep: tex.dep }, function (u) { gl.uniform1i(u.hasDep, hasDep ? 1 : 0); gl.uniform2fv(u.nr, nr);
+      var cm = p.cam || [0, 0, 1, 0, 1, 1, 0, 0]; gl.uniform4f(u.gc, cm[4], cm[5], cm[6], SH); });
     blur(fb.h1, fb.h2, 1.25 * k);
     pass(prog.copy, fb.q1, { t: fb.h1.t });
     blur(fb.q1, fb.q2, 2.0 * k);
+    pass(prog.copy, fb.e1, { t: fb.q1.t });
+    blur(fb.e1, fb.e2, 1.5 * k); blur(fb.e1, fb.e2, 2.5 * k);
     // bloom: bright parts, blurred twice at quarter size
     pass(prog.bright, fb.b1, { s: fb.h1.t, e: tex.emit }, function (u) { gl.uniform1f(u.thr, p.thr); });
     blur(fb.b1, fb.b2, 1.5 * k); blur(fb.b1, fb.b2, 3.5 * k);
@@ -189,7 +223,9 @@ var RBPost = (function () {
       var l = p.lights[i]; Ls.set([l.x, l.y, l.r, l.i], i * 4); LC.set(l.c, i * 3);
     }
     var cam = p.cam || [0, 0, 1, 0, 1, 1, 0, 0];
-    pass(prog.final, null, { s: tex.scene, hb: fb.h1.t, qb: fb.q1.t, bl: fb.b1.t, dep: tex.dep, sh: fb.s1.t }, function (u) {
+    var dap = p.dapple || [0, 0.3], iso = p.iso || null;
+    if (iso) cam = [iso[0], iso[1], iso[2], iso[3], 1, 1, 0, 0];
+    pass(prog.final, null, { s: tex.scene, hb: fb.h1.t, qb: fb.q1.t, eb: fb.e1.t, bl: fb.b1.t, dep: tex.dep, sh: fb.s1.t }, function (u) {
       gl.uniform2f(u.res, W, H); gl.uniform2f(u.sres, SW, SH); gl.uniform1f(u.time, p.time);
       gl.uniform4fv(u.L, Ls); gl.uniform3fv(u.LC, LC); gl.uniform1i(u.nL, n);
       gl.uniform3fv(u.amb, p.amb); gl.uniform4fv(u.focus, p.focus);
@@ -199,7 +235,8 @@ var RBPost = (function () {
       gl.uniform4fv(u.dof, p.dof || [0, 1, 1e4, 2e4]); gl.uniform2fv(u.dofK, p.dofK || [0, 0]); gl.uniform1f(u.skyK, p.skyK || 0);
       gl.uniform3fv(u.fogCol, p.fogCol || [1, 1, 1]); gl.uniform3fv(u.fog, p.fog || [1e4, 2e4, 0]);
       gl.uniform4f(u.camA, cam[0], cam[1], cam[2], cam[3]); gl.uniform4f(u.camB, cam[4], cam[5], cam[6], cam[7]);
-      gl.uniform1f(u.cloudK, hasDep ? p.cloud || 0 : 0); gl.uniform2fv(u.wind, p.wind || [0, 0]);
+      gl.uniform1f(u.cloudK, hasDep || iso ? p.cloud || 0 : 0); gl.uniform2fv(u.wind, p.wind || [0, 0]);
+      gl.uniform1i(u.iso, iso && !hasDep ? 1 : 0); gl.uniform2fv(u.dap, dap); gl.uniform3fv(u.dapCol, p.dapCol || [1.2, 1.1, 0.9]); gl.uniform3fv(u.lift, p.lift || [0, 0, 0]); gl.uniform2fv(u.carD, p.carD || [-1e4, 0]);
       gl.uniform1f(u.shaftK, shaft); gl.uniform1f(u.speedK, p.speed || 0); gl.uniform1f(u.grain, p.grain || 0);
     });
   }
