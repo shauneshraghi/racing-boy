@@ -34,6 +34,10 @@ const placeEvents = r => r.events.filter(e => (e.type === 'pass' || e.type === '
 
 test('pass events fire as the player overtakes from the grid, each for a place that held', () => {
   const s = R.newState(3), r = R.startRace(s, R.WORLDS[0].tracks[0]), p = r.cars[0], seen = [];
+  while (r.phase === 'count') R.stepRace(r, 1 / 60);
+  R.stepRace(r, 1 / 60);
+  let cur = p.place; // the grid place
+  assert.ok(cur > 1, 'starts behind someone');
   while (!p.done && r.t < 400) {
     R.input(r, R.botInput(r, p, 'clean')); R.stepRace(r, 1 / 20);
     for (const e of placeEvents(r)) seen.push({ ...e, t: r.t });
@@ -41,7 +45,6 @@ test('pass events fire as the player overtakes from the grid, each for a place t
   }
   assert.ok(seen.length, 'some place events');
   assert.equal(seen[0].type, 'pass', 'no bogus lostPlace at the start: ' + JSON.stringify(seen[0]));
-  let cur = 4;
   for (const e of seen) {
     assert.ok(e.type === 'pass' ? e.place < cur : e.place > cur, JSON.stringify(e) + ' after ' + cur);
     cur = e.place;
