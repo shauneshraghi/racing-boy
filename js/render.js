@@ -1,9 +1,9 @@
 // Racing Boy: renderer (RBRender). A track's ground is one top-down pixel texture (TEX texels per cell). Races are
 // seen from a chase camera behind the car: the texture is sampled per pixel onto a perspective ground plane (a
 // 16-bit "Mode 7" look) and the scenery, ramps, crates, coins and cars are sprites sized by distance, drawn far to
-// near. The garage plaza is isometric: its texture goes through an affine transform and sprites sort by x + z. With WebGL2 the scene and a half-size emissive layer go through RBPost (copied
-// from Dig Through Worlds) for lights, tilt-shift blur, bloom and grading; without it the scene is drawn straight
-// to the visible canvas. Text goes on the overlay canvas so the blur never touches it.
+// near. The garage plaza is isometric: its texture goes through an affine transform and sprites sort by x + z. With WebGL2 the scene, a half-size emissive layer and (in races) a
+// depth buffer go through RBPost for tilt-shift, fog, cloud shadows, sun shafts, lights, bloom and grading; without it
+// the scene is drawn straight to the visible canvas. Text goes on the overlay canvas so the blur never touches it.
 var RBRender = (function () {
   'use strict';
   var D = RB, S = RBSprites, TEX = 12;
@@ -195,8 +195,8 @@ var RBRender = (function () {
   function end(focusY) {
     if (!post) return;
     RBPost.render(scv, ecv, {
-      lights: lights, amb: [1.02, 1.0, 0.97], focus: [focusY - vh * 0.3, focusY + vh * 0.22, vh * 0.35, 0.75],
-      bloom: 0.55, thr: 0.82, sat: 1.12, vig: 0.28, caustic: 0, shadowTint: [0.9, 0.94, 1.06], hiTint: [1.05, 1.02, 0.94], time: time, scale: hw / 40
+      lights: lights, amb: [1.02, 1.0, 0.97], focus: [focusY - vh * 0.3, focusY + vh * 0.22, vh * 0.35, 0.8],
+      bloom: 0.55, thr: 0.8, sat: 1.14, vig: 0.3, caustic: 0, shadowTint: [0.87, 0.93, 1.09], hiTint: [1.07, 1.02, 0.91], time: time, scale: hw / 40, grain: 0.02
     });
   }
   function drawGround(gc, x0, z0) {
@@ -273,6 +273,9 @@ var RBRender = (function () {
   // the sky is a gradient with two backdrop layers that scroll as the camera turns, and everything standing on the
   // track is a sprite sized by distance and drawn far to near. The buffer is scaled up with hard pixels.
   // The numbers are tuned by eye against 16-bit kart racers; no published camera constants exist.
+  // race tilt-shift: fully soft at nearFull × the car's distance, sharp from nearSharp cells in front of the car out to
+  // far[0] cells, fully soft by far[1]; k = strength (near, far); sky = how soft open sky is
+  var DOF = { nearFull: 0.35, nearSharp: 1.2, far: [20, 80], k: [0.75, 1], sky: 0.55 };
   var CAM = {
     dist: 7.5,          // camera distance behind the car, cells
     follow: 6,          // how fast the camera swings round behind the car (per second)
@@ -280,7 +283,13 @@ var RBRender = (function () {
     land: { w: 320, f: 1.0, horizon: 0.3, car: 0.8 },     // buffer width, focal length (× width), rows (× height)
     tall: { w: 240, f: 1.25, horizon: 0.3, car: 0.74 }    // phone held upright
   };
-  var lo = null, rc = { x: 0, z: 0, yaw: 0, init: false, lift: 0, boost: 0 }, PX = 1;
+  // per-world sky and light: sky gradient (top, middle, horizon), haze colour, sun bearing (world radians) and
+  // height (× horizon row from the top), cloud colours (lit, shaded), and how dark the cloud shadows fall
+  var SKY = {
+    hills: { sky: ['#3f9be8', '#9fd6ff', '#f3f1dc'], fog: '#dcecf2', sunAz: -2.2, sunY: 0.32, cloud: ['#ffffff', '#c9dcef'], cloudK: 0.24 }
+  };
+  function skyFor(r) { var w = D.WORLDS && D.WORLDS[r.world]; return SKY[w && w.id] || SKY.hills; }
+  var lo = null, rc = { x: 0, z: 0, yaw: 0, init: false, lift: 0, boost: 0 }, PX = 1, motes = [];
   var mode7 = {}, backdrops = {}, sailT = 0;
   function layout() {
     var L = vw >= vh ? CAM.land : CAM.tall, w = L.w, h = Math.max(60, Math.round(w * vh / vw));
@@ -288,7 +297,11 @@ var RBRender = (function () {
       var c = document.createElement('canvas'); c.width = w; c.height = h;
       var gc = document.createElement('canvas'); gc.width = w; gc.height = h;
       var gx = gc.getContext('2d'), img = gx.createImageData(w, h);
-      lo = { w: w, h: h, cv: c, ctx: c.getContext('2d'), gcv: gc, gctx: gx, img: img, u32: new Uint32Array(img.data.buffer) };
+      var dc = document.createElement('canvas'); dc.width = w; dc.height = h;
+      var dx = dc.getContext('2d'), dimg = dx.createImageData(w, h);
+      lo = { w: w, h: h, cv: c, ctx: c.getContext('2d'), gcv: gc, gctx: gx, img: img, u32: new Uint32Array(img.data.buffer),
+        dcv: dc, dctx: dx, dimg: dimg, d32: new Uint32Array(dimg.data.buffer) };
+      lo.dctx.imageSmoothingEnabled = false;
     }
     PX = vw / lo.w;
     rc.f = w * L.f; rc.y0 = Math.round(h * L.horizon); rc.carRow = h * L.car; rc.cx = w / 2;
@@ -309,10 +322,12 @@ var RBRender = (function () {
     return mode7[id];
   }
   function drawGround7(gd, g) {
-    var W = lo.w, H = lo.h, u32 = lo.u32, y0 = rc.y0, f = rc.f, ch = rc.camY, gw = gd.gw, gr = gd.grass;
+    var W = lo.w, H = lo.h, u32 = lo.u32, y0 = rc.y0, f = rc.f, ch = rc.camY, gw = gd.gw, gr = gd.grass, d32 = lo.d32;
     u32.fill(0, 0, Math.min(H, y0 + 1) * W);
+    if (post) d32.fill(depthPx(1e9), 0, Math.min(H, y0 + 1) * W);
     for (var y = y0 + 1; y < H; y++) {
       var row = y * W, z = f * ch / (y - y0 + 0.5);
+      if (post) d32.fill(depthPx(z), row, row + W);
       if (z > CAM.far) { u32.fill(gd.distant, row, row + W); continue; } // past the draw distance: plain far-off grass
       var dl = z / f, lvl = Math.max(0, Math.min(3, Math.floor(Math.log2(Math.max(1, dl * TEX * 1.2)))));
       var M = gd.mips[lvl], T = TEX / (1 << lvl), mw = M.w, mh = M.h, md = M.d;
@@ -328,6 +343,19 @@ var RBRender = (function () {
       }
     }
     lo.gctx.putImageData(lo.img, 0, 0);
+    if (post) lo.dctx.putImageData(lo.dimg, 0, 0);
+  }
+  // the depth buffer (races, HD only): red = sqrt(depth / DMAX); 255 is open sky, the world stops at 252
+  function depthV(d) { return d >= 1e8 ? 255 : Math.min(252, Math.round(Math.sqrt(Math.max(0, d) / RBPost.DMAX) * 255)); }
+  function depthPx(d) { return (0xff000000 | depthV(d)) >>> 0; }
+  var curD = null; // the depth colour of the item being drawn, or null to leave the depth buffer alone
+  function setDepth(d) { curD = post && d !== null ? 'rgb(' + depthV(d) + ',0,0)' : null; }
+  // stamp a sprite's silhouette into the depth buffer: punch it out, then fill the holes in its box
+  function stamp(img, x, y, w, h) {
+    if (!curD) return; var dx = lo.dctx;
+    dx.globalCompositeOperation = 'destination-out'; dx.drawImage(img, x, y, w, h);
+    dx.globalCompositeOperation = 'destination-over'; dx.fillStyle = curD; dx.fillRect(x, y, w, h);
+    dx.globalCompositeOperation = 'source-over';
   }
   // the sky for a world: a gradient, far hills and a near tree line with farms, each one turn of the camera wide
   function backdrop(id, worldId) {
@@ -358,16 +386,41 @@ var RBRender = (function () {
       var tc = r() < 0.6 ? tr : pn, th = Math.round(nh * (0.35 + r() * 0.25)), tw = Math.round(tc.width * th / tc.height);
       nx.drawImage(tc, x, nh - th, tw, th);
     }
-    backdrops[key] = { far: far, near: near };
+    // clouds: flat-bottomed puffs drawn as hard-edged pixel circles, lit on top and shaded underneath
+    var sk = SKY.hills, cl = document.createElement('canvas'); cl.width = W; cl.height = Math.max(8, Math.round(rc.y0 * 0.8));
+    var cx2 = cl.getContext('2d'), chh = cl.height;
+    function disc(x0, y0, rr, col, cut) { cx2.fillStyle = col; for (var yy = -rr; yy <= rr; yy++) { if (y0 + yy > cut) break; var hw2 = Math.round(Math.sqrt(rr * rr - yy * yy)); cx2.fillRect(Math.round(x0 - hw2), Math.round(y0 + yy), hw2 * 2, 1); } }
+    for (i = 0; i < 12; i++) {
+      var ccx = (i + r()) / 12 * W, ccy = chh * (0.3 + r() * 0.5), sz = Math.max(4, Math.round(chh * (0.12 + r() * 0.12))), nb = 4 + Math.floor(r() * 4), base = ccy + sz * 0.5;
+      for (var pass2 = 0; pass2 < 2; pass2++) for (var j = 0; j < nb; j++) {
+        var px2 = ccx + (j - nb / 2) * sz * 0.9, py2 = ccy - Math.sin((j + 0.5) / nb * Math.PI) * sz * 0.7, rr2 = Math.round(sz * (0.7 + 0.4 * Math.sin(j * 2.3 + i)));
+        if (pass2) disc(px2 - 1, py2 - 1, rr2 - 1, sk.cloud[0], base - 2); else disc(px2, py2, rr2, sk.cloud[1], base);
+      }
+    }
+    // haze over the tree line, so it meets the far ground (which the post-process fogs) without a seam
+    if (post) { nx.globalCompositeOperation = 'source-atop'; nx.fillStyle = rgba(sk.fog, 0.38); nx.fillRect(0, 0, W, nh); nx.globalCompositeOperation = 'source-over'; }
+    backdrops[key] = { far: far, near: near, clouds: cl };
     return backdrops[key];
   }
-  function drawSky(bd) {
+  // where the sun sits in the buffer, and how far it is from the edge of view (0 off-screen .. 1 centred)
+  function sunPos(sk) {
+    var a = D.angDiff(sk.sunAz, rc.yaw), c = Math.cos(a);
+    if (c < 0.15) return null;
+    var x = rc.cx + Math.tan(a) * rc.f, y = rc.y0 * sk.sunY;
+    return { x: x, y: y, k: Math.max(0, 1 - Math.abs(x - lo.w / 2) / (lo.w * 0.75)) };
+  }
+  function drawSky(bd, sk) {
     var x = lo.ctx, y0 = rc.y0, sky = x.createLinearGradient(0, 0, 0, y0);
-    sky.addColorStop(0, '#4aa8f0'); sky.addColorStop(0.75, '#a9dcff'); sky.addColorStop(1, '#e4f6ff');
+    sky.addColorStop(0, sk.sky[0]); sky.addColorStop(0.7, sk.sky[1]); sky.addColorStop(1, sk.sky[2]);
     x.fillStyle = sky; x.fillRect(0, 0, lo.w, y0 + 1);
-    // clouds drift with the far layer
-    [[bd.far, 0.6, y0 - bd.far.height + 1], [bd.near, 1, y0 - bd.near.height + 1]].forEach(function (L) {
-      var c = L[0], w = c.width, off = -(((rc.yaw / (Math.PI * 2)) * w) % w);
+    var sp = sunPos(sk);
+    if (sp) { // a pale sun with a stepped halo, and its glow on the emissive layer
+      [[13, 'rgba(255,248,214,0.18)'], [9, 'rgba(255,248,214,0.3)'], [6, '#fffbe6'], [4, '#ffffff']].forEach(function (h) { x.fillStyle = h[1]; x.beginPath(); x.arc(Math.round(sp.x), Math.round(sp.y), h[0], 0, 6.3); x.fill(); });
+      G(sp.x, sp.y, 22, '#fff0c0', 0.35);
+    }
+    // the far layer, clouds drifting slowly, then the near tree line
+    [[bd.far, 0.6, y0 - bd.far.height + 1], [bd.clouds, 1, Math.round(y0 * 0.05), 1], [bd.near, 1, y0 - bd.near.height + 1]].forEach(function (L) {
+      var c = L[0], w = c.width, off = -(((rc.yaw / (Math.PI * 2)) * w + (L[3] ? time * 1.5 : 0)) % w);
       off = Math.round(off - w + rc.cx); while (off > 0) off -= w;
       for (var px = off; px < lo.w; px += w) x.drawImage(c, px, Math.round(L[2]));
     });
@@ -389,25 +442,32 @@ var RBRender = (function () {
   function bill(c, p, hCells, alpha) {
     var s = hCells * p.k / c.height, ax = c.ax !== undefined ? c.ax : c.width / 2, ay = c.ay !== undefined ? c.ay : c.height;
     if (alpha !== undefined) lo.ctx.globalAlpha = alpha;
-    lo.ctx.drawImage(c, Math.round(p.x - ax * s), Math.round(p.y - ay * s), Math.max(1, Math.round(c.width * s)), Math.max(1, Math.round(c.height * s)));
+    var bx = Math.round(p.x - ax * s), by = Math.round(p.y - ay * s), bw = Math.max(1, Math.round(c.width * s)), bh = Math.max(1, Math.round(c.height * s));
+    lo.ctx.drawImage(c, bx, by, bw, bh); stamp(c, bx, by, bw, bh);
     if (alpha !== undefined) lo.ctx.globalAlpha = 1;
   }
   // a box-model sprite from the fixed-size cache, scaled only when the nearest size is far off
   function model(spr, p, alpha) {
     var s = p.k / spr.ppc, x = lo.ctx;
     if (alpha !== undefined) x.globalAlpha = alpha;
-    if (s > 0.85 && s < 1.18) x.drawImage(spr, Math.round(p.x - spr.ax), Math.round(p.y - spr.ay));
-    else x.drawImage(spr, Math.round(p.x - spr.ax * s), Math.round(p.y - spr.ay * s), Math.max(1, Math.round(spr.width * s)), Math.max(1, Math.round(spr.height * s)));
+    if (s > 0.85 && s < 1.18) s = 1;
+    var mx = Math.round(p.x - spr.ax * s), my = Math.round(p.y - spr.ay * s), mw = Math.max(1, Math.round(spr.width * s)), mh = Math.max(1, Math.round(spr.height * s));
+    x.drawImage(spr, mx, my, mw, mh); stamp(spr, mx, my, mw, mh);
     if (alpha !== undefined) x.globalAlpha = 1;
   }
-  function shadow7(x, z, r, a) {
-    var p = proj(x, 0, z); if (!vis(p, 40)) return;
-    var rx = r * p.k, ry = Math.max(1, rx * Math.min(1, rc.camY / p.d) * 1.2);
-    lo.ctx.fillStyle = 'rgba(20,30,10,' + (a || 0.3) + ')'; lo.ctx.beginPath(); lo.ctx.ellipse(p.x, p.y, rx, ry, 0, 0, Math.PI * 2); lo.ctx.fill();
+  // a soft shadow cast away from the sun: a blob under the thing and a longer, fainter one for tall things (len cells)
+  function shadow7(x, z, r, a, len) {
+    var sk = rc.sky || SKY.hills, sx = -Math.cos(sk.sunAz), sz = -Math.sin(sk.sunAz), L = len || 0.4;
+    [[0.25, 1, 1], [0.6, 0.8, 0.6], [1, 0.55, 0.35]].forEach(function (st, n) {
+      if (n && L < 0.8) return;
+      var p = proj(x + sx * L * st[0], 0, z + sz * L * st[0]); if (!vis(p, 40)) return;
+      var rx = r * st[1] * p.k, ry = Math.max(1, rx * Math.min(1, rc.camY / p.d) * 1.2);
+      lo.ctx.fillStyle = 'rgba(28,36,48,' + ((a || 0.3) * st[2]) + ')'; lo.ctx.beginPath(); lo.ctx.ellipse(p.x, p.y, rx, ry, 0, 0, Math.PI * 2); lo.ctx.fill();
+    });
   }
   function poly7(pts, fill) {
     for (var i = 0; i < pts.length; i++) if (!pts[i]) return;
-    var x = lo.ctx; x.beginPath(); pts.forEach(function (p, j) { if (j) x.lineTo(p.x, p.y); else x.moveTo(p.x, p.y); }); x.closePath(); x.fillStyle = fill; x.fill();
+    [lo.ctx, curD && lo.dctx].forEach(function (x, n) { if (!x) return; x.beginPath(); pts.forEach(function (p, j) { if (j) x.lineTo(p.x, p.y); else x.moveTo(p.x, p.y); }); x.closePath(); x.fillStyle = n ? curD : fill; x.fill(); });
   }
   function drawPart7(pt) {
     var p = proj(pt.x, pt.y, pt.z); if (!vis(p, 4)) return;
@@ -429,7 +489,8 @@ var RBRender = (function () {
     if (c.i !== 0 && p.d < rc.playerD - 0.4) alpha = Math.min(alpha === undefined ? 1 : alpha, 0.3);
     // a little squash just after landing
     if (c.landT > 0 && alpha === undefined) { var sq = 1 - 0.18 * c.landT / 0.2, x = lo.ctx, w2 = spr.width * p.k / spr.ppc, h2 = spr.height * p.k / spr.ppc * sq;
-      x.drawImage(spr, Math.round(p.x - spr.ax * p.k / spr.ppc * (2 - sq)), Math.round(p.y - spr.ay * p.k / spr.ppc * sq), Math.round(w2 * (2 - sq)), Math.round(h2)); }
+      var sx0 = Math.round(p.x - spr.ax * p.k / spr.ppc * (2 - sq)), sy0 = Math.round(p.y - spr.ay * p.k / spr.ppc * sq);
+      x.drawImage(spr, sx0, sy0, Math.round(w2 * (2 - sq)), Math.round(h2)); stamp(spr, sx0, sy0, Math.round(w2 * (2 - sq)), Math.round(h2)); }
     else model(spr, p, alpha);
     if (c.slowT > 0 && Math.floor(time * 12) % 2) { lo.ctx.globalCompositeOperation = 'lighter'; model(spr, p, 0.35); lo.ctx.globalCompositeOperation = 'source-over'; }
     if (c.air && c.stats && c.stats.glide > 0 && c.vy < 2) model(S.gliderView(D.lookOpt('trim', c.look.trim).c, hv - va, el, p.k), p);
@@ -464,7 +525,8 @@ var RBRender = (function () {
     if (!mid) return;
     items.push({ d: mid.d, f: function () {
       lo.ctx.globalAlpha = mid.d < rc.playerD ? 0.35 : 1; // see-through while the camera passes under it
-      [L, R].forEach(function (p) { var a = proj(p.x, 0, p.z), b = proj(p.x, H, p.z); if (!a || !b) return; lo.ctx.fillStyle = '#e5e1d8'; var w = Math.max(1, a.k * 0.24); lo.ctx.fillRect(Math.round(a.x - w / 2), Math.round(b.y), Math.round(w), Math.round(a.y - b.y)); });
+      [L, R].forEach(function (p) { var a = proj(p.x, 0, p.z), b = proj(p.x, H, p.z); if (!a || !b) return; lo.ctx.fillStyle = '#e5e1d8'; var w = Math.max(1, a.k * 0.24); lo.ctx.fillRect(Math.round(a.x - w / 2), Math.round(b.y), Math.round(w), Math.round(a.y - b.y));
+        if (curD) { lo.dctx.fillStyle = curD; lo.dctx.fillRect(Math.round(a.x - w / 2), Math.round(b.y), Math.round(w), Math.round(a.y - b.y)); } });
       var n = 10;
       for (var i = 0; i < n; i++) for (var j = 0; j < 2; j++) {
         var f0 = i / n, f1 = (i + 1) / n, y0 = H - j * 0.3, y1 = H - (j + 1) * 0.3;
@@ -487,7 +549,7 @@ var RBRender = (function () {
   }
   function drawDecor7(it, p) {
     {
-      if (it.kind === 'spr') { shadow7(it.x, it.z, it.name === 'oak' ? 0.9 : 0.5, 0.22); bill(S.scenery(it.name), p, BILL_H[it.name] || 1); return; }
+      if (it.kind === 'spr') { shadow7(it.x, it.z, it.name === 'oak' ? 0.9 : it.name === 'pine' ? 0.6 : 0.5, 0.24, it.name === 'oak' || it.name === 'pine' ? 2.2 : 0.5); bill(S.scenery(it.name), p, BILL_H[it.name] || 1); return; }
       if (it.kind === 'post' || it.kind === 'tyres') {
         if (it.kind === 'post') {
           var x = lo.ctx; x.strokeStyle = '#e8dcc0'; x.lineWidth = Math.max(1, p.k * 0.07);
@@ -524,7 +586,7 @@ var RBRender = (function () {
     });
     // the camera swings round behind the car, rises a little on jumps and pulls back when boosting
     var snap = !rc.init || rc.race !== r || (r.t === 0 && r.phase === 'count');
-    rc.race = r;
+    rc.race = r; rc.sky = skyFor(r);
     if (snap) { rc.yaw = p.h; rc.init = true; rc.lift = 0; rc.boost = 0; }
     else if (p.fallT <= 0) rc.yaw += D.angDiff(p.h, rc.yaw) * Math.min(1, dt * CAM.follow);
     rc.lift += (Math.max(0, p.y) * 0.55 - rc.lift) * Math.min(1, dt * 5);
@@ -537,12 +599,14 @@ var RBRender = (function () {
     rc.cx = lo.w / 2 + (shake > 0 ? (Math.random() - 0.5) * shake * 8 : 0);
     begin('#6cc04a');
     var x = lo.ctx; x.setTransform(1, 0, 0, 1, 0, 0); x.imageSmoothingEnabled = false; x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
-    drawSky(backdrop(r.id, r.world));
+    var sk = skyFor(r);
+    drawSky(backdrop(r.id, r.world), sk);
     drawGround7(gd, g);
     x.drawImage(lo.gcv, 0, 0);
     // haze where the ground meets the sky
-    var hz = x.createLinearGradient(0, rc.y0, 0, rc.y0 + lo.h * 0.04); hz.addColorStop(0, 'rgba(228,246,255,0.85)'); hz.addColorStop(1, 'rgba(228,246,255,0)');
-    x.fillStyle = hz; x.fillRect(0, rc.y0, lo.w, Math.ceil(lo.h * 0.04));
+    var hzc = sk.fog.slice(1), hzr = parseInt(hzc.slice(0, 2), 16) + ',' + parseInt(hzc.slice(2, 4), 16) + ',' + parseInt(hzc.slice(4, 6), 16);
+    var hz = x.createLinearGradient(0, rc.y0, 0, rc.y0 + lo.h * (post ? 0.025 : 0.05)); hz.addColorStop(0, 'rgba(' + hzr + ',0.85)'); hz.addColorStop(1, 'rgba(' + hzr + ',0)');
+    x.fillStyle = hz; x.fillRect(0, rc.y0, lo.w, Math.ceil(lo.h * 0.05));
     // flat things on the ground
     r.goos.forEach(function (gp) {
       var q = proj(gp.x, 0, gp.z); if (!vis(q, 20)) return;
@@ -581,14 +645,38 @@ var RBRender = (function () {
     r.cars.forEach(function (c) { var q = proj(c.x, 0, c.z); if (q) items.push({ d: q.d - 0.05, f: function () { var t = drawCar7(r, c); if (t) tags.push({ c: c, p: t }); } }); });
     r.bees.forEach(function (b) { var q = proj(b.x, 1 + Math.sin(time * 20) * 0.08, b.z); if (vis(q, 10)) items.push({ d: q.d, f: function () { bill(S.bee(), q, 0.6); G(q.x, q.y, q.k * 0.5, '#ffd23f', 0.4); } }); });
     parts.forEach(function (pt) { var q = proj(pt.x, pt.y, pt.z); if (q) items.push({ d: q.d - 0.1, f: function () { drawPart7(pt); } }); });
-    items.sort(function (a, b) { return b.d - a.d; });
-    items.forEach(function (it) { it.f(); });
-    // up to full size with hard pixels, then the post-process
-    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false; ctx.drawImage(lo.cv, 0, 0, vw, vh);
-    if (post) RBPost.render(scv, ecv, {
-      lights: lights, amb: [1.02, 1.0, 0.97], focus: [0, vh, vh, 0], bloom: 0.5, thr: 0.84, sat: 1.1, vig: 0.22, caustic: 0,
-      shadowTint: [0.92, 0.95, 1.05], hiTint: [1.04, 1.02, 0.95], time: time, scale: PX / 4
+    // pollen and dust motes drifting in the sunlight around the camera
+    while (motes.length < 40) motes.push({ x: 0, y: 0, z: 0, ph: Math.random() * 6.3, dead: true });
+    motes.forEach(function (m) {
+      var q = proj(m.x, m.y, m.z);
+      if (m.dead || !q || q.d > 30 || q.x < -4 || q.x > lo.w + 4) { // respawn somewhere in view
+        var dd = 2 + Math.random() * 26, lat = (Math.random() - 0.5) * dd * lo.w / rc.f;
+        m.x = rc.x + rc.fx * dd + rc.rx * lat; m.z = rc.z + rc.fz * dd + rc.rz * lat; m.y = 0.3 + Math.random() * 2.4; m.dead = false; return;
+      }
+      m.x += Math.sin(time * 0.7 + m.ph) * 0.4 * dt; m.z += Math.cos(time * 0.5 + m.ph * 2) * 0.4 * dt; m.y += Math.sin(time * 1.1 + m.ph) * 0.15 * dt;
+      var tw = 0.5 + 0.5 * Math.sin(time * 3 + m.ph * 5);
+      items.push({ d: q.d, stamp: false, f: function () {
+        var sz = q.d < 6 ? 2 : 1; x.globalAlpha = 0.3 + 0.6 * tw; x.fillStyle = '#fffbe6'; x.fillRect(Math.round(q.x), Math.round(q.y), sz, sz); x.globalAlpha = 1;
+        G(q.x, q.y, Math.max(2, q.k * 0.18), '#fff0b0', 0.25 * tw);
+      } });
     });
+    items.sort(function (a, b) { return b.d - a.d; });
+    items.forEach(function (it) { setDepth(it.stamp === false ? null : it.d); it.f(); });
+    setDepth(null);
+    // up to full size with hard pixels, then the post-process
+    // the post-process scales the small buffer up itself; plain 2D scales it up with hard pixels
+    if (post) {
+      var spn = sunPos(sk);
+      RBPost.render(lo.cv, ecv, {
+        lights: lights, amb: [1.0, 0.99, 0.97], focus: [0, vh, vh, 0], bloom: 0.55, thr: 0.8, sat: 1.14, vig: 0.3, caustic: 0,
+        shadowTint: [0.86, 0.93, 1.1], hiTint: [1.08, 1.02, 0.9], time: time, scale: 1,
+        // tilt-shift by depth: sharp from just in front of the car to the next bends, soft beyond and up close
+        depth: lo.dcv, dof: [rc.playerD * DOF.nearFull, rc.playerD - DOF.nearSharp, DOF.far[0], DOF.far[1]], dofK: DOF.k, skyK: DOF.sky,
+        fogCol: rgb3(sk.fog), fog: [50, 160, 0.42], cam: [rc.x, rc.z, rc.fx, rc.fz, rc.f, rc.camY, rc.y0, rc.cx],
+        cloud: sk.cloudK, wind: [0.035, 0.018], sun: spn ? [spn.x * PX, spn.y * PX] : null, shaft: spn ? 0.6 * spn.k : 0, shaftCol: [1.0, 0.93, 0.72],
+        speed: rc.boost * 0.75, grain: 0.022
+      });
+    } else { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false; ctx.drawImage(lo.cv, 0, 0, vw, vh); }
     // overlay: rivals' name tags and floating text
     octx.textAlign = 'center'; octx.textBaseline = 'bottom';
     tags.forEach(function (t) {
@@ -704,5 +792,6 @@ var RBRender = (function () {
   function setView(right, bottom) { view.right = right || 0; view.bottom = bottom || 0; }
 
   return { setView: setView, init: init, resize: resize, drawRace: drawRace, drawHub: drawHub, drawMinimap: drawMinimap, events: events,
-    screenToWorld: screenToWorld, screenDirToHeading: screenDirToHeading, warm: groundData, isHD: function () { return post; } };
+    screenToWorld: screenToWorld, screenDirToHeading: screenDirToHeading, warm: groundData, isHD: function () { return post; },
+    SKY: SKY, DOF: DOF }; // the tuning blocks, for trying values in the console
 })();
