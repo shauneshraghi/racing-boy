@@ -59,13 +59,38 @@ var RBRender = (function () {
   }
   var TILES = null;
   function blades(col) { return function (x, r) { for (var i = 0; i < 40; i++) { var a = Math.floor(r() * 48), b = Math.floor(r() * 46); x.fillStyle = col; x.fillRect(a, b, 1, 2); } }; }
+  // soft patches that wrap round the tile (so the repeat is harder to see), then tufts: a lit tip over a dark root
+  function patches(cols, n, rmax) { return function (x, r) { for (var i = 0; i < n; i++) { var cx = r() * 48, cz = r() * 48, rr = 3 + r() * rmax; x.fillStyle = cols[i % cols.length];
+    for (var a = -rr; a <= rr; a++) for (var b = -rr; b <= rr; b++) if (a * a + b * b < rr * rr * (0.7 + r() * 0.3)) x.fillRect(((Math.round(cx + a) % 48) + 48) % 48, ((Math.round(cz + b) % 48) + 48) % 48, 1, 1); } }; }
+  function tufts(lit, dark, n) { return function (x, r) { for (var i = 0; i < n; i++) { var a = Math.floor(r() * 48), b = Math.floor(r() * 46); x.fillStyle = dark; x.fillRect(a, b + 1, 1, 1); x.fillStyle = lit; x.fillRect(a, b, 1, 1); if (r() < 0.5) x.fillRect(a + 1, b + 1, 1, 1); } }; }
+  function both() { var fs = arguments; return function (x, r) { for (var i = 0; i < fs.length; i++) fs[i](x, r); }; }
+  // cobbles: rounded stones of mixed widths in courses with dark gaps, each a little lighter on its top edge and
+  // darker on its bottom edge than its own colour
+  function mixHex(h, k) { var c = parseInt(h.slice(1, 7), 16); return 'rgb(' + [c >> 16, c >> 8 & 255, c & 255].map(function (v) { return Math.round(k > 1 ? v + (255 - v) * (k - 1) : v * k); }).join(',') + ')'; }
+  function cobbles(cols, gap, seed) {
+    var c = document.createElement('canvas'); c.width = c.height = 48; var x = c.getContext('2d'), r = prng(seed);
+    x.fillStyle = gap; x.fillRect(0, 0, 48, 48);
+    function px(a, b, col) { x.fillStyle = col; x.fillRect(((a % 48) + 48) % 48, b, 1, 1); }
+    for (var sy = 0; sy < 48; sy += 4) {
+      var sx = Math.floor(r() * 6), end = sx + 48;
+      while (sx < end) {
+        var w = Math.min(end - sx, 3 + Math.floor(r() * 4)), h = 3, col = cols[Math.floor(r() * cols.length)];
+        if (end - sx - w < 3) w = end - sx;
+        for (var a = 0; a < w - 1; a++) for (var b = 0; b < h; b++) { if ((a === 0 || a === w - 2) && (b === 0 || b === h - 1)) continue; px(sx + a, sy + b, b === 0 ? mixHex(col, 1.1) : b === h - 1 ? mixHex(col, 0.86) : col); }
+        sx += w;
+      }
+    }
+    return c;
+  }
   function tiles() {
     if (TILES) return TILES;
     // with the HD grade the grass is a muted olive (the grade warms it); plain 2D keeps the brighter green
     TILES = post ? {
-      grass: tile('#5e9038', ['#6c9e40', '#527f31', '#7aa846', '#4a7430', '#86ad4c'], 240, 1, blades('#47702e')),
-      rough: tile('#4f7c32', ['#43692b', '#3c6428', '#5c8a3a'], 220, 2, blades('#355a26')),
-      road: tile('#585a66', ['#4f515c', '#62646f', '#4a4c56', '#6a6b74'], 260, 3)
+      grass: tile('#53692c', ['#5c7230', '#4a6028', '#66793a', '#435a26', '#6e7e3c'], 300, 1, both(patches(['#4a5f28', '#5d7032', '#46592a'], 7, 6), tufts('#7f8c44', '#36481f', 90))),
+      rough: tile('#435828', ['#3b4f24', '#344720', '#4c622c', '#56602e'], 260, 2, both(patches(['#3a4c22', '#4a5a2a'], 6, 6), tufts('#6a7a3a', '#2c3c1a', 110))),
+      road: tile('#4e4a48', ['#47433f', '#57524d', '#403c3a', '#605a54', '#3a3634'], 340, 3, both(patches(['#4a4644', '#54504c'], 5, 7), function (x, r) {
+        for (var i = 0; i < 6; i++) { var a = r() * 48, b = r() * 48; x.fillStyle = '#34302e'; for (var k = 0; k < 7; k++) { x.fillRect(Math.floor(a) % 48, Math.floor(b) % 48, 1, 1); a += r() * 2 - 0.5; b += r() * 2 - 1; } }
+        for (i = 0; i < 30; i++) { x.fillStyle = '#6c665e'; x.fillRect(Math.floor(r() * 48), Math.floor(r() * 48), 1, 1); } }))
     } : {
       grass: tile('#6cc04a', ['#7fd35a', '#5cae3f', '#8ade66'], 160, 1),
       rough: tile('#57a83e', ['#468f32', '#3f8a2e', '#6abf4d'], 220, 2, blades('#3c7f2c')),
@@ -76,8 +101,9 @@ var RBRender = (function () {
     TILES.gravel = tile('#b8693e', ['#a85a34', '#c87a48', '#8e4a2c', '#d08a5a'], 280, 8);
     TILES.droad = tile('#6a5856', ['#5e4e4c', '#76625e', '#584846', '#806a64'], 260, 9);
     var more = {
-      pave: tile('#cdbfa3', ['#bfb092', '#d8cbb0'], 120, 4, function (x) { x.fillStyle = '#b3a487'; for (var i = 0; i < 48; i += 12) { x.fillRect(0, i, 48, 1); x.fillRect(i + (i % 24 ? 6 : 0), 0, 1, 48); } }),
-      dirt: tile('#b98a54', ['#a87a46', '#c99a62'], 160, 5),
+      pave: post ? cobbles(['#8a7e70', '#968a78', '#7c7266', '#a09482', '#847868', '#8e8272'], '#4a4038', 4)
+        : tile('#cdbfa3', ['#bfb092', '#d8cbb0'], 120, 4, function (x) { x.fillStyle = '#b3a487'; for (var i = 0; i < 48; i += 12) { x.fillRect(0, i, 48, 1); x.fillRect(i + (i % 24 ? 6 : 0), 0, 1, 48); } }),
+      dirt: tile('#8a6a44', ['#7a5c3a', '#9a7a50', '#6a4e32', '#a88a5e'], 220, 5),
       water: tile('#3fa8e0', ['#5cc0f0', '#3496cc'], 90, 6)
     };
     Object.keys(more).forEach(function (k) { TILES[k] = more[k]; });
@@ -87,8 +113,8 @@ var RBRender = (function () {
   // ---------- per-world land: ground tiles and colours, scenery, backdrop ----------
   // keyed by WORLDS[w].id (hills, desert); a world without an entry falls back to hills
   var LAND = {
-    hills: { grass: 'grass', rough: 'rough', road: 'road', bg: '#5e9038', bg2d: '#6cc04a', shoulder: '#9a7448', distant: [84, 128, 58], distant2d: [98, 170, 72],
-      specks: ['#ff7ac8', '#ffd23f', '#f4f1ea', '#4f9a3c'], dust: '#6f9a42', bld: ['barn', 'house', 'house2', 'house'],
+    hills: { grass: 'grass', rough: 'rough', road: 'road', bg: '#53692c', bg2d: '#6cc04a', shoulder: '#7a5c3c', distant: [74, 96, 46], distant2d: [98, 170, 72],
+      specks: ['#c86a80', '#d8b850', '#e8dcc4', '#3e5a28'], dust: '#6a7a3a', bld: ['barn', 'house', 'house2', 'house'],
       trees: [['oak', 0.45], ['pine', 0.7], ['bush', 0.9], ['rock', 1]], band: ['elm', 'oakD', 'elm', 'bushD', 'pine', 'elm'], verge: 'hay' },
     desert: { grass: 'sand', rough: 'gravel', road: 'droad', bg: '#d6a464', bg2d: '#d6a464', shoulder: '#c07a46', distant: [214, 162, 100], distant2d: [214, 162, 100],
       specks: ['#8a4a2e', '#a8924a', '#f0d4a0', '#6a5030'], dust: '#d8b078', bld: ['adobe', 'butte', 'adobe', 'butte'],
@@ -245,8 +271,8 @@ var RBRender = (function () {
     if (!post) return;
     var sk = SKY.hills;
     RBPost.render(scv, ecv, {
-      lights: lights, amb: [1.02, 1.0, 0.97], focus: [focusY - vh * 0.2, focusY + vh * 0.14, vh * 0.28, 1.4],
-      bloom: 0.75, thr: 0.8, sat: sk.sat, vig: 0.5, caustic: 0, shadowTint: sk.sh, hiTint: sk.hi, lift: sk.lift, time: time, scale: hw / 40, grain: 0.02,
+      lights: lights, amb: [0.82, 0.8, 0.78], focus: [focusY - vh * 0.2, focusY + vh * 0.14, vh * 0.28, 1.4],
+      bloom: 0.75, thr: 0.8, sat: sk.sat, vig: 0.78, caustic: 0, shadowTint: sk.sh, hiTint: sk.hi, lift: sk.lift, tone: sk.tone, time: time, scale: hw / 40, grain: 0.02,
       iso: [ox, oy, hw, hh], cloud: sk.cloudK, wind: [0.035, 0.018], dapple: [sk.dap * 0.6, 0.3], dapCol: sk.dapCol
     });
   }
@@ -339,13 +365,13 @@ var RBRender = (function () {
   // far layer and near line colours; the grade: hi and sh tint the highlights and shadows, lift is added to the darkest
   // tones, sat, the shafts' colour, the dappled light's strength and its lit pools' tint (dap, dapCol), and the motes
   var SKY = {
-    hills: { sky: ['#4a8cc8', '#b4d4dc', '#fbe2b0'], fog: '#efd9b0', sunAz: -2.2, sunY: 0.32, cloud: ['#fff6e4', '#c8c4cc'], cloudK: 0.26,
-      far: ['#a9b8a0', '#7f9a78'], line: '#2f5a34',
-      hi: [1.13, 1.03, 0.84], sh: [0.8, 0.9, 0.94], lift: [0.0, 0.02, 0.03], sat: 0.94, shaft: [1.0, 0.78, 0.45], dap: 0.55, dapCol: [1.24, 1.1, 0.82], mote: '#ffe7a0' },
+    hills: { sky: ['#56788e', '#a9bcb2', '#ecd6a6'], fog: '#d8c49a', sunAz: -2.2, sunY: 0.32, cloud: ['#fff0d8', '#b4b0b4'], cloudK: 0.3,
+      far: ['#8c9a84', '#66785e'], line: '#22382a',
+      hi: [1.16, 1.02, 0.8], sh: [0.74, 0.82, 0.84], lift: [0.012, 0.024, 0.03], sat: 0.88, tone: [1.35, 1.12], shaft: [1.0, 0.78, 0.45], dap: 0.75, dapCol: [1.3, 1.12, 0.8], mote: '#ffe7a0' },
     // Sunbaked Canyon: late golden hour, a low sun over the mesas, violet-brown shadows
     desert: { sky: ['#4b5c9c', '#e6a477', '#ffd79c'], fog: '#f2c491', sunAz: -2.0, sunY: 0.5, cloud: ['#ffe4c4', '#d0907a'], cloudK: 0.12,
       far: ['#d9a07c', '#b86c4c'], line: '#a85a3a',
-      hi: [1.15, 1.0, 0.8], sh: [0.88, 0.82, 0.92], lift: [0.03, 0.008, 0.03], sat: 0.98, shaft: [1.0, 0.72, 0.42], dap: 0.25, dapCol: [1.18, 1.06, 0.86], mote: '#ffd9a0' }
+      hi: [1.15, 1.0, 0.8], sh: [0.8, 0.74, 0.84], lift: [0.03, 0.008, 0.03], sat: 0.88, tone: [1.32, 1.06], shaft: [1.0, 0.72, 0.42], dap: 0.25, dapCol: [1.18, 1.06, 0.86], mote: '#ffd9a0' }
   };
   function skyFor(r) { var w = D.WORLDS && D.WORLDS[r.world]; return SKY[w && w.id] || SKY.hills; }
   var lo = null, rc = { x: 0, z: 0, yaw: 0, init: false, lift: 0, boost: 0 }, PX = 1, motes = [];
@@ -639,10 +665,10 @@ var RBRender = (function () {
   }
   function drawDecor7(it, p) {
     {
-      if (it.kind === 'spr') { shadow7(it.x, it.z, it.name === 'oak' || it.name === 'elm' || it.name === 'oakD' ? 0.9 : TALL[it.name] ? 0.6 : 0.5, 0.24, TALL[it.name] ? 2.2 : 0.5); bill(S.scenery(it.name), p, BILL_H[it.name] || 1); return; }
+      if (it.kind === 'spr') { shadow7(it.x, it.z, it.name === 'oak' || it.name === 'elm' || it.name === 'oakD' ? 0.9 : TALL[it.name] ? 0.6 : 0.5, 0.24, TALL[it.name] ? 2.2 : 0.5); bill(S.scenery(it.name, (BILL_H[it.name] || 1) * p.k), p, BILL_H[it.name] || 1); return; }
       if (it.kind === 'post' || it.kind === 'tyres') {
         if (it.kind === 'post') {
-          var x = lo.ctx; x.strokeStyle = '#e8dcc0'; x.lineWidth = Math.max(1, p.k * 0.07);
+          var x = lo.ctx; x.strokeStyle = '#a49274'; x.lineWidth = Math.max(1, p.k * 0.07);
           [0.32, 0.6].forEach(function (y) { var a = proj(it.x, y, it.z), b = proj(it.nx, y, it.nz); if (a && b) { x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(b.x, b.y); x.stroke(); } });
         }
         bill(S.scenery(it.kind), p, BILL_H[it.kind]); return;
@@ -663,6 +689,7 @@ var RBRender = (function () {
     }
   }
   function drawRace(r, dt) {
+    S.newFrame();
     time += dt; sailT += dt * 0.8;
     var g = r.g, p = r.cars[0], gd = groundData(r.id), Ld = landOf(r.id);
     layout();
@@ -758,8 +785,8 @@ var RBRender = (function () {
     if (post) {
       var spn = sunPos(sk);
       RBPost.render(lo.cv, ecv, {
-        lights: lights, amb: [1.0, 0.99, 0.97], focus: [0, vh, vh, 0], bloom: 0.75, thr: 0.8, sat: sk.sat, vig: 0.5, caustic: 0,
-        shadowTint: sk.sh, hiTint: sk.hi, lift: sk.lift, time: time, scale: 1, dapple: [sk.dap, 0.3], dapCol: sk.dapCol,
+        lights: lights, amb: [1.0, 0.99, 0.97], focus: [0, vh, vh, 0], bloom: 0.75, thr: 0.8, sat: sk.sat, vig: 0.7, caustic: 0,
+        shadowTint: sk.sh, hiTint: sk.hi, lift: sk.lift, tone: sk.tone, time: time, scale: 1, dapple: [sk.dap, 0.3], dapCol: sk.dapCol,
         // tilt-shift by depth: sharp from just in front of the car to the next bends, soft beyond and up close
         depth: lo.dcv, dof: [rc.playerD * DOF.nearFull, rc.playerD - DOF.nearSharp, DOF.far[0], DOF.far[1]], dofK: DOF.k, skyK: DOF.sky, carD: [rc.playerD, 1.6],
         fogCol: rgb3(sk.fog), fog: [50, 160, 0.42], cam: [rc.x, rc.z, rc.fx, rc.fz, rc.f, rc.camY, rc.y0, rc.cx],
@@ -850,8 +877,8 @@ var RBRender = (function () {
     drawGround(hubGround, -HUBM, -HUBM);
     var items = [], rows = HUB.rows;
     // hedges round the edge, a mix of bushes, then the woods beyond
-    for (var z = 0; z < rows.length; z++) for (var i = 0; i < rows[z].length; i++) if (rows[z].charAt(i) === '#') (function (x0, z0) { if ((x0 + z0) % 2 === 0) items.push({ d: x0 + z0 + 1, f: function () { sprite(S.scenery(HEDGE[(x0 * 7 + z0 * 3) % HEDGE.length]), x0 + 0.5, 0, z0 + 0.5, 2.2); } }); })(i, z);
-    hubTrees.forEach(function (t) { items.push({ d: t.x + t.z + 0.5, f: function () { var c = S.scenery(t.name); shadow(t.x, t.z, 0.6, 0.25); sprite(c, t.x, 0, t.z, (BILL_H[t.name] || 1) * S.HW / c.height * 1.15); } }); });
+    for (var z = 0; z < rows.length; z++) for (var i = 0; i < rows[z].length; i++) if (rows[z].charAt(i) === '#') (function (x0, z0) { if ((x0 + z0) % 2 === 0) items.push({ d: x0 + z0 + 1, f: function () { var hc = S.scenery(HEDGE[(x0 * 7 + z0 * 3) % HEDGE.length], 15); sprite(hc, x0 + 0.5, 0, z0 + 0.5, 16 / hc.height); } }); })(i, z);
+    hubTrees.forEach(function (t) { items.push({ d: t.x + t.z + 0.5, f: function () { var c = S.scenery(t.name, (BILL_H[t.name] || 1) * S.HW * 1.15); shadow(t.x, t.z, 0.6, 0.25); sprite(c, t.x, 0, t.z, (BILL_H[t.name] || 1) * S.HW / c.height * 1.15); } }); });
     items.push({ d: 3 + 2 + 2, f: function () { sprite(S.building('garage'), 3, 0, 2, 1); } });
     items.push({ d: 14.5 + 2 + 2, f: function () { sprite(S.building('paint'), 14.5, 0, 2, 1); } });
     // fountain
@@ -879,7 +906,8 @@ var RBRender = (function () {
         items.push({ d: x2 + z2 + 1, tag: { p: P(x2 + 0.5, 1.6 + Math.sin(time * 3) * 0.1, z2 + 0.5), icon: STATION_ICON[HUB.pads[ch]] } , f: function () {} });
       }
     });
-    // the kid
+    // the kid, in a warm pool of light
+    if (post) { var kp = P(h.x, 0, h.z); light(kp[0], kp[1], hw * 9, 0.4, '#ffcf8a'); }
     items.push({ d: h.x + h.z + 0.1, f: function () { shadow(h.x, h.z, 0.35, 0.3); sprite(S.kid(h.face, h.walk, h.moving), h.x, 0, h.z, 1.4); } });
     parts.forEach(function (pt) { items.push({ d: pt.x + pt.z + 0.3, f: function () { drawPart(pt); } }); });
     // pollen motes drifting in the light round the kid
