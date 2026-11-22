@@ -15,6 +15,7 @@ var RB = (function () {
   var DT = 1 / 60;              // fixed logic step
   var SAMPLE = 0.5;             // centreline sample spacing, cells
   var RUNOFF = 3;               // rough grass between the road edge and the wall, cells
+  var PACE = 1.25, PICKUP = 1.4; // every car's and rival's top speed, and pick-up, × these (the tracks are sized to match)
   var GRASS = 0.58;             // speed factor on rough grass (Tires raise it)
   var G = 26;                   // gravity in the air, cells/s²
   var RAMP_LEN = 2.5, RAMP_H = 0.9;
@@ -29,10 +30,10 @@ var RB = (function () {
   var DRIFT_SLIDE = 0.1, SLIDE_RISE = 6; // outward slide speed × v at full slip, and how fast the slip builds and fades
   var HOP_T = 0.22, HOP_H = 0.35; // pressing drift on the ground hops; the drift starts on landing
   var HOP_STEER = 0.2;          // turn rate × grip while hopping, so steering to pick the drift's side barely turns the car
-  var DRIFT_TURN = 0.38, DRIFT_WIDE = 0.04; // drift turn rate × grip steering in, and with the stick fully against the drift
+  var DRIFT_TURN = 0.44, DRIFT_WIDE = 0.04; // drift turn rate × grip steering in, and with the stick fully against the drift
   var STEER_RISE = 8, STEER_FALL = 16; // on/off steering (inp.ease: keys, ◀ ▶) eases toward full lock per second, back faster
   var SLOW_MUL = 0.55;
-  var BEE_SPEED = 17, BEE_TURN = 6, BEE_LIFE = 6;
+  var BEE_SPEED = 21, BEE_TURN = 6, BEE_LIFE = 6;
   var GOO_LIFE = 25;
   var COUNTDOWN = 3;
   var FALL_T = 1.1;
@@ -170,7 +171,7 @@ var RB = (function () {
   // lateral offset in cells (+ is the driver's right).
   var TRACKS = {
     meadow: {
-      name: 'Meadow Loop', world: 0, laps: 3, hw: 3.6, scale: 1.28,
+      name: 'Meadow Loop', world: 0, laps: 3, hw: 3.6, scale: 1.47,
       pts: [[20, 20], [60, 14], [100, 20], [114, 40], [100, 60], [76, 60], [62, 72], [68, 92], [50, 106], [24, 100], [12, 76], [14, 46]],
       pads: [{ u: 0.06, off: 0 }, { u: 0.33, off: -1.5 }, { u: 0.62, off: 1.5 }, { u: 0.86, off: 0 }],
       ramps: [{ u: 0.48, gap: 0 }],
@@ -178,25 +179,25 @@ var RB = (function () {
       coins: [{ u: 0.12, off: 1.6, n: 6 }, { u: 0.4, off: -1.6, n: 6 }, { u: 0.55, off: 0, n: 5 }, { u: 0.78, off: -1.2, n: 6 }, { u: 0.93, off: 1.4, n: 5 }]
     },
     creek: {
-      name: 'Creek Jump', world: 0, laps: 3, hw: 3.5, scale: 1.26,
+      name: 'Creek Jump', world: 0, laps: 3, hw: 3.5, scale: 1.45,
       pts: [[16, 30], [40, 14], [74, 16], [96, 28], [118, 20], [136, 36], [128, 62], [100, 70], [82, 90], [56, 96], [36, 80], [40, 58], [20, 52]],
       pads: [{ u: 0.1, off: 0 }, { u: 0.36, off: 1.4 }, { u: 0.58, off: 0 }, { u: 0.8, off: -1.4 }],
-      ramps: [{ u: 0.24, gap: 3.2 }, { u: 0.68, gap: 0 }],
+      ramps: [{ u: 0.24, gap: 4 }, { u: 0.68, gap: 0 }],
       boxes: [0.15, 0.5],
       coins: [{ u: 0.05, off: -1.5, n: 6 }, { u: 0.3, off: 0, n: 5 }, { u: 0.45, off: 1.5, n: 6 }, { u: 0.74, off: 0, n: 5 }, { u: 0.9, off: 1.5, n: 6 }]
     },
     windmill: {
-      name: 'Windmill Hills', world: 0, laps: 2, hw: 3.6, scale: 1.28,
+      name: 'Windmill Hills', world: 0, laps: 2, hw: 3.6, scale: 1.47,
       pts: [[20, 24], [56, 12], [96, 16], [130, 12], [156, 30], [150, 58], [120, 64], [104, 84], [128, 104], [118, 128], [84, 132], [64, 112], [42, 120], [18, 106], [26, 80], [12, 56]],
       pads: [{ u: 0.05, off: 0 }, { u: 0.22, off: -1.5 }, { u: 0.4, off: 1.5 }, { u: 0.57, off: 0 }, { u: 0.75, off: -1.5 }, { u: 0.9, off: 1.4 }],
-      ramps: [{ u: 0.31, gap: 0 }, { u: 0.64, gap: 3.4 }],
+      ramps: [{ u: 0.31, gap: 0 }, { u: 0.64, gap: 4.25 }],
       boxes: [0.14, 0.56],
       coins: [{ u: 0.1, off: 1.5, n: 6 }, { u: 0.27, off: 0, n: 6 }, { u: 0.45, off: -1.5, n: 6 }, { u: 0.6, off: 1.4, n: 5 }, { u: 0.7, off: 0, n: 6 }, { u: 0.86, off: -1.5, n: 6 }, { u: 0.96, off: 0, n: 5 }]
     }
   };
-  // aiSpeed is the rivals' top speed in cells/s; pay multiplies the place money
+  // aiSpeed is the rivals' top speed in cells/s before PACE; pay multiplies the place money
   var WORLDS = [
-    { id: 'hills', name: 'Grassy Hills Town', tracks: ['meadow', 'creek', 'windmill'], aiSpeed: 9, pay: 1, skill: [0.93, 0.91, 0.89, 0.87, 0.85] },
+    { id: 'hills', name: 'Grassy Hills Town', tracks: ['meadow', 'creek', 'windmill'], aiSpeed: 8.8, pay: 1, skill: [0.93, 0.91, 0.89, 0.87, 0.85] },
     { id: 'desert', name: 'Sunbaked Canyon', tracks: [], aiSpeed: 10, pay: 1.6, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
     { id: 'ice', name: 'Snowcap Peaks', tracks: [], aiSpeed: 11, pay: 2.4, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
     { id: 'volcano', name: 'Lava Lane', tracks: [], aiSpeed: 12, pay: 3.4, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
@@ -311,7 +312,7 @@ var RB = (function () {
     up = up || {};
     var L = function (k) { return up[k] || 0; };
     return {
-      speed: b.speed * (1 + 0.035 * L('engine')), accel: b.accel * (1 + 0.05 * L('engine')) * (1 + 0.07 * L('turbo')),
+      speed: b.speed * PACE * (1 + 0.035 * L('engine')), accel: b.accel * PICKUP * (1 + 0.05 * L('engine')) * (1 + 0.07 * L('turbo')),
       launch: 0.25 * L('turbo'), glide: L('glider'), grip: b.grip * (1 + 0.045 * L('tires')),
       weight: b.weight, grass: Math.min(0.85, GRASS + 0.035 * L('tires')),
       boostMul: BOOST_MUL + 0.025 * L('boost'), boostDur: 1 + 0.08 * L('boost'),
@@ -408,7 +409,8 @@ var RB = (function () {
   function botInput(r, car, style) {
     var inp = {}, g = r.g;
     if (style === 'sloppy') {
-      var want = angDiff(aimAhead(r, car, 2 + car.v * 0.2, 0), car.h) * 2.5 + Math.sin(r.t * 1.7) * 0.45;
+      // a steady weave; its stick swing shrinks with PACE so the sideways error stays the same at any pace
+      var want = angDiff(aimAhead(r, car, 2 + car.v * 0.25, 0), car.h) * 2.5 + Math.sin(r.t * 1.7) * 0.45 / PACE;
       car.botSteer += (clamp(want, -1, 1) - car.botSteer) * Math.min(1, DT * 6);
       inp.steer = car.botSteer;
     } else {
@@ -573,7 +575,7 @@ var RB = (function () {
   // the rivals' top speed: their skill, slowed in sharp bends, and pulled toward the player (rubber band)
   function aiTop(r, car) {
     var W = WORLDS[r.world], p = r.cars[0], g = r.g;
-    var top = W.aiSpeed * car.skill;
+    var top = W.aiSpeed * PACE * car.skill;
     if (!p.done) {
       var gap = car.prog - p.prog;
       top *= 1 + clamp(-gap * (gap > 0 ? 0.011 : 0.004), -0.25, 0.06);
@@ -776,7 +778,8 @@ var RB = (function () {
   function hubCell(x, z) { var row = HUB.rows[Math.floor(z)]; return row ? row.charAt(Math.floor(x)) || '#' : '#'; }
   function hubOpen(x, z) { var c = hubCell(x, z); return c === '.' || c === 's' || HUB.pads[c] !== undefined; }
   function hubFind(ch) { for (var z = 0; z < HUB.rows.length; z++) { var x = HUB.rows[z].indexOf(ch); if (x >= 0) return { x: x + 0.5, z: z + 0.5 }; } return null; }
-  function newHub() { var p = hubFind('s'); return { x: p.x, z: p.z, face: 0, path: [], moving: false, walk: 0 }; }
+  // the kid starts on the plaza's start cell, or on a station's pad (newHub('garage') after a race)
+  function newHub(at) { var ch = 's'; for (var c in HUB.pads) if (HUB.pads[c] === at) ch = c; var p = hubFind(ch); return { x: p.x, z: p.z, face: 0, path: [], moving: false, walk: 0 }; }
   function hubStation(h) { return HUB.pads[hubCell(h.x, h.z)] || null; }
   // move with a world-space direction (dx, dz), sliding along walls; or follow the tap path
   function hubStep(h, dt, dir) {

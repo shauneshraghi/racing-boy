@@ -102,7 +102,8 @@ test('falling short into a jump gap puts the car back on the road past it', () =
   const p = r.cars[0], ramp = r.g.ramps.find(m => m.gap > 0);
   R._place(r, p, ramp.s - 0.5, 0); p.v = 3;
   let fell = false;
-  for (let i = 0; i < 300; i++) { R.input(r, { aim: R.headingAt(r.g, p.s) }); R.stepRace(r, 1 / 60); if (p.fallT > 0) fell = true; }
+  // crawl up the ramp at 3 cells/s so the jump falls short
+  for (let i = 0; i < 300; i++) { if (!p.air && !fell) p.v = Math.min(p.v, 3); R.input(r, { aim: R.headingAt(r.g, p.s) }); R.stepRace(r, 1 / 60); if (p.fallT > 0) fell = true; }
   assert.ok(fell, 'fell in');
   const ahead = ((p.s - ramp.s) % r.g.L + r.g.L) % r.g.L;
   assert.ok(ahead > ramp.len + ramp.gap && ahead < 40, 'put back past the gap, s ahead ' + ahead);
@@ -551,4 +552,14 @@ test('on/off steering (keys and buttons) eases in to full lock instead of snappi
   // the stick and the bots steer directly
   R.input(r, { steer: -0.6 }); R.stepRace(r, 1 / 60);
   assert.equal(p.steerOut, -0.6);
+});
+
+test('the stock car feels quick from the first race: over 11 cells/s, and 10 cells/s within 1.6 s of GO', () => {
+  const { r } = freshRace(W1[0]);
+  r.phase = 'race'; r.cars.length = 1;
+  const p = r.cars[0];
+  assert.ok(p.stats.speed >= 11, 'top ' + p.stats.speed);
+  let t = 0;
+  while (p.v < 10 && t < 5) { R.input(r, { steer: 0 }); R.stepRace(r, 1 / 60); t += 1 / 60; }
+  assert.ok(t <= 1.6, 'took ' + t.toFixed(2) + ' s to reach 10');
 });

@@ -29,7 +29,7 @@ Targets for world 1, stock car:
 - no `TOO TIGHT` and no `too wide` bends; `wall` 0
 - `ALL` mean stick between −0.25 and +0.1 (neutral about the typical bend, a little wide of it for human margin), pinned against under 25%, pinned into under 10% (some pinning at bend shoulders is normal: the bot drifts from just before the bend starts)
 - `hands` mode is a sanity read, not a target: no single neutral fits bends that need 0.33 to 0.65 rad/s, so a hands-off drift always leaves some bends. Use it to see which side it misses on.
-- the tightest hairpin (creek bend 7, radius ~4) may be `too wide` at full-in if it stays on the road; a player lets go and steers there
+- the tightest hairpin (on creek, radius ~5) may be `too wide` at full-in if it stays on the road; a player lets go and steers there
 - drifting lap a little faster than clean on every track (the boost pays for the drift), by seconds, not tens of seconds
 
 ## Gotchas
