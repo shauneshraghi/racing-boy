@@ -30,7 +30,7 @@ A browser kart-style racing game in plain HTML, CSS and JavaScript with no build
 
 ## Plaza
 
-- `HUB.rows` is the map, one character per cell, x across and z down (key in the comment above it). Pads `g p c t` open the garage, paint shop, car lot and races panels. On the plaza, keys and the drag stick walk in screen directions; a tap walks there by the shortest path (`hubWalkTo`). After a panel is closed by ✕, the kid must step off the pad before it reopens (`padLock` in `ui.js`).
+- `HUB.rows` is the map, one character per cell, x across and z down (key in the comment above it). Pads `g p c t` open the garage, paint shop, car lot and races panels. On the plaza, keys and the drag stick (touch only; a mouse drag does nothing) walk in screen directions; a tap or click walks there by the shortest path (`hubWalkTo`). After a panel is closed by ✕, the kid must step off the pad before it reopens (`padLock` in `ui.js`).
 
 ## Commands
 
