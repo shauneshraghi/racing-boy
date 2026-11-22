@@ -587,15 +587,17 @@ var RBRender = (function () {
     var hv = c.h + (c.slip ? c.slipDir * 0.5 * c.slip : 0) + (c.trickT > 0 ? (1 - c.trickT / 0.45) * Math.PI * 2 : 0);
     var va = viewAngle(c.x, c.z), el = elevTo(ry, p.d);
     if (c.fallT <= 0) shadow7(c.x, c.z, 0.7, c.air ? 0.18 : 0.3);
-    var spr = S.carView(c.carId, c.look, hv - va, el, p.k), alpha = c.fallT > 0 ? Math.max(0, c.fallT / 1.1) : undefined;
+    var spr = S.carView(c.carId, c.look, hv - va, el, p.k, c.wheel || 0), alpha = c.fallT > 0 ? Math.max(0, c.fallT / 1.1) : undefined;
     // a rival between the camera and the player turns see-through so it never hides the player's car
     if (c.i !== 0 && p.d < rc.playerD - 0.4) alpha = Math.min(alpha === undefined ? 1 : alpha, 0.3);
-    // a little squash just after landing
-    if (c.landT > 0 && alpha === undefined) { var sq = 1 - 0.18 * c.landT / 0.2, x = lo.ctx, w2 = spr.width * p.k / spr.ppc, h2 = spr.height * p.k / spr.ppc * sq;
-      var sx0 = Math.round(p.x - spr.ax * p.k / spr.ppc * (2 - sq)), sy0 = Math.round(p.y - spr.ay * p.k / spr.ppc * sq);
-      x.drawImage(spr, sx0, sy0, Math.round(w2 * (2 - sq)), Math.round(h2)); stamp(spr, sx0, sy0, Math.round(w2 * (2 - sq)), Math.round(h2)); }
-    else model(spr, p, alpha);
+    // the body on its springs: roll shows as a lean seen from behind or ahead, pitch as one seen from the side, both
+    // turning the sprite about the ground under the car; a dip squashes it down onto the wheels
+    var rel = hv - va, tilt = (c.roll || 0) * Math.cos(rel) - (c.pitch || 0) * Math.sin(rel), dip = Math.max(0, c.dip || 0);
+    var pose = Math.abs(tilt) > 0.004 || dip > 0.004;
+    if (pose) posed(p, tilt, 1 + 0.6 * dip, 1 - 1.6 * dip);
+    model(spr, p, alpha);
     if (c.slowT > 0 && Math.floor(time * 12) % 2) { lo.ctx.globalCompositeOperation = 'lighter'; model(spr, p, 0.35); lo.ctx.globalCompositeOperation = 'source-over'; }
+    if (pose) unposed();
     if (c.air && c.stats && c.stats.glide > 0 && c.vy < 2) model(S.gliderView(D.lookOpt('trim', c.look.trim).c, hv - va, el, p.k), p);
     Lt(p.x, p.y - p.k * 0.3, p.k * 1.6, c.boostT > 0 ? 0.35 : 0.08, c.boostT > 0 ? '#ff9f1c' : '#fff3b0');
     if (c.boostT > 0) { var bp = proj(c.x - Math.cos(c.h) * 0.9, ry + 0.3, c.z - Math.sin(c.h) * 0.9); if (bp) G(bp.x, bp.y, p.k * 1.4, '#ff8a1c', 0.8); }
@@ -613,6 +615,11 @@ var RBRender = (function () {
     }
     return proj(c.x, ry + 1.5, c.z);
   }
+  // a turn by a (rad) and a scale about the screen point p, for the colour and the depth buffers
+  function posed(p, a, sx, sy) {
+    [lo.ctx, post ? lo.dctx : null].forEach(function (x) { if (!x) return; x.save(); x.translate(p.x, p.y); x.rotate(a); x.scale(sx, sy); x.translate(-p.x, -p.y); });
+  }
+  function unposed() { lo.ctx.restore(); if (post) lo.dctx.restore(); }
   function drawRamp7(g, m) {
     var lim = g.hw + 0.2, s0 = m.s, s1 = m.s + m.len, n = 6;
     function at(s, d, y) { var q = D.pointAt(g, s, d); return proj(q.x, y, q.z); }
@@ -695,9 +702,6 @@ var RBRender = (function () {
     layout();
     stepParts(dt);
     r.cars.forEach(function (c) {
-      c.landT = Math.max(0, (c.landT || 0) - dt);
-      if (c.wasAir && !c.air) c.landT = 0.2;
-      c.wasAir = c.air;
       if (c.boostT > 0) emitTrail(c, c.i === 0 ? 3 : 1);
       if (!c.air && Math.abs(c.d || 0) > g.hw && c.v > 3 && Math.random() < 0.5) addPart({ x: c.x, y: 0.1, z: c.z, vx: (Math.random() - 0.5), vy: 0.8, vz: (Math.random() - 0.5), life: 0.4, max: 0.4, col: Ld.dust, size: 0.14 });
     });

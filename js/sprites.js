@@ -134,17 +134,20 @@ var RBSprites = (function () {
       F([0, 0, -1], [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]], B.side, B.mat, [x1, y1, z0], [x0, y1, z0], [x1, y0, z0], true)
     ];
   }
-  // the boxes of one car in its own frame: x forward, z to the driver's right, y up, in cells
-  function carBoxes(id, look) {
+  // the boxes of one car in its own frame: x forward, z to the driver's right, y up, in cells. steer (-1, 0 or 1)
+  // turns the front wheels WHEEL_TURN rad to the left or right.
+  var WHEEL_TURN = 0.38;
+  function carBoxes(id, look, steer) {
     var M = D.CARS[id].model, paint = D.lookOpt('paint', look.paint).c, trim = D.lookOpt('trim', look.trim).c;
     var L = M.len / 2, W = M.wid / 2, wr = M.wheel * (look.wheels === 'chunky' ? 1.2 : 1), y0 = wr * 0.9, y1 = y0 + M.h, b = [];
     // wheels, with a hub cap on the outer face
     var wx = L - Math.max(0.24, wr * 0.95), ww = 0.2, hub = HUB_COL[look.wheels] || HUB_COL.stock;
     [-1, 1].forEach(function (fx) { [-1, 1].forEach(function (sz) {
       var cx = fx * wx, z0 = sz > 0 ? W - ww * 0.4 : -W - ww * 0.6, z1 = z0 + ww;
-      b.push(box(cx - wr, cx + wr, z0, z1, 0, wr * 2, TYRE));
-      var hz = sz > 0 ? z1 : z0 - 0.03;
-      b.push(box(cx - wr * 0.45, cx + wr * 0.45, hz, hz + 0.03, wr * 0.55, wr * 1.45, hub));
+      var tyre = box(cx - wr, cx + wr, z0, z1, 0, wr * 2, TYRE);
+      var hz = sz > 0 ? z1 : z0 - 0.03, cap = box(cx - wr * 0.45, cx + wr * 0.45, hz, hz + 0.03, wr * 0.55, wr * 1.45, hub);
+      if (fx > 0 && steer) [tyre, cap].forEach(function (B) { B.yaw = steer * WHEEL_TURN; B.px = cx; B.pz = (z0 + z1) / 2; });
+      b.push(tyre, cap);
     }); });
     // body, bumpers and a stripe
     b.push(box(-L, L, -W, W, y0, y1, paint));
@@ -211,11 +214,18 @@ var RBSprites = (function () {
   function drawFaces(boxes, proj, light, T, outline) {
     var minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9, faces = [];
     boxes.forEach(function (B) {
-      var c = proj((B.x0 + B.x1) / 2, (B.y0 + B.y1) / 2, (B.z0 + B.z1) / 2);
+      // a box with a yaw is turned about the vertical line through (px, pz): a steered front wheel
+      var P = proj, Lt = light;
+      if (B.yaw) {
+        var cy = Math.cos(B.yaw), sy = Math.sin(B.yaw);
+        P = function (x, y, z) { var dx = x - B.px, dz = z - B.pz; return proj(B.px + dx * cy - dz * sy, y, B.pz + dx * sy + dz * cy); };
+        Lt = function (n) { return light([n[0] * cy - n[2] * sy, n[1], n[0] * sy + n[2] * cy]); };
+      }
+      var c = P((B.x0 + B.x1) / 2, (B.y0 + B.y1) / 2, (B.z0 + B.z1) / 2);
       faceList(B).forEach(function (f) {
-        var k = light(f.n); if (!k) return;
-        f.pts = f.v.map(function (p) { var q = proj(p[0], p[1], p[2]); minX = Math.min(minX, q[0]); maxX = Math.max(maxX, q[0]); minY = Math.min(minY, q[1]); maxY = Math.max(maxY, q[1]); return q; });
-        if (f.mat) f.uvp = f.uv.slice(0, 3).map(function (p) { return proj(p[0], p[1], p[2]); });
+        var k = Lt(f.n); if (!k) return;
+        f.pts = f.v.map(function (p) { var q = P(p[0], p[1], p[2]); minX = Math.min(minX, q[0]); maxX = Math.max(maxX, q[0]); minY = Math.min(minY, q[1]); maxY = Math.max(maxY, q[1]); return q; });
+        if (f.mat) f.uvp = f.uv.slice(0, 3).map(function (p) { return P(p[0], p[1], p[2]); });
         f.fill = shadeRGB(hex3(f.col), k); f.depth = c[2] + (B.y0 + B.y1) * 0.12 + (f.n[1] > 0.99 ? 0.001 : 0);
         faces.push(f);
       });
@@ -241,6 +251,10 @@ var RBSprites = (function () {
   // the renderer calls newFrame each frame; once a frame has spent BUDGET ms drawing new views, a missing size is
   // stood in for by the nearest size already drawn for that heading and elevation (the renderer scales it)
   function newFrame() { spent = 0; }
+  function viewKey(key, rel, elev, ppc, bins) {
+    var b = ((Math.round(rel / (Math.PI * 2) * bins) % bins) + bins) % bins;
+    return key + '|' + b + '|' + Math.round(elev / 0.07) + '|' + ppcStep(ppc);
+  }
   function viewed(key, boxesFn, rel, elev, ppc, bins) {
     bins = bins || HEADINGS;
     var b = ((Math.round(rel / (Math.PI * 2) * bins) % bins) + bins) % bins, e = Math.round(elev / 0.07), p = ppcStep(ppc);
@@ -258,8 +272,13 @@ var RBSprites = (function () {
     }
     return viewCache[k];
   }
-  // a car seen from the chase camera
-  function carView(id, look, rel, elev, ppc) { return viewed('car|' + id + '|' + lookKey(look), function () { return carBoxes(id, look); }, rel, elev, ppc); }
+  // a car seen from the chase camera; wheel is the front wheels' steer (-1..1), drawn turned past ±0.35. Once the
+  // frame's budget is spent, a turned view not yet drawn is stood in for by the straight one.
+  function carView(id, look, rel, elev, ppc, wheel) {
+    var key = 'car|' + id + '|' + lookKey(look), st = wheel > 0.35 ? 1 : wheel < -0.35 ? -1 : 0;
+    if (st && (spent <= BUDGET || viewCache[viewKey(key + '|w' + st, rel, elev, ppc, HEADINGS)])) key += '|w' + st; else st = 0;
+    return viewed(key, function () { return carBoxes(id, look, st); }, rel, elev, ppc);
+  }
   // a glider wing, opened above a car in the air
   function gliderView(col, rel, elev, ppc) {
     return viewed('glider|' + col, function () {

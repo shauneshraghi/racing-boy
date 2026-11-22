@@ -87,6 +87,76 @@ test('steer turns the car and aim turns it toward a heading', () => {
   assert.ok(Math.abs(R.angDiff(target, p.h)) < 0.15, 'aim reached');
 });
 
+// one car alone at top speed on the start straight; step(inp) holds it in place and returns its yaw rate and the
+// direction it moved that step
+function heldCar(carId) {
+  const { r } = freshRace(W1[0], 3, carId);
+  r.phase = 'race'; r.cars.length = 1;
+  const p = r.cars[0], x0 = p.x, z0 = p.z, v = p.stats.speed;
+  p.v = v;
+  const step = inp => {
+    p.x = x0; p.z = z0; p.v = v; const h0 = p.h;
+    R.input(r, inp); R.stepRace(r, 1 / 60);
+    return { yaw: R.angDiff(p.h, h0) * 60, moved: Math.atan2(p.z - z0, p.x - x0) };
+  };
+  return { r, p, step };
+}
+
+test('steering has weight: the turn builds over a moment and carries on briefly after letting go', () => {
+  const { p, step } = heldCar();
+  const first = step({ steer: 1 }).yaw;
+  assert.ok(first > 0 && first < 0.5 * p.stats.grip, 'first-step yaw ' + first);
+  let yaw = first;
+  for (let i = 0; i < 40; i++) yaw = step({ steer: 1 }).yaw;
+  assert.ok(yaw > 0.9 * p.stats.grip, 'settled yaw ' + yaw);
+  const after = step({ steer: 0 }).yaw;
+  assert.ok(after > 0.3 * p.stats.grip, 'yaw just after letting go ' + after);
+  for (let i = 0; i < 40; i++) yaw = step({ steer: 0 }).yaw;
+  assert.ok(Math.abs(yaw) < 0.05, 'yaw a moment later ' + yaw);
+});
+
+test('in a turn the car slides a little wide of where it points, and lines up again on the straight', () => {
+  const { p, step } = heldCar();
+  let m;
+  for (let i = 0; i < 40; i++) m = step({ steer: 1 });
+  const slip = R.angDiff(p.h, m.moved);
+  assert.ok(slip > 0.05 && slip < 0.4, 'slip angle in a right turn ' + slip);
+  for (let i = 0; i < 60; i++) m = step({ steer: 0 });
+  assert.ok(Math.abs(R.angDiff(p.h, m.moved)) < 0.01, 'slip on the straight ' + R.angDiff(p.h, m.moved));
+});
+
+test('heavy cars wind into a turn more slowly than light ones', () => {
+  const wind = id => { const { p, step } = heldCar(id); let y = 0; for (let i = 0; i < 4; i++) y = step({ steer: 1 }).yaw; return y / p.stats.grip; };
+  assert.ok(R.CARS.rumble.base.weight > R.CARS.hopper.base.weight);
+  assert.ok(wind('rumble') < wind('hopper') * 0.9, 'rumble ' + wind('rumble') + ' hopper ' + wind('hopper'));
+});
+
+test('the body leans out of a turn, squats under throttle, dips on landing and the front wheels steer', () => {
+  const { r, p, step } = heldCar();
+  for (let i = 0; i < 40; i++) step({ steer: 1 });
+  // roll + is the driver's right side going down: a right turn leans the body left
+  assert.ok(p.roll < -0.03, 'roll in a right turn ' + p.roll);
+  assert.ok(p.wheel > 0.5, 'front wheels in a right turn ' + p.wheel);
+  for (let i = 0; i < 90; i++) step({ steer: 0 });
+  assert.ok(Math.abs(p.roll) < 0.01 && Math.abs(p.wheel) < 0.05, 'settled ' + p.roll + ' ' + p.wheel);
+  // pull away from a stop: the nose lifts (pitch +)
+  p.v = 0;
+  for (let i = 0; i < 6; i++) { R.input(r, { steer: 0 }); R.stepRace(r, 1 / 60); }
+  assert.ok(p.pitch > 0.02, 'pitch pulling away ' + p.pitch);
+  // a landing compresses the springs
+  p.air = true; p.y = 0.05; p.vy = -6;
+  for (let i = 0; i < 4 && p.air; i++) { R.input(r, { steer: 0 }); R.stepRace(r, 1 / 60); }
+  assert.ok(!p.air);
+  R.input(r, { steer: 0 }); R.stepRace(r, 1 / 60);
+  assert.ok(p.dip > 0.03, 'dip after landing ' + p.dip);
+});
+
+test('in a drift the front wheels counter-steer', () => {
+  const { r, p, keep } = startDrift();
+  for (let i = 0; i < 30; i++) { keep(); R.input(r, { steer: 0, drift: true }); R.stepRace(r, 1 / 60); }
+  assert.ok(p.wheel < -0.2, 'wheels in a right-hand drift ' + p.wheel);
+});
+
 test('a boost pad raises speed above top speed', () => {
   const { r } = freshRace(W1[0]);
   r.phase = 'race';
