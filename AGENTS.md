@@ -1,6 +1,6 @@
 # Racing Boy
 
-A browser kart-style racing game in plain HTML, CSS and JavaScript with no build step and no npm dependencies, a sibling of Dig Through Worlds (`~/dig`) in look and code style. A kid driver walks a garage plaza (garage for upgrades, paint shop, car lot, track signpost) and races five rivals on hand-made tracks seen from a chase camera behind the car, in the style of 16-bit "Mode 7" kart racers (the plaza stays isometric). Races last 2–3 minutes (3 laps on shorter tracks, 2 on longer ones); there are ground boost pads, ramps with an air trick, drifting with a mini-boost, rare item crates and coins on the road. Only a 1st place opens the next track; winning a world's three tracks opens the next world. The agreed design is in `.scratch/spec.md`.
+A browser kart-style racing game in plain HTML, CSS and JavaScript with no build step and no runtime dependencies (`package.json` holds only scripts and `playwright-core` for headless screenshots), a sibling of Dig Through Worlds (`~/dig` locally, https://github.com/shauneshraghi/dig-through-worlds) in look and code style. A kid driver walks a garage plaza (garage for upgrades, paint shop, car lot, track signpost) and races five rivals on hand-made tracks seen from a chase camera behind the car, in the style of 16-bit "Mode 7" kart racers (the plaza stays isometric). Races last 2–3 minutes (3 laps on shorter tracks, 2 on longer ones); there are ground boost pads, ramps with an air trick, drifting with a mini-boost, rare item crates and coins on the road. Only a 1st place opens the next track; winning a world's three tracks opens the next world. The agreed design is in `.scratch/spec.md`.
 
 ## Layout
 
@@ -37,7 +37,9 @@ A browser kart-style racing game in plain HTML, CSS and JavaScript with no build
 
 - Run the tests with `node --test tests/*.test.mjs`. They print each track's race time and how often a clean and a sloppy bot win (the sloppy bot weaves, reacts at `BOT_REACT` and steers on the heading the car is winding toward; world 1 with the stock car, the desert with every upgrade at level 2, its entry gate).
 - Tune drift handling with the `drift-tune` skill (`.claude/skills/drift-tune/`): `node .claude/skills/drift-tune/drift-lab.mjs [--set NAME=value,...] [--car id] [--world 2] [--up N]` drifts every bend of a world with a bot and reports how the drift arc fits them.
-- Play by serving the folder with `python3 -m http.server 8766 --bind 127.0.0.1` and opening `http://localhost:8766/`.
+- Set up with `bash scripts/bootstrap.sh` (checks Node 20+, `npm install`, finds or fetches a Chrome; `--no-browser` skips that). README.md lists requirements.
+- Play by serving the folder with `npm run serve` (`scripts/serve.mjs`, no caching) and opening `http://localhost:8766/`.
+- Check a visual change headless with `npm run shot -- "<query>" [--size 390x844] [--wait s] [--step s] [--out output/x.png]` (`scripts/shot.mjs`: serves the repo on a free port, drives Chrome via `playwright-core`, prints page and console errors, and exits 1 if the page threw), then read the PNG. The default query is `race=meadow&dev=1&fresh=1&nosplash=1`.
 - URL flags: `?dev=1` (lots of coins and parts, every track open, no saving), `?fresh=1` (new game, no load or save), `?nosplash=1`, `?seed=N`, `?hd=0` (plain 2D), `?race=<trackId>` (straight into a race), `?car=<carId>`.
 - In the console, `window.__game` exposes `S`, `D` (the logic), `race`, `hub` and `step(seconds)`.
 
@@ -49,3 +51,14 @@ A browser kart-style racing game in plain HTML, CSS and JavaScript with no build
 - Art is original and drawn in code. Do not copy names, characters, items or tracks from existing kart games.
 - Never call `alert`, `confirm` or `prompt`. Start over asks for "yes" typed into an inline box.
 - Saves go to `localStorage` under `racing-boy-v1`, every access wrapped in try/catch; the format is version 1 (`serialize`).
+
+## Cloud sessions (Claude Code on the web)
+
+- `.claude/settings.json` runs `.claude/hooks/session-start.sh` on startup and resume. When `CLAUDE_CODE_REMOTE=true` it runs `scripts/bootstrap.sh`, which uses the image's Chrome for Testing (`$CHROME_PATH`). The default Limited network blocks Playwright's browser CDN, so do not rely on `playwright install` there.
+- The user can't open localhost from a cloud session: verify visuals with `npm run shot`, and hand play-testing over through GitHub Pages (https://shauneshraghi.github.io/racing-boy/, deployed from `main`; bump the `?v=N` stamps).
+- The user's machine-level instructions don't reach the cloud. The ones that matter here:
+  - The user is the only contributor: commit to `main` and push, with no branch or PR, unless the session was started on a branch. Force pushes and history rewrites need the user's go-ahead.
+  - Commits, comments and other repo artifacts carry no AI identity, session links or co-author trailers.
+  - Game rules are test-first: write a failing test in `tests/`, then make it pass.
+  - Reports to the user lead with the answer, plainly worded, with no recap or closing offer. Name things by what they are, not by run label or issue number alone.
+  - Visual work aims at Square Enix's HD-2D look (see Layout); the art stays original.

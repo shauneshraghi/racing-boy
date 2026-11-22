@@ -1,0 +1,19 @@
+{
+  "name": "racing-boy",
+  "private": true,
+  "description": "Browser kart racer in plain HTML, CSS and JavaScript. The game has no dependencies; playwright-core is only for headless screenshots.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "bootstrap": "bash scripts/bootstrap.sh",
+    "test": "node --test tests/*.test.mjs",
+    "serve": "node scripts/serve.mjs",
+    "shot": "node scripts/shot.mjs",
+    "drift-lab": "node .claude/skills/drift-tune/drift-lab.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.65.1"
+  }
+}
