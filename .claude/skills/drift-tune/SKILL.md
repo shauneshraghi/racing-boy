@@ -1,6 +1,6 @@
 ---
 name: drift-tune
-description: Playtest and tune Racing Boy's drift handling with a bot that drifts every bend of the world-1 tracks. Use when drifting feels too twitchy, too loose, turns too hard or too little, can't hold a line through a bend, or after changing drift, hop or steering constants, grip, track shapes or car stats.
+description: Playtest and tune Racing Boy's drift handling with a bot that drifts every bend of a world's tracks. Use when drifting feels too twitchy, too loose, turns too hard or too little, can't hold a line through a bend, or after changing drift, hop or steering constants, grip, track shapes or car stats.
 ---
 
 # Drift tune
@@ -9,11 +9,12 @@ The drift's feel is numbers in the tuning block at the top of `js/logic.js` (`DR
 
 ## Steps
 
-1. **Baseline.** From the repo root run `node .claude/skills/drift-tune/drift-lab.mjs` in each `--mode`: `stick` (analog, the phone), `keys` (−1/0/+1 eased, the desktop) and `hands` (stick let go once drifting). Done when you can name the failing column for the complaint (see Reading the lab).
+1. **Baseline.** From the repo root run `node .claude/skills/drift-tune/drift-lab.mjs` in each `--mode`: `stick` (analog, the phone), `keys` (−1/0/+1 eased, the desktop) and `hands` (stick let go once drifting). `--world 2` (or `--world desert`) runs Sunbaked Canyon instead of world 1, `--tracks a,b` picks tracks, and `--up N` puts every upgrade at level N (use `--up 2` for the desert: that is the car its entry gate expects). Done when you can name the failing column for the complaint (see Reading the lab).
 2. **Sweep.** Try candidate values without editing files: `--set DRIFT_TURN=0.38,DRIFT_WIDE=0.04` (any `var` in the tuning block; quote arrays: `--set 'DRIFT_TIERS=[0.6,1.3,2.1]'`). Grep a sweep to `lap clean|yaw at|TOO|too wide|^ALL`. Done when a candidate meets every target below for `pip` in `stick` and `keys` mode.
 3. **Every starter car.** Rerun the chosen values with `--car` for `pip rumble hopper comet clover`. Low-grip fast cars (`comet`) drift wider and can miss the creek hairpin; note it rather than tune it away (it is the car's "a bit slippery" identity) unless it hits walls on most bends.
-4. **Commit the numbers, test first.** Move the drift-arc bounds in `tests/logic.test.mjs` ("a stock-car drift arc fits the world-1 bends") to the new target and watch it go red, then edit the tuning block. Run `node --test tests/*.test.mjs`: the world-1 race-time and win checks must still pass. Bump every `?v=N` in `index.html`.
-5. **Hand it to the player.** Serve (`python3 -m http.server 8766 --bind 127.0.0.1`) and give the user `http://localhost:8766/?race=meadow&dev=1&fresh=1&nosplash=1`. Feel is the user's call; ask which bend felt wrong and feed that bend's row back into step 2.
+4. **Every world.** Rerun the chosen values with `--world 2 --up 2`; the same targets apply there.
+5. **Commit the numbers, test first.** Move the drift-arc bounds in `tests/logic.test.mjs` ("a stock-car drift arc fits the world-1 bends") to the new target and watch it go red, then edit the tuning block. Run `node --test tests/*.test.mjs`: the world-1 race-time and win checks must still pass. Bump every `?v=N` in `index.html`.
+6. **Hand it to the player.** Serve (`python3 -m http.server 8766 --bind 127.0.0.1`) and give the user `http://localhost:8766/?race=meadow&dev=1&fresh=1&nosplash=1`. Feel is the user's call; ask which bend felt wrong and feed that bend's row back into step 2.
 
 ## Reading the lab
 
@@ -24,12 +25,12 @@ Per track it prints a clean (no-drift) and a drifting lap time, the drift's yaw 
 - `max|d|/hw` over 1 means it left the road; `off s` and `wall` (steps near the wall) say how badly.
 - The `ALL` line totals it.
 
-Targets for world 1, stock car:
+Targets for world 1 with the stock car, and for world 2 with every upgrade at level 2:
 
 - no `TOO TIGHT` and no `too wide` bends; `wall` 0
 - `ALL` mean stick between −0.25 and +0.1 (neutral about the typical bend, a little wide of it for human margin), pinned against under 25%, pinned into under 10% (some pinning at bend shoulders is normal: the bot drifts from just before the bend starts)
 - `hands` mode is a sanity read, not a target: no single neutral fits bends that need 0.33 to 0.65 rad/s, so a hands-off drift always leaves some bends. Use it to see which side it misses on.
-- the tightest hairpin (on creek, radius ~5) may be `too wide` at full-in if it stays on the road; a player lets go and steers there
+- the tightest hairpins (creek, radius ~5; mesa's switchbacks, radius ~6) may be `too wide` at full-in if it stays on the road; a player lets go and steers there
 - drifting lap a little faster than clean on every track (the boost pays for the drift), by seconds, not tens of seconds
 
 ## Gotchas

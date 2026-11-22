@@ -37,8 +37,10 @@ var RB = (function () {
   var GOO_LIFE = 25;
   var COUNTDOWN = 3;
   var FALL_T = 1.1;
+  var PLACE_HOLD = 0.5;         // a new place must hold this long before it is announced (pass / lostPlace)
   var PLACE_PAY = [120, 85, 65, 50, 40, 30];
   var PART_PAY = [4, 3, 2, 2, 1, 1];
+  var FIRST_WIN = { coins: 100, parts: 3 }; // the first win of a track: coins × the world's pay, and parts of the next tier
   var PARTS = [
     { id: 'bolt', name: 'Bolts', icon: '🔩' }, { id: 'gear', name: 'Gears', icon: '⚙️' },
     { id: 'spring', name: 'Springs', icon: '🌀' }, { id: 'chip', name: 'Chips', icon: '💾' },
@@ -193,12 +195,37 @@ var RB = (function () {
       ramps: [{ u: 0.31, gap: 0 }, { u: 0.64, gap: 4.25 }],
       boxes: [0.14, 0.56],
       coins: [{ u: 0.1, off: 1.5, n: 6 }, { u: 0.27, off: 0, n: 6 }, { u: 0.45, off: -1.5, n: 6 }, { u: 0.6, off: 1.4, n: 5 }, { u: 0.7, off: 0, n: 6 }, { u: 0.86, off: -1.5, n: 6 }, { u: 0.96, off: 0, n: 5 }]
+    },
+    // world 2, Sunbaked Canyon: a ramp's gap is a canyon on mesa and a water creek on oasis
+    dune: {
+      name: 'Dune Sweep', world: 1, laps: 3, hw: 3.8, scale: 1.65,
+      pts: [[20, 40], [50, 16], [92, 12], [128, 26], [140, 56], [122, 80], [96, 74], [72, 88], [60, 112], [30, 108], [14, 80]],
+      pads: [{ u: 0.05, off: 0 }, { u: 0.3, off: 1.5 }, { u: 0.55, off: -1.5 }, { u: 0.8, off: 0 }],
+      ramps: [{ u: 0.42, gap: 0 }],
+      boxes: [0.18, 0.66],
+      coins: [{ u: 0.1, off: -1.5, n: 6 }, { u: 0.25, off: 0, n: 6 }, { u: 0.48, off: 1.5, n: 6 }, { u: 0.72, off: 0, n: 5 }, { u: 0.9, off: -1.4, n: 6 }]
+    },
+    mesa: {
+      name: 'Mesa Leap', world: 1, laps: 3, hw: 3.5, scale: 1.35,
+      pts: [[16, 24], [56, 12], [100, 16], [124, 30], [110, 46], [78, 44], [60, 58], [78, 74], [110, 74], [124, 92], [104, 110], [60, 112], [30, 100], [12, 64]],
+      pads: [{ u: 0.03, off: 0 }, { u: 0.33, off: -1.4 }, { u: 0.6, off: 1.4 }, { u: 0.85, off: 0 }],
+      ramps: [{ u: 0.12, gap: 3.8 }, { u: 0.72, gap: 3.8 }],
+      boxes: [0.2, 0.52],
+      coins: [{ u: 0.07, off: 1.5, n: 6 }, { u: 0.28, off: 0, n: 5 }, { u: 0.45, off: -1.5, n: 6 }, { u: 0.66, off: 0, n: 5 }, { u: 0.92, off: 1.5, n: 6 }]
+    },
+    oasis: {
+      name: 'Oasis Run', world: 1, laps: 2, hw: 3.6, scale: 1.62,
+      pts: [[20, 30], [60, 14], [104, 20], [140, 14], [170, 34], [164, 66], [136, 74], [120, 98], [146, 118], [150, 146], [116, 158], [80, 146], [58, 124], [30, 134], [12, 104], [26, 72]],
+      pads: [{ u: 0.04, off: 0 }, { u: 0.2, off: 1.5 }, { u: 0.38, off: -1.5 }, { u: 0.55, off: 0 }, { u: 0.74, off: 1.5 }, { u: 0.9, off: -1.4 }],
+      ramps: [{ u: 0.12, gap: 3.8 }, { u: 0.47, gap: 0 }, { u: 0.66, gap: 3.8 }],
+      boxes: [0.16, 0.6],
+      coins: [{ u: 0.08, off: -1.5, n: 6 }, { u: 0.25, off: 0, n: 6 }, { u: 0.42, off: 1.5, n: 6 }, { u: 0.58, off: -1.4, n: 5 }, { u: 0.7, off: 0, n: 6 }, { u: 0.84, off: 1.5, n: 6 }, { u: 0.95, off: 0, n: 5 }]
     }
   };
   // aiSpeed is the rivals' top speed in cells/s before PACE; pay multiplies the place money
   var WORLDS = [
     { id: 'hills', name: 'Grassy Hills Town', tracks: ['meadow', 'creek', 'windmill'], aiSpeed: 8.8, pay: 1, skill: [0.93, 0.91, 0.89, 0.87, 0.85] },
-    { id: 'desert', name: 'Sunbaked Canyon', tracks: [], aiSpeed: 10, pay: 1.6, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
+    { id: 'desert', name: 'Sunbaked Canyon', tracks: ['dune', 'mesa', 'oasis'], aiSpeed: 9.6, pay: 1.6, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
     { id: 'ice', name: 'Snowcap Peaks', tracks: [], aiSpeed: 11, pay: 2.4, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
     { id: 'volcano', name: 'Lava Lane', tracks: [], aiSpeed: 12, pay: 3.4, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
     { id: 'moon', name: 'Moon Base', tracks: [], aiSpeed: 13, pay: 4.8, skill: [0.95, 0.93, 0.91, 0.89, 0.87] }
@@ -633,6 +660,16 @@ var RB = (function () {
     order.forEach(function (c, k) { c.place = k + 1; });
     r.order = order;
   }
+  // 'pass' / 'lostPlace' when the player's place has changed and held for PLACE_HOLD s (side-by-side jitter is
+  // not news); a jump of several places is one event carrying the new place
+  function placeNews(r, p) {
+    if (p.placeSaid === undefined) { p.placeSaid = p.placeNow = p.place; p.placeSince = r.t; return; } // the first race step
+    if (p.place !== p.placeNow) { p.placeNow = p.place; p.placeSince = r.t; }
+    if (p.placeNow !== p.placeSaid && r.t - p.placeSince >= PLACE_HOLD - 1e-9) {
+      ev(r, p.placeNow < p.placeSaid ? 'pass' : 'lostPlace', p, { place: p.placeNow });
+      p.placeSaid = p.placeNow;
+    }
+  }
   function stepFixed(r) {
     if (r.phase === 'done') { r.cars.forEach(function (c) { stepCar(r, c); }); return; }
     if (r.phase === 'count') {
@@ -658,6 +695,7 @@ var RB = (function () {
     });
     updateOrder(r);
     var p = r.cars[0];
+    if (!p.done) placeNews(r, p);
     if (p.done) {
       // finish the field at its present pace so the result table is complete
       r.cars.forEach(function (c) {
@@ -695,16 +733,25 @@ var RB = (function () {
     var coins = Math.round(PLACE_PAY[place - 1] * W.pay) + p.coins, parts = [0, 0, 0, 0, 0];
     parts[r.world] += PART_PAY[place - 1];
     if (place === 1 && r.world + 1 < parts.length) parts[r.world + 1] += 1;
+    // the first win of each track pays a bonus (already in the totals; `bonus` says how much of them it was)
+    var firstWin = place === 1 && !(s.wins[r.id] > 0), bonus = null;
+    if (place === 1) s.wins[r.id] = (s.wins[r.id] || 0) + 1;
+    if (firstWin) {
+      bonus = { coins: Math.round(FIRST_WIN.coins * W.pay), parts: [0, 0, 0, 0, 0] };
+      bonus.parts[Math.min(4, r.world + 1)] += FIRST_WIN.parts;
+      coins += bonus.coins;
+      for (var b = 0; b < 5; b++) parts[b] += bonus.parts[b];
+    }
     s.coins += coins;
     for (var i = 0; i < 5; i++) s.parts[i] += parts[i];
     var newBest = !s.bestT[r.id] || p.finishT < s.bestT[r.id];
     record(s, r.id, place, p.finishT);
     var unlocked = [];
     WORLDS[r.world].tracks.forEach(function (t, k) { if (!wasT[k] && trackUnlocked(s, t)) unlocked.push(TRACKS[t].name); });
-    WORLDS.forEach(function (w, k) { if (!wasW[k] && worldUnlocked(s, k)) unlocked.push(w.name); });
+    WORLDS.forEach(function (w, k) { if (w.tracks.length && !wasW[k] && worldUnlocked(s, k)) unlocked.push(w.name); }); // a world with nothing to race is not news
     Object.keys(CARS).forEach(function (id) { if (!wasC[id] && carUnlocked(s, id)) unlocked.push(CARS[id].name + ' at the car lot'); });
     s.race = null;
-    return { place: place, coins: coins, trackCoins: p.coins, parts: parts, time: p.finishT, newBest: newBest, unlocked: unlocked };
+    return { place: place, coins: coins, trackCoins: p.coins, parts: parts, time: p.finishT, newBest: newBest, unlocked: unlocked, firstWin: firstWin, bonus: bonus };
   }
   function canAfford(s, cost) {
     if (!cost || s.coins < cost.coins) return false;
@@ -827,11 +874,11 @@ var RB = (function () {
     LOOK_KEYS.forEach(function (k) { looks[k] = LOOKS[k].filter(function (o) { return o.cost === 0; }).map(function (o) { return o.id; }); });
     var cars = {}; cars[START_CAR] = newCar(START_CAR);
     return { v: VERSION, seed: seed | 0, coins: 0, parts: [0, 0, 0, 0, 0], owned: [START_CAR], car: START_CAR, cars: cars,
-      looks: looks, best: {}, bestT: {}, races: 0, world: 0, race: null };
+      looks: looks, best: {}, bestT: {}, wins: {}, races: 0, world: 0, race: null };
   }
   function serialize(s) {
     return JSON.stringify({ v: VERSION, seed: s.seed, coins: s.coins, parts: s.parts, owned: s.owned, car: s.car, cars: s.cars,
-      looks: s.looks, best: s.best, bestT: s.bestT, races: s.races, world: s.world });
+      looks: s.looks, best: s.best, bestT: s.bestT, wins: s.wins, races: s.races, world: s.world });
   }
   function deserialize(raw) {
     var o; try { o = JSON.parse(raw); } catch (e) { return null; }
@@ -850,11 +897,13 @@ var RB = (function () {
     if (o.looks) LOOK_KEYS.forEach(function (k) { (o.looks[k] || []).forEach(function (id) { if (lookOpt(k, id) && s.looks[k].indexOf(id) < 0) s.looks[k].push(id); }); });
     if (o.best) for (var t in o.best) if (TRACKS[t]) s.best[t] = o.best[t];
     if (o.bestT) for (var u in o.bestT) if (TRACKS[u]) s.bestT[u] = o.bestT[u];
+    if (o.wins) for (var w in o.wins) if (TRACKS[w] && typeof o.wins[w] === 'number') s.wins[w] = o.wins[w];
+    for (var b in s.best) if (s.best[b] === 1 && !(s.wins[b] > 0)) s.wins[b] = 1; // a save from before wins were kept: a won track has had its first win
     return s;
   }
 
   return {
-    DT: DT, DRIFT_TIERS: DRIFT_TIERS, RUNOFF: RUNOFF, RAMP_LEN: RAMP_LEN, PAD_LEN: PAD_LEN, PAD_W: PAD_W, MAGNET_R: MAGNET_R, ROLL_T: ROLL_T, START_CAR: START_CAR,
+    DT: DT, PACE: PACE, DRIFT_TIERS: DRIFT_TIERS, RUNOFF: RUNOFF, RAMP_LEN: RAMP_LEN, PAD_LEN: PAD_LEN, PAD_W: PAD_W, MAGNET_R: MAGNET_R, ROLL_T: ROLL_T, START_CAR: START_CAR,
     PLACE_PAY: PLACE_PAY, PART_PAY: PART_PAY, PARTS: PARTS, ITEMS: ITEMS, ITEM_KEYS: ITEM_KEYS, UPGRADES: UPGRADES, UP_KEYS: UP_KEYS,
     PERKS: PERKS, CARS: CARS, LOOKS: LOOKS, LOOK_KEYS: LOOK_KEYS, TRACKS: TRACKS, WORLDS: WORLDS, HUB: HUB,
     rng: rng, angDiff: angDiff, clamp: clamp, track: track, pointAt: pointAt, headingAt: headingAt, lookOpt: lookOpt,
