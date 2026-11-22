@@ -209,6 +209,8 @@
     R.warm(id);
     lastCount = -1;
     A.horn(S.cars[S.car].look.horn);
+    // the logic only reports the countdown when it ticks down, so show the first number here
+    showCount(Math.ceil(race.cd)); A.sfx('count', Math.ceil(race.cd));
   }
   var lastCount = -1, airMax = 0, driftTier = 0, stepT = 0, payT = [];
   function raceEvents(r) {
