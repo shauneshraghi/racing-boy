@@ -58,21 +58,47 @@ var RBRender = (function () {
     return c;
   }
   var TILES = null;
+  function blades(col) { return function (x, r) { for (var i = 0; i < 40; i++) { var a = Math.floor(r() * 48), b = Math.floor(r() * 46); x.fillStyle = col; x.fillRect(a, b, 1, 2); } }; }
   function tiles() {
     if (TILES) return TILES;
-    TILES = {
+    // with the HD grade the grass is a muted olive (the grade warms it); plain 2D keeps the brighter green
+    TILES = post ? {
+      grass: tile('#5e9038', ['#6c9e40', '#527f31', '#7aa846', '#4a7430', '#86ad4c'], 240, 1, blades('#47702e')),
+      rough: tile('#4f7c32', ['#43692b', '#3c6428', '#5c8a3a'], 220, 2, blades('#355a26')),
+      road: tile('#585a66', ['#4f515c', '#62646f', '#4a4c56', '#6a6b74'], 260, 3)
+    } : {
       grass: tile('#6cc04a', ['#7fd35a', '#5cae3f', '#8ade66'], 160, 1),
-      rough: tile('#57a83e', ['#468f32', '#3f8a2e', '#6abf4d'], 220, 2, function (x, r) { for (var i = 0; i < 40; i++) { var a = Math.floor(r() * 48), b = Math.floor(r() * 46); x.fillStyle = '#3c7f2c'; x.fillRect(a, b, 1, 2); } }),
-      road: tile('#5c6170', ['#535866', '#666b7a', '#4d5260', '#707585'], 260, 3),
+      rough: tile('#57a83e', ['#468f32', '#3f8a2e', '#6abf4d'], 220, 2, blades('#3c7f2c')),
+      road: tile('#5c6170', ['#535866', '#666b7a', '#4d5260', '#707585'], 260, 3)
+    };
+    // the canyon: wind-rippled sand, red gravel in the runoff, a warm dusty road
+    TILES.sand = tile('#d6a464', ['#e2b474', '#c8945a', '#ecc488', '#bf8a52'], 260, 7, function (x, r) { for (var i = 0; i < 18; i++) { var a = Math.floor(r() * 44), b = Math.floor(r() * 48); x.fillStyle = '#c08850'; x.fillRect(a, b, 4, 1); } });
+    TILES.gravel = tile('#b8693e', ['#a85a34', '#c87a48', '#8e4a2c', '#d08a5a'], 280, 8);
+    TILES.droad = tile('#6a5856', ['#5e4e4c', '#76625e', '#584846', '#806a64'], 260, 9);
+    var more = {
       pave: tile('#cdbfa3', ['#bfb092', '#d8cbb0'], 120, 4, function (x) { x.fillStyle = '#b3a487'; for (var i = 0; i < 48; i += 12) { x.fillRect(0, i, 48, 1); x.fillRect(i + (i % 24 ? 6 : 0), 0, 1, 48); } }),
       dirt: tile('#b98a54', ['#a87a46', '#c99a62'], 160, 5),
       water: tile('#3fa8e0', ['#5cc0f0', '#3496cc'], 90, 6)
     };
+    Object.keys(more).forEach(function (k) { TILES[k] = more[k]; });
     return TILES;
   }
 
+  // ---------- per-world land: ground tiles and colours, scenery, backdrop ----------
+  // keyed by WORLDS[w].id (hills, desert); a world without an entry falls back to hills
+  var LAND = {
+    hills: { grass: 'grass', rough: 'rough', road: 'road', bg: '#5e9038', bg2d: '#6cc04a', shoulder: '#9a7448', distant: [84, 128, 58], distant2d: [98, 170, 72],
+      specks: ['#ff7ac8', '#ffd23f', '#f4f1ea', '#4f9a3c'], dust: '#6f9a42', bld: ['barn', 'house', 'house2', 'house'],
+      trees: [['oak', 0.45], ['pine', 0.7], ['bush', 0.9], ['rock', 1]], band: ['elm', 'oakD', 'elm', 'bushD', 'pine', 'elm'], verge: 'hay' },
+    desert: { grass: 'sand', rough: 'gravel', road: 'droad', bg: '#d6a464', bg2d: '#d6a464', shoulder: '#c07a46', distant: [214, 162, 100], distant2d: [214, 162, 100],
+      specks: ['#8a4a2e', '#a8924a', '#f0d4a0', '#6a5030'], dust: '#d8b078', bld: ['adobe', 'butte', 'adobe', 'butte'],
+      trees: [['cactus', 0.35], ['shrub', 0.62], ['redrock', 0.84], ['pillar', 1]], band: ['cactus', 'redrock', 'shrub', 'pillar', 'cactus'], verge: 'shrub', palms: true }
+  };
+  function worldId(trackId) { var t = D.TRACKS[trackId], w = t && D.WORLDS[t.world]; return w ? w.id : 'hills'; }
+  function landOf(trackId) { return LAND[worldId(trackId)] || LAND.hills; }
+
   // ---------- track ground ----------
-  function buildGround(g) {
+  function buildGround(g, Ld) {
     var T = TEX, W = g.w * T, H = g.h * T, c = document.createElement('canvas'); c.width = W; c.height = H;
     var x = c.getContext('2d'), tl = tiles(), hwR = g.hw;
     function tp(p) { return [(p.x - g.x0) * T, (p.z - g.z0) * T]; }
@@ -80,11 +106,19 @@ var RBRender = (function () {
     function loop() { x.beginPath(); for (var i = 0; i <= g.n; i++) { var p = tp(g.samples[i]); if (i) x.lineTo(p[0], p[1]); else x.moveTo(p[0], p[1]); } x.closePath(); }
     function band(s0, s1, d0, d1) { x.beginPath(); var s; for (s = s0; s <= s1 + 0.01; s += 0.5) { var a = off(s, d0); if (s === s0) x.moveTo(a[0], a[1]); else x.lineTo(a[0], a[1]); } for (s = s1; s >= s0 - 0.01; s -= 0.5) { var b = off(s, d1); x.lineTo(b[0], b[1]); } x.closePath(); }
     function polyline(s0, s1, d) { x.beginPath(); for (var s = s0; s <= s1 + 0.01; s += 0.5) { var a = off(s, d); if (s === s0) x.moveTo(a[0], a[1]); else x.lineTo(a[0], a[1]); } }
-    x.fillStyle = x.createPattern(tl.grass, 'repeat'); x.fillRect(0, 0, W, H);
+    x.fillStyle = x.createPattern(tl[Ld.grass], 'repeat'); x.fillRect(0, 0, W, H);
+    var mr = prng(g.n * 5 + 11);
+    // HD: broad patches of darker and sunnier ground, so the field is not one flat colour
+    if (post) for (var mb = 0; mb < g.w * g.h / 40; mb++) {
+      var mx = mr() * W, mz = mr() * H, rad = (1.5 + mr() * 4) * T, dark = mr() < 0.55;
+      x.fillStyle = dark ? 'rgba(30,48,22,0.16)' : 'rgba(255,236,150,0.1)';
+      if (Ld === LAND.desert) x.fillStyle = dark ? 'rgba(120,50,20,0.14)' : 'rgba(255,240,200,0.14)';
+      x.beginPath(); x.ellipse(mx, mz, rad, rad * (0.5 + mr() * 0.5), mr() * 3, 0, 6.3); x.fill();
+    }
     x.lineJoin = 'round'; x.lineCap = 'round';
     // a dirt shoulder, the rough grass, then the road
-    loop(); x.strokeStyle = x.createPattern(tl.rough, 'repeat'); x.lineWidth = 2 * (hwR + D.RUNOFF + 0.4) * T; x.stroke();
-    loop(); x.strokeStyle = '#a8814d'; x.lineWidth = 2 * (hwR + 0.7) * T; x.stroke();
+    loop(); x.strokeStyle = x.createPattern(tl[Ld.rough], 'repeat'); x.lineWidth = 2 * (hwR + D.RUNOFF + 0.4) * T; x.stroke();
+    loop(); x.strokeStyle = Ld.shoulder; x.lineWidth = 2 * (hwR + 0.7) * T; x.stroke();
     // curbs where the road bends
     var runs = [], inRun = -1;
     for (var i = 0; i <= g.n; i++) { var bent = i < g.n && Math.abs(g.samples[i].k) > 0.04; if (bent && inRun < 0) inRun = i; if (!bent && inRun >= 0) { runs.push([inRun, i]); inRun = -1; } }
@@ -94,7 +128,7 @@ var RBRender = (function () {
         for (var s = s0; s < s1; s += 1) { band(s, Math.min(s1, s + 1), sd * (hwR - 0.1), sd * (hwR + 0.6)); x.fillStyle = Math.round(s) % 2 ? '#f4f1ea' : '#e5483a'; x.fill(); }
       });
     });
-    loop(); x.strokeStyle = x.createPattern(tl.road, 'repeat'); x.lineWidth = 2 * hwR * T; x.stroke();
+    loop(); x.strokeStyle = x.createPattern(tl[Ld.road], 'repeat'); x.lineWidth = 2 * hwR * T; x.stroke();
     // white edge lines and a dashed centre line
     [-1, 1].forEach(function (sd) { polyline(0, g.L, sd * (hwR - 0.3)); x.strokeStyle = 'rgba(244,241,234,0.85)'; x.lineWidth = 0.16 * T; x.stroke(); });
     x.setLineDash([T * 1.2, T * 1.4]); polyline(0, g.L, 0); x.strokeStyle = 'rgba(255,224,102,0.55)'; x.lineWidth = 0.14 * T; x.stroke(); x.setLineDash([]);
@@ -107,7 +141,7 @@ var RBRender = (function () {
     g.ramps.forEach(function (m) {
       if (!m.gap) return;
       var a = m.s + m.len, b = a + m.gap, wide = hwR + D.RUNOFF + 10;
-      band(a - 0.4, b + 0.4, -wide, wide); x.fillStyle = '#a8814d'; x.fill();
+      band(a - 0.4, b + 0.4, -wide, wide); x.fillStyle = Ld.shoulder; x.fill();
       band(a, b, -wide, wide); x.fillStyle = x.createPattern(tl.water, 'repeat'); x.fill();
       band(a, a + 0.25, -wide, wide); x.fillStyle = 'rgba(255,255,255,0.6)'; x.fill();
     });
@@ -126,17 +160,17 @@ var RBRender = (function () {
       var wx = g.x0 + r() * g.w, wz = g.z0 + r() * g.h, q = g.query(wx, wz);
       if (Math.abs(q.d) < hwR + D.RUNOFF + 0.8) continue;
       var px = (wx - g.x0) * T, pz = (wz - g.z0) * T, kind = r();
-      x.fillStyle = kind < 0.3 ? '#ff7ac8' : kind < 0.55 ? '#ffd23f' : kind < 0.75 ? '#f4f1ea' : '#4f9a3c';
+      x.fillStyle = Ld.specks[kind < 0.3 ? 0 : kind < 0.55 ? 1 : kind < 0.75 ? 2 : 3];
       x.fillRect(Math.round(px), Math.round(pz), 2, 2);
     }
     return c;
   }
   // trees, houses, fences, the finish arch, built once per track
-  function buildDecor(g, trackId) {
+  function buildDecor(g, trackId, Ld) {
     var r = prng(g.n * 13 + 1), items = [], i, lim = g.hw + D.RUNOFF;
     function free(x, z, m) { var q = g.query(x, z); return Math.abs(q.d) > lim + m; }
     // buildings, set well back
-    var kinds = trackId === 'windmill' ? ['windmill', 'barn', 'house', 'windmill'] : ['barn', 'house', 'house2', 'house'];
+    var kinds = trackId === 'windmill' && Ld === LAND.hills ? ['windmill', 'barn', 'house', 'windmill'] : Ld.bld;
     var placed = [];
     for (i = 0; i < 400 && placed.length < 9; i++) {
       var x = g.x0 + 6 + r() * (g.w - 12), z = g.z0 + 6 + r() * (g.h - 12);
@@ -151,9 +185,22 @@ var RBRender = (function () {
       var tx = g.x0 + r() * g.w, tz = g.z0 + r() * g.h;
       if (!free(tx, tz, 1.6)) continue;
       if (placed.some(function (p) { return Math.hypot(p[0] - tx, p[1] - tz) < 3.5; })) continue;
-      var pick = r();
-      items.push({ x: tx, z: tz, kind: 'spr', name: pick < 0.45 ? 'oak' : pick < 0.7 ? 'pine' : pick < 0.9 ? 'bush' : 'rock' });
+      var pick = r(), nm = Ld.trees[0][0];
+      for (var tk = Ld.trees.length - 1; tk >= 0; tk--) if (pick < Ld.trees[tk][1]) nm = Ld.trees[tk][0];
+      items.push({ x: tx, z: tz, kind: 'spr', name: nm });
     }
+    // a dense band of woods (or rocks and cactus) just past the fences, so the frame edges are full and dark
+    for (var bs = 0; bs < g.L; bs += 2.6) [-1, 1].forEach(function (sd) {
+      if (r() < 0.3) return;
+      var bp = D.pointAt(g, bs + r() * 2, sd * (lim + 2.4 + r() * 6));
+      if (!free(bp.x, bp.z, 1.8) || placed.some(function (p) { return Math.hypot(p[0] - bp.x, p[1] - bp.z) < 3.5; })) return;
+      items.push({ x: bp.x, z: bp.z, kind: 'spr', name: Ld.band[Math.floor(r() * Ld.band.length)] });
+    });
+    // palms round the water at the jumps (canyon oases)
+    if (Ld.palms) g.ramps.forEach(function (m) {
+      if (!m.gap) return;
+      for (var k = 0; k < 6; k++) { var pp = D.pointAt(g, m.s + m.len + r() * m.gap, (k % 2 ? 1 : -1) * (lim + 1.2 + r() * 4)); if (free(pp.x, pp.z, 0.8)) items.push({ x: pp.x, z: pp.z, kind: 'spr', name: 'palm' }); }
+    });
     // fence posts along both walls, broken where the creeks run, and tyre stacks on the outside of bends
     var gaps = g.ramps.filter(function (m) { return m.gap; });
     for (var s = 0; s < g.L; s += 1.6) {
@@ -166,13 +213,13 @@ var RBRender = (function () {
       });
     }
     // hay bales by the road here and there
-    for (s = 8; s < g.L; s += 23 + r() * 20) { var sd2 = r() < 0.5 ? -1 : 1, hp = D.pointAt(g, s, sd2 * (lim + 1.4)); if (free(hp.x, hp.z, 0.9)) items.push({ x: hp.x, z: hp.z, kind: 'spr', name: 'hay' }); }
+    for (s = 8; s < g.L; s += 23 + r() * 20) { var sd2 = r() < 0.5 ? -1 : 1, hp = D.pointAt(g, s, sd2 * (lim + 1.4)); if (free(hp.x, hp.z, 0.9)) items.push({ x: hp.x, z: hp.z, kind: 'spr', name: Ld.verge }); }
     // grandstand by the start
     var st = D.pointAt(g, -6, -(lim + 3.2)); items.push({ x: st.x, z: st.z, kind: 'stand', h: st.h });
     return items;
   }
   function ground(id) {
-    if (!grounds[id]) { var g = D.track(id); grounds[id] = buildGround(g); decor[id] = buildDecor(g, id); }
+    if (!grounds[id]) { var g = D.track(id), Ld = landOf(id); grounds[id] = buildGround(g, Ld); decor[id] = buildDecor(g, id, Ld); }
     return grounds[id];
   }
 
@@ -192,11 +239,15 @@ var RBRender = (function () {
     if (post) { ectx.setTransform(1, 0, 0, 1, 0, 0); ectx.globalCompositeOperation = 'source-over'; ectx.fillStyle = '#000'; ectx.fillRect(0, 0, ecv.width, ecv.height); ectx.globalCompositeOperation = 'lighter'; }
     octx.setTransform(1, 0, 0, 1, 0, 0); octx.clearRect(0, 0, vw, vh);
   }
+  // the plaza's HD-2D pass: a tight tilt-shift band round the kid that goes very soft above and below, the hills'
+  // warm grade, cloud shadows and dappled light placed on the ground through the isometric transform (iso)
   function end(focusY) {
     if (!post) return;
+    var sk = SKY.hills;
     RBPost.render(scv, ecv, {
-      lights: lights, amb: [1.02, 1.0, 0.97], focus: [focusY - vh * 0.3, focusY + vh * 0.22, vh * 0.35, 0.8],
-      bloom: 0.55, thr: 0.8, sat: 1.14, vig: 0.3, caustic: 0, shadowTint: [0.87, 0.93, 1.09], hiTint: [1.07, 1.02, 0.91], time: time, scale: hw / 40, grain: 0.02
+      lights: lights, amb: [1.02, 1.0, 0.97], focus: [focusY - vh * 0.2, focusY + vh * 0.14, vh * 0.28, 1.4],
+      bloom: 0.75, thr: 0.8, sat: sk.sat, vig: 0.5, caustic: 0, shadowTint: sk.sh, hiTint: sk.hi, lift: sk.lift, time: time, scale: hw / 40, grain: 0.02,
+      iso: [ox, oy, hw, hh], cloud: sk.cloudK, wind: [0.035, 0.018], dapple: [sk.dap * 0.6, 0.3], dapCol: sk.dapCol
     });
   }
   function drawGround(gc, x0, z0) {
@@ -274,8 +325,8 @@ var RBRender = (function () {
   // track is a sprite sized by distance and drawn far to near. The buffer is scaled up with hard pixels.
   // The numbers are tuned by eye against 16-bit kart racers; no published camera constants exist.
   // race tilt-shift: fully soft at nearFull × the car's distance, sharp from nearSharp cells in front of the car out to
-  // far[0] cells, fully soft by far[1]; k = strength (near, far); sky = how soft open sky is
-  var DOF = { nearFull: 0.35, nearSharp: 1.2, far: [20, 80], k: [0.75, 1], sky: 0.55 };
+  // far[0] cells, fully soft by far[1]; k = strength (near, far; above 1 reaches the strongest blur); sky = how soft open sky is
+  var DOF = { nearFull: 0.7, nearSharp: 1.0, far: [20, 80], k: [2, 1], sky: 0.55 };
   var CAM = {
     dist: 7.5,          // camera distance behind the car, cells
     follow: 6,          // how fast the camera swings round behind the car (per second)
@@ -284,9 +335,17 @@ var RBRender = (function () {
     tall: { w: 240, f: 1.25, horizon: 0.3, car: 0.74 }    // phone held upright
   };
   // per-world sky and light: sky gradient (top, middle, horizon), haze colour, sun bearing (world radians) and
-  // height (× horizon row from the top), cloud colours (lit, shaded), and how dark the cloud shadows fall
+  // height (× horizon row from the top), cloud colours (lit, shaded), and how dark the cloud shadows fall; the backdrop's
+  // far layer and near line colours; the grade: hi and sh tint the highlights and shadows, lift is added to the darkest
+  // tones, sat, the shafts' colour, the dappled light's strength and its lit pools' tint (dap, dapCol), and the motes
   var SKY = {
-    hills: { sky: ['#3f9be8', '#9fd6ff', '#f3f1dc'], fog: '#dcecf2', sunAz: -2.2, sunY: 0.32, cloud: ['#ffffff', '#c9dcef'], cloudK: 0.24 }
+    hills: { sky: ['#4a8cc8', '#b4d4dc', '#fbe2b0'], fog: '#efd9b0', sunAz: -2.2, sunY: 0.32, cloud: ['#fff6e4', '#c8c4cc'], cloudK: 0.26,
+      far: ['#a9b8a0', '#7f9a78'], line: '#2f5a34',
+      hi: [1.13, 1.03, 0.84], sh: [0.8, 0.9, 0.94], lift: [0.0, 0.02, 0.03], sat: 0.94, shaft: [1.0, 0.78, 0.45], dap: 0.55, dapCol: [1.24, 1.1, 0.82], mote: '#ffe7a0' },
+    // Sunbaked Canyon: late golden hour, a low sun over the mesas, violet-brown shadows
+    desert: { sky: ['#4b5c9c', '#e6a477', '#ffd79c'], fog: '#f2c491', sunAz: -2.0, sunY: 0.5, cloud: ['#ffe4c4', '#d0907a'], cloudK: 0.12,
+      far: ['#d9a07c', '#b86c4c'], line: '#a85a3a',
+      hi: [1.15, 1.0, 0.8], sh: [0.88, 0.82, 0.92], lift: [0.03, 0.008, 0.03], sat: 0.98, shaft: [1.0, 0.72, 0.42], dap: 0.25, dapCol: [1.18, 1.06, 0.86], mote: '#ffd9a0' }
   };
   function skyFor(r) { var w = D.WORLDS && D.WORLDS[r.world]; return SKY[w && w.id] || SKY.hills; }
   var lo = null, rc = { x: 0, z: 0, yaw: 0, init: false, lift: 0, boost: 0 }, PX = 1, motes = [];
@@ -317,8 +376,8 @@ var RBRender = (function () {
       }
       mips.push({ w: c.width, h: c.height, d: new Uint32Array(c.getContext('2d').getImageData(0, 0, c.width, c.height).data.buffer) });
     }
-    var t = tiles().grass, tg = t.getContext('2d').getImageData(0, 0, t.width, t.height);
-    mode7[id] = { mips: mips, grass: new Uint32Array(tg.data.buffer), gw: t.width, distant: new Uint32Array(new Uint8Array([98, 170, 72, 255]).buffer)[0] };
+    var Ld = landOf(id), t = tiles()[Ld.grass], tg = t.getContext('2d').getImageData(0, 0, t.width, t.height), dc = post ? Ld.distant : Ld.distant2d;
+    mode7[id] = { mips: mips, grass: new Uint32Array(tg.data.buffer), gw: t.width, distant: new Uint32Array(new Uint8Array([dc[0], dc[1], dc[2], 255]).buffer)[0] };
     return mode7[id];
   }
   function drawGround7(gd, g) {
@@ -358,39 +417,55 @@ var RBRender = (function () {
     dx.globalCompositeOperation = 'source-over';
   }
   // the sky for a world: a gradient, far hills and a near tree line with farms, each one turn of the camera wide
-  function backdrop(id, worldId) {
-    var key = id + '|' + Math.round(rc.f) + '|' + rc.y0;
+  function backdrop(id, sk) {
+    var desert = worldId(id) === 'desert', key = id + '|' + Math.round(rc.f) + '|' + rc.y0 + '|' + (desert ? 'd' : 'h');
     if (backdrops[key]) return backdrops[key];
     var W = Math.round(Math.PI * 2 * rc.f), r = prng(id.length * 31 + 7), fw = Math.round(W * 0.6);
     var far = document.createElement('canvas'); far.width = fw; far.height = Math.max(8, Math.round(rc.y0 * 0.55));
     var fx = far.getContext('2d'), fh = far.height;
-    // far hills: two rows of soft blue-green humps, seamless across the wrap
-    [['#8fc7c0', 0.95, 5], ['#6fae8a', 0.7, 9]].forEach(function (L) {
+    if (desert) {
+      // far mesas: flat-topped buttes with stepped sides in two hazy rows, each lit along its rim
+      [[sk.far[0], 0.75, 0.25], [sk.far[1], 0.5, 0.2]].forEach(function (L, n) {
+        var mr = prng(31 + n * 7), hgt = new Float32Array(fw + 1), xx = 0, k, q;
+        while (xx <= fw) {
+          var w2 = Math.round(fw * (0.03 + mr() * 0.07)), top = fh * (1 - L[1] * (0.6 + mr() * 0.4)), gap = Math.round(fw * (0.01 + mr() * 0.05));
+          for (k = 0; k < w2 + gap && xx + k <= fw; k++) {
+            var e = Math.min(k, w2 - k), y2 = k > w2 ? fh * (1 - L[2]) : e < 3 ? top + (3 - e) * fh * 0.06 : top;
+            hgt[xx + k] = Math.min(fh * (1 - L[2] * 0.6), y2);
+          }
+          xx += w2 + gap;
+        }
+        fx.fillStyle = L[0]; for (q = 0; q <= fw; q++) fx.fillRect(q, Math.round(hgt[q]), 1, fh);
+        fx.fillStyle = n ? 'rgba(255,200,140,0.35)' : 'rgba(255,220,170,0.3)'; for (q = 0; q <= fw; q++) fx.fillRect(q, Math.round(hgt[q]), 1, Math.max(1, Math.round(fh * 0.05)));
+      });
+    } else
+    // far hills: two rows of soft humps, seamless across the wrap
+    [[sk.far[0], 0.95, 5], [sk.far[1], 0.7, 9]].forEach(function (L) {
       fx.fillStyle = L[0]; fx.beginPath(); fx.moveTo(0, fh);
       for (var x = 0; x <= fw; x++) { var a = x / fw * Math.PI * 2, y = fh * (1 - L[1] * (0.55 + 0.25 * Math.sin(a * L[2]) + 0.2 * Math.sin(a * (L[2] * 2 + 1) + 1.3))); fx.lineTo(x, Math.round(y)); }
       fx.lineTo(fw, fh); fx.closePath(); fx.fill();
     });
     var near = document.createElement('canvas'); near.width = W; near.height = Math.max(8, Math.round(rc.y0 * 0.42));
     var nx = near.getContext('2d'), nh = near.height;
-    // farms on the near line, then the hedge and trees in front of them
-    var kinds = id === 'windmill' ? ['mill', 'barn', 'house', 'mill', 'house2'] : ['barn', 'house', 'house2', 'house'];
+    // farms (canyon: adobe houses and buttes) on the near line, then the hedge and trees (canyon: a dune line, cactus, pillars)
+    var kinds = desert ? ['adobe', 'butte', 'adobe', 'butte', 'butte'] : id === 'windmill' ? ['mill', 'barn', 'house', 'mill', 'house2'] : ['barn', 'house', 'house2', 'house'];
     for (var i = 0; i < 7; i++) {
       var b = S.modelView(kinds[i % kinds.length], 0.6 + r() * 0.6, 0.12, Math.max(3, Math.round(nh / 4.5)));
       var bx = Math.round((i + 0.2 + r() * 0.6) / 7 * W);
       nx.drawImage(b, bx - b.ax, nh - 2 - b.ay);
     }
-    nx.fillStyle = '#3f8f3a';
+    nx.fillStyle = sk.line;
     for (var x = 0; x < W; x += 2) { var t = Math.sin(x / W * Math.PI * 2 * 23) * 0.5 + Math.sin(x / W * Math.PI * 2 * 61 + 2) * 0.5; var hh2 = Math.round(nh * (0.18 + 0.1 * t)); nx.fillRect(x, nh - hh2, 2, hh2); }
-    var tr = S.scenery('oak'), pn = S.scenery('pine');
-    for (x = 0; x < W; x += 6 + Math.floor(r() * 14)) {
+    var tr = S.scenery(desert ? 'cactus' : 'oak'), pn = S.scenery(desert ? 'pillar' : 'pine');
+    for (x = 0; x < W; x += (desert ? 16 : 6) + Math.floor(r() * 14)) {
       var tc = r() < 0.6 ? tr : pn, th = Math.round(nh * (0.35 + r() * 0.25)), tw = Math.round(tc.width * th / tc.height);
       nx.drawImage(tc, x, nh - th, tw, th);
     }
     // clouds: flat-bottomed puffs drawn as hard-edged pixel circles, lit on top and shaded underneath
-    var sk = SKY.hills, cl = document.createElement('canvas'); cl.width = W; cl.height = Math.max(8, Math.round(rc.y0 * 0.8));
+    var cl = document.createElement('canvas'); cl.width = W; cl.height = Math.max(8, Math.round(rc.y0 * 0.8));
     var cx2 = cl.getContext('2d'), chh = cl.height;
     function disc(x0, y0, rr, col, cut) { cx2.fillStyle = col; for (var yy = -rr; yy <= rr; yy++) { if (y0 + yy > cut) break; var hw2 = Math.round(Math.sqrt(rr * rr - yy * yy)); cx2.fillRect(Math.round(x0 - hw2), Math.round(y0 + yy), hw2 * 2, 1); } }
-    for (i = 0; i < 12; i++) {
+    for (i = 0; i < (desert ? 6 : 12); i++) {
       var ccx = (i + r()) / 12 * W, ccy = chh * (0.3 + r() * 0.5), sz = Math.max(4, Math.round(chh * (0.12 + r() * 0.12))), nb = 4 + Math.floor(r() * 4), base = ccy + sz * 0.5;
       for (var pass2 = 0; pass2 < 2; pass2++) for (var j = 0; j < nb; j++) {
         var px2 = ccx + (j - nb / 2) * sz * 0.9, py2 = ccy - Math.sin((j + 0.5) / nb * Math.PI) * sz * 0.7, rr2 = Math.round(sz * (0.7 + 0.4 * Math.sin(j * 2.3 + i)));
@@ -416,7 +491,7 @@ var RBRender = (function () {
     var sp = sunPos(sk);
     if (sp) { // a pale sun with a stepped halo, and its glow on the emissive layer
       [[13, 'rgba(255,248,214,0.18)'], [9, 'rgba(255,248,214,0.3)'], [6, '#fffbe6'], [4, '#ffffff']].forEach(function (h) { x.fillStyle = h[1]; x.beginPath(); x.arc(Math.round(sp.x), Math.round(sp.y), h[0], 0, 6.3); x.fill(); });
-      G(sp.x, sp.y, 22, '#fff0c0', 0.35);
+      G(sp.x, sp.y, 34, '#ffe0a0', 0.6);
     }
     // the far layer, clouds drifting slowly, then the near tree line
     [[bd.far, 0.6, y0 - bd.far.height + 1], [bd.clouds, 1, Math.round(y0 * 0.05), 1], [bd.near, 1, y0 - bd.near.height + 1]].forEach(function (L) {
@@ -469,14 +544,16 @@ var RBRender = (function () {
     for (var i = 0; i < pts.length; i++) if (!pts[i]) return;
     [lo.ctx, curD && lo.dctx].forEach(function (x, n) { if (!x) return; x.beginPath(); pts.forEach(function (p, j) { if (j) x.lineTo(p.x, p.y); else x.moveTo(p.x, p.y); }); x.closePath(); x.fillStyle = n ? curD : fill; x.fill(); });
   }
+  // a particle: capped on screen and faded near the camera, so nothing turns into a big pale square up close
   function drawPart7(pt) {
     var p = proj(pt.x, pt.y, pt.z); if (!vis(p, 4)) return;
-    var s = Math.max(1, pt.size * p.k * (0.5 + pt.life / pt.max * 0.5)), x = lo.ctx;
-    x.globalAlpha = Math.min(1, pt.life / pt.max * 1.6); x.fillStyle = pt.col;
+    var near = Math.min(1, Math.max(0, (p.d - 1.5) / 3.5)); if (near <= 0) return;
+    var s = Math.min(Math.max(2, lo.h * 0.022), Math.max(1, pt.size * p.k * (0.5 + pt.life / pt.max * 0.5))), x = lo.ctx;
+    x.globalAlpha = Math.min(1, pt.life / pt.max * 1.6) * near; x.fillStyle = pt.col;
     if (pt.shape === 'bubbles' && s > 3) { x.strokeStyle = pt.col; x.lineWidth = 1; x.beginPath(); x.arc(p.x, p.y, s / 2, 0, 6.3); x.stroke(); }
     else x.fillRect(Math.round(p.x - s / 2), Math.round(p.y - s / 2), Math.round(s), Math.round(s));
     x.globalAlpha = 1;
-    if (pt.glow) G(p.x, p.y, s * 2.2, pt.col, 0.5);
+    if (pt.glow) G(p.x, p.y, s * 2.2, pt.col, 0.5 * near);
   }
   function drawCar7(r, c) {
     var ry = c.y + (c.hopY || 0); if (c.fallT > 0) ry = Math.min(0, c.y);
@@ -536,20 +613,31 @@ var RBRender = (function () {
       lo.ctx.globalAlpha = 1;
     } });
   }
-  var BILL_H = { oak: 3.2, pine: 3.6, bush: 1.1, rock: 0.9, hay: 1.1, post: 0.75, tyres: 0.9 };
+  var BILL_H = { oak: 3.2, pine: 3.6, bush: 1.1, rock: 0.9, hay: 1.1, post: 0.75, tyres: 0.9, oakD: 3.2, elm: 4.2, bushD: 1.1, bushF: 1.1,
+    cactus: 2.6, shrub: 0.8, redrock: 1.3, pillar: 3.6, palm: 4 };
+  var TALL = { oak: 1, pine: 1, oakD: 1, elm: 1, cactus: 1, pillar: 1, palm: 1 };
   function decorItem(it, items) {
     var p = proj(it.x, 0, it.z); if (!p || p.d > CAM.far * 0.8) return;
     var big = it.kind === 'bld' || it.kind === 'mill' || it.kind === 'stand';
-    if (!vis(p, big ? p.k * 6 : p.k * 3)) return;
-    items.push({ d: p.d, f: function () {
-      lo.ctx.globalAlpha = p.d < rc.playerD - 0.5 ? 0.4 : 1; // see-through between the camera and the player
+    // scenery right beside the camera fades out: its texels would be bigger than the strongest blur
+    var fade = Math.min(1, Math.max(0, (p.d - 2) / 2.5));
+    // fence posts and tyres between the camera and the car fade sooner: up close they are a few huge pale texels
+    if (it.kind === 'post' || it.kind === 'tyres') fade = Math.min(fade, Math.max(0, (p.d - 3) / Math.max(1, rc.playerD - 4)));
+    if (fade <= 0.02 || !vis(p, big ? p.k * 6 : p.k * 3)) return;
+    // between the camera and the player's car and overlapping it on screen (not off to the side, framing the view):
+    // see-through, kept out of the depth buffer so its blur never smears the car, and gone once it is close
+    var half = it.kind === 'spr' ? (BILL_H[it.name] || 1) * p.k * S.scenery(it.name).width / S.scenery(it.name).height / 2 : big ? p.k * 3 : p.k * 0.3;
+    var front = p.d < rc.playerD - 0.5 && Math.abs(p.x - rc.cx) < half + rc.f / rc.playerD;
+    if (front && (p.d < rc.playerD - 2.5 || it.kind === 'post' || it.kind === 'tyres')) return;
+    items.push({ d: p.d, stamp: !front, f: function () {
+      lo.ctx.globalAlpha = (front ? 0.3 : 1) * fade;
       drawDecor7(it, p);
       lo.ctx.globalAlpha = 1;
     } });
   }
   function drawDecor7(it, p) {
     {
-      if (it.kind === 'spr') { shadow7(it.x, it.z, it.name === 'oak' ? 0.9 : it.name === 'pine' ? 0.6 : 0.5, 0.24, it.name === 'oak' || it.name === 'pine' ? 2.2 : 0.5); bill(S.scenery(it.name), p, BILL_H[it.name] || 1); return; }
+      if (it.kind === 'spr') { shadow7(it.x, it.z, it.name === 'oak' || it.name === 'elm' || it.name === 'oakD' ? 0.9 : TALL[it.name] ? 0.6 : 0.5, 0.24, TALL[it.name] ? 2.2 : 0.5); bill(S.scenery(it.name), p, BILL_H[it.name] || 1); return; }
       if (it.kind === 'post' || it.kind === 'tyres') {
         if (it.kind === 'post') {
           var x = lo.ctx; x.strokeStyle = '#e8dcc0'; x.lineWidth = Math.max(1, p.k * 0.07);
@@ -574,7 +662,7 @@ var RBRender = (function () {
   }
   function drawRace(r, dt) {
     time += dt; sailT += dt * 0.8;
-    var g = r.g, p = r.cars[0], gd = groundData(r.id);
+    var g = r.g, p = r.cars[0], gd = groundData(r.id), Ld = landOf(r.id);
     layout();
     stepParts(dt);
     r.cars.forEach(function (c) {
@@ -582,7 +670,7 @@ var RBRender = (function () {
       if (c.wasAir && !c.air) c.landT = 0.2;
       c.wasAir = c.air;
       if (c.boostT > 0) emitTrail(c, c.i === 0 ? 3 : 1);
-      if (!c.air && Math.abs(c.d || 0) > g.hw && c.v > 3 && Math.random() < 0.5) addPart({ x: c.x, y: 0.1, z: c.z, vx: (Math.random() - 0.5), vy: 0.8, vz: (Math.random() - 0.5), life: 0.4, max: 0.4, col: '#7fae4a', size: 0.14 });
+      if (!c.air && Math.abs(c.d || 0) > g.hw && c.v > 3 && Math.random() < 0.5) addPart({ x: c.x, y: 0.1, z: c.z, vx: (Math.random() - 0.5), vy: 0.8, vz: (Math.random() - 0.5), life: 0.4, max: 0.4, col: Ld.dust, size: 0.14 });
     });
     // the camera swings round behind the car, rises a little on jumps and pulls back when boosting
     var snap = !rc.init || rc.race !== r || (r.t === 0 && r.phase === 'count');
@@ -597,10 +685,10 @@ var RBRender = (function () {
     rc.camY = (rc.carRow - rc.y0) * CAM.dist / rc.f + rc.lift;
     rc.playerD = dist;
     rc.cx = lo.w / 2 + (shake > 0 ? (Math.random() - 0.5) * shake * 8 : 0);
-    begin('#6cc04a');
+    begin(post ? Ld.bg : Ld.bg2d);
     var x = lo.ctx; x.setTransform(1, 0, 0, 1, 0, 0); x.imageSmoothingEnabled = false; x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
     var sk = skyFor(r);
-    drawSky(backdrop(r.id, r.world), sk);
+    drawSky(backdrop(r.id, sk), sk);
     drawGround7(gd, g);
     x.drawImage(lo.gcv, 0, 0);
     // haze where the ground meets the sky
@@ -615,7 +703,7 @@ var RBRender = (function () {
       x.fillStyle = '#9dff8a'; x.beginPath(); x.ellipse(q.x - q.k * 0.2, q.y - q.k * 0.1 * ry, q.k * 0.25, Math.max(1, q.k * 0.25 * ry), 0, 0, 6.3); x.fill();
       G(q.x, q.y, q.k, '#58e07a', 0.4);
     });
-    g.pads.forEach(function (pd) { var q = proj(pd.x, 0, pd.z); if (vis(q, 20)) { G(q.x, q.y, q.k * (1.2 + 0.2 * Math.sin(time * 6)), '#ff9f1c', 0.55); Lt(q.x, q.y, q.k * 2, 0.12, '#ffb547'); } });
+    g.pads.forEach(function (pd) { var q = proj(pd.x, 0, pd.z); if (vis(q, 20)) { G(q.x, q.y, q.k * (1.5 + 0.25 * Math.sin(time * 6)), '#ff9f1c', 0.8); Lt(q.x, q.y, q.k * 2.4, 0.2, '#ffb547'); } });
     g.ramps.forEach(function (m) {
       if (!m.gap) return;
       for (var i = 0; i < 6; i++) { var s = m.s + m.len + ((time * 0.6 + i * 0.37) % 1) * m.gap, d = Math.sin(i * 7.1 + time) * (g.hw + 3), q = D.pointAt(g, s, d), sp = proj(q.x, 0, q.z); if (vis(sp, 4)) { x.fillStyle = 'rgba(255,255,255,0.7)'; x.fillRect(Math.round(sp.x), Math.round(sp.y), Math.max(1, Math.round(sp.k * 0.12)), Math.max(1, Math.round(sp.k * 0.05))); } }
@@ -628,7 +716,7 @@ var RBRender = (function () {
     g.boxes.forEach(function (b, i) {
       if (r.boxes[i].t > 0) return;
       var y = 0.35 + Math.sin(time * 3 + i) * 0.12, q = proj(b.x, y, b.z); if (!vis(q, 20)) return;
-      items.push({ d: q.d, f: function () { shadow7(b.x, b.z, 0.4, 0.25); model(S.modelView('crate', time * 1.5 + i, elevTo(y, q.d), q.k * 1.2), q); G(q.x, q.y - q.k * 0.4, q.k * 1.1, '#ffd23f', 0.5); } });
+      items.push({ d: q.d, f: function () { shadow7(b.x, b.z, 0.4, 0.25); model(S.modelView('crate', time * 1.5 + i, elevTo(y, q.d), q.k * 1.2), q); G(q.x, q.y - q.k * 0.4, q.k * 1.3, '#ffd23f', 0.65); } });
     });
     g.coins.forEach(function (cn, i) {
       if (r.coins[i].t > 0) return;
@@ -638,7 +726,7 @@ var RBRender = (function () {
         x.fillStyle = '#c99a1a'; x.fillRect(Math.round(q.x - w / 2) - 1, Math.round(q.y - h2 / 2) - 1, Math.round(w) + 2, Math.round(h2) + 2);
         x.fillStyle = '#ffd23f'; x.fillRect(Math.round(q.x - w / 2), Math.round(q.y - h2 / 2), Math.round(w), Math.round(h2));
         if (w > 3) { x.fillStyle = '#fff3b0'; x.fillRect(Math.round(q.x - w / 4), Math.round(q.y - h2 / 3), Math.max(1, Math.round(w / 5)), Math.round(h2 / 2)); }
-        G(q.x, q.y, q.k * 0.5, '#ffd23f', 0.5);
+        G(q.x, q.y, q.k * 0.75, '#ffd23f', 0.8);
       } });
     });
     var tags = [];
@@ -646,7 +734,7 @@ var RBRender = (function () {
     r.bees.forEach(function (b) { var q = proj(b.x, 1 + Math.sin(time * 20) * 0.08, b.z); if (vis(q, 10)) items.push({ d: q.d, f: function () { bill(S.bee(), q, 0.6); G(q.x, q.y, q.k * 0.5, '#ffd23f', 0.4); } }); });
     parts.forEach(function (pt) { var q = proj(pt.x, pt.y, pt.z); if (q) items.push({ d: q.d - 0.1, f: function () { drawPart7(pt); } }); });
     // pollen and dust motes drifting in the sunlight around the camera
-    while (motes.length < 40) motes.push({ x: 0, y: 0, z: 0, ph: Math.random() * 6.3, dead: true });
+    while (motes.length < (post ? 70 : 40)) motes.push({ x: 0, y: 0, z: 0, ph: Math.random() * 6.3, dead: true });
     motes.forEach(function (m) {
       var q = proj(m.x, m.y, m.z);
       if (m.dead || !q || q.d > 30 || q.x < -4 || q.x > lo.w + 4) { // respawn somewhere in view
@@ -656,8 +744,8 @@ var RBRender = (function () {
       m.x += Math.sin(time * 0.7 + m.ph) * 0.4 * dt; m.z += Math.cos(time * 0.5 + m.ph * 2) * 0.4 * dt; m.y += Math.sin(time * 1.1 + m.ph) * 0.15 * dt;
       var tw = 0.5 + 0.5 * Math.sin(time * 3 + m.ph * 5);
       items.push({ d: q.d, stamp: false, f: function () {
-        var sz = q.d < 6 ? 2 : 1; x.globalAlpha = 0.3 + 0.6 * tw; x.fillStyle = '#fffbe6'; x.fillRect(Math.round(q.x), Math.round(q.y), sz, sz); x.globalAlpha = 1;
-        G(q.x, q.y, Math.max(2, q.k * 0.18), '#fff0b0', 0.25 * tw);
+        var sz = q.d < 8 ? 2 : 1; x.globalAlpha = 0.45 + 0.55 * tw; x.fillStyle = '#fffbe6'; x.fillRect(Math.round(q.x), Math.round(q.y), sz, sz); x.globalAlpha = 1;
+        G(q.x, q.y, Math.max(3, q.k * 0.3), sk.mote, 0.45 * tw);
       } });
     });
     items.sort(function (a, b) { return b.d - a.d; });
@@ -668,12 +756,12 @@ var RBRender = (function () {
     if (post) {
       var spn = sunPos(sk);
       RBPost.render(lo.cv, ecv, {
-        lights: lights, amb: [1.0, 0.99, 0.97], focus: [0, vh, vh, 0], bloom: 0.55, thr: 0.8, sat: 1.14, vig: 0.3, caustic: 0,
-        shadowTint: [0.86, 0.93, 1.1], hiTint: [1.08, 1.02, 0.9], time: time, scale: 1,
+        lights: lights, amb: [1.0, 0.99, 0.97], focus: [0, vh, vh, 0], bloom: 0.75, thr: 0.8, sat: sk.sat, vig: 0.5, caustic: 0,
+        shadowTint: sk.sh, hiTint: sk.hi, lift: sk.lift, time: time, scale: 1, dapple: [sk.dap, 0.3], dapCol: sk.dapCol,
         // tilt-shift by depth: sharp from just in front of the car to the next bends, soft beyond and up close
         depth: lo.dcv, dof: [rc.playerD * DOF.nearFull, rc.playerD - DOF.nearSharp, DOF.far[0], DOF.far[1]], dofK: DOF.k, skyK: DOF.sky,
         fogCol: rgb3(sk.fog), fog: [50, 160, 0.42], cam: [rc.x, rc.z, rc.fx, rc.fz, rc.f, rc.camY, rc.y0, rc.cx],
-        cloud: sk.cloudK, wind: [0.035, 0.018], sun: spn ? [spn.x * PX, spn.y * PX] : null, shaft: spn ? 0.6 * spn.k : 0, shaftCol: [1.0, 0.93, 0.72],
+        cloud: sk.cloudK, wind: [0.035, 0.018], sun: spn ? [spn.x * PX, spn.y * PX] : null, shaft: spn ? 1.0 * spn.k : 0, shaftCol: sk.shaft,
         speed: rc.boost * 0.75, grain: 0.022
       });
     } else { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false; ctx.drawImage(lo.cv, 0, 0, vw, vh); }
@@ -733,7 +821,22 @@ var RBRender = (function () {
     // a road leading out of the plaza to the track
     x.fillStyle = x.createPattern(tl.road, 'repeat'); x.fillRect((19 + HUBM) * T, (8 + HUBM) * T, HUBM * T, 3 * T);
     hubGround = c;
+    // woods round the plaza, beyond the hedge, to frame it (left clear where the road leads out)
+    var cols = rows[0].length, tr = prng(77), kinds = ['elm', 'oakD', 'pine', 'elm', 'bushD', 'oak'];
+    hubTrees = [];
+    for (k = 0; k < 400 && hubTrees.length < 70; k++) {
+      var tx = -HUBM + 0.5 + tr() * (cols + HUBM * 2 - 1), tz = -HUBM + 0.5 + tr() * (rows.length + HUBM * 2 - 1);
+      if (tx > -1.2 && tx < cols + 0.2 && tz > -1.2 && tz < rows.length + 0.2) continue;
+      if (tx > cols - 1 && tz > 7 && tz < 12) continue;
+      if (hubTrees.some(function (t) { return Math.hypot(t.x - tx, t.z - tz) < 1.3; })) continue;
+      // on the near sides (toward the bottom of the screen) only low bushes, so nothing tall hides the plaza
+      var nearSide = tz > rows.length - 0.5 || tx > cols - 0.5, gap = Math.max(-tx, -tz, tx - cols, tz - rows.length);
+      if (!nearSide && gap < 1.8 && tr() < 0.7) continue;
+      hubTrees.push({ x: tx, z: tz, name: nearSide ? (tr() < 0.5 ? 'bushD' : 'bush') : kinds[Math.floor(tr() * kinds.length)] });
+    }
   }
+  var hubTrees = [], hubMotes = [];
+  var HEDGE = ['bush', 'bushD', 'bush', 'bushF', 'bushD'];
   var STATION_ICON = { garage: '🔧', paint: '🎨', lot: '🚗', track: '🏁' };
   function drawHub(S0, h, dt) {
     time += dt; sailT += dt * 0.8;
@@ -741,11 +844,12 @@ var RBRender = (function () {
     stepParts(dt);
     cam.zoom += (0.8 - cam.zoom) * Math.min(1, dt * 3);
     setCamera(h.x, h.z, dt, false);
-    begin('#6cc04a');
+    begin(post ? LAND.hills.bg : LAND.hills.bg2d);
     drawGround(hubGround, -HUBM, -HUBM);
     var items = [], rows = HUB.rows;
-    // hedges round the edge
-    for (var z = 0; z < rows.length; z++) for (var i = 0; i < rows[z].length; i++) if (rows[z].charAt(i) === '#') (function (x0, z0) { if ((x0 + z0) % 2 === 0) items.push({ d: x0 + z0 + 1, f: function () { sprite(S.scenery('bush'), x0 + 0.5, 0, z0 + 0.5, 2.2); } }); })(i, z);
+    // hedges round the edge, a mix of bushes, then the woods beyond
+    for (var z = 0; z < rows.length; z++) for (var i = 0; i < rows[z].length; i++) if (rows[z].charAt(i) === '#') (function (x0, z0) { if ((x0 + z0) % 2 === 0) items.push({ d: x0 + z0 + 1, f: function () { sprite(S.scenery(HEDGE[(x0 * 7 + z0 * 3) % HEDGE.length]), x0 + 0.5, 0, z0 + 0.5, 2.2); } }); })(i, z);
+    hubTrees.forEach(function (t) { items.push({ d: t.x + t.z + 0.5, f: function () { var c = S.scenery(t.name); shadow(t.x, t.z, 0.6, 0.25); sprite(c, t.x, 0, t.z, (BILL_H[t.name] || 1) * S.HW / c.height * 1.15); } }); });
     items.push({ d: 3 + 2 + 2, f: function () { sprite(S.building('garage'), 3, 0, 2, 1); } });
     items.push({ d: 14.5 + 2 + 2, f: function () { sprite(S.building('paint'), 14.5, 0, 2, 1); } });
     // fountain
@@ -754,6 +858,7 @@ var RBRender = (function () {
       ctx.fillStyle = '#9aa3b2'; ctx.beginPath(); ctx.ellipse(c0[0], c0[1], hw * 1.5, hh * 1.5, 0, 0, 6.3); ctx.fill();
       ctx.fillStyle = '#3fa8e0'; ctx.beginPath(); ctx.ellipse(c0[0], c0[1], hw * 1.2, hh * 1.2, 0, 0, 6.3); ctx.fill();
       var t = P(10, 1.1 + Math.sin(time * 5) * 0.06, 7); ctx.fillStyle = '#bff7ff'; ctx.fillRect(t[0] - hw * 0.08, t[1], hw * 0.16, c0[1] - t[1]);
+      glow(c0[0], c0[1], hw * 1.6, '#8fd8ff', 0.35); glow(t[0], t[1], hw * 0.6, '#e8fbff', 0.5); light(c0[0], c0[1], hw * 2.4, 0.12, '#bff7ff');
       if (Math.random() < 0.5) addPart({ x: 10, y: 1.1, z: 7, vx: (Math.random() - 0.5) * 2, vy: 2, vz: (Math.random() - 0.5) * 2, life: 0.6, max: 0.6, col: '#bff7ff', size: 0.1, grav: true });
     } });
     // the track signpost
@@ -768,13 +873,24 @@ var RBRender = (function () {
       for (var z2 = 0; z2 < rows.length; z2++) { var x2 = rows[z2].indexOf(ch); if (x2 < 0) continue;
         var q = P(x2 + 0.5, 0, z2 + 0.5), pulse = 0.8 + 0.2 * Math.sin(time * 4);
         ctx.strokeStyle = 'rgba(255,210,63,' + pulse + ')'; ctx.lineWidth = Math.max(2, hw * 0.08); ctx.beginPath(); ctx.ellipse(q[0], q[1], hw * 0.75, hh * 0.75, 0, 0, 6.3); ctx.stroke();
-        glow(q[0], q[1], hw, '#ffd23f', 0.4);
+        glow(q[0], q[1], hw * 1.3, '#ffd23f', 0.65); light(q[0], q[1], hw * 1.6, 0.14, '#ffcf6a');
         items.push({ d: x2 + z2 + 1, tag: { p: P(x2 + 0.5, 1.6 + Math.sin(time * 3) * 0.1, z2 + 0.5), icon: STATION_ICON[HUB.pads[ch]] } , f: function () {} });
       }
     });
     // the kid
     items.push({ d: h.x + h.z + 0.1, f: function () { shadow(h.x, h.z, 0.35, 0.3); sprite(S.kid(h.face, h.walk, h.moving), h.x, 0, h.z, 1.4); } });
     parts.forEach(function (pt) { items.push({ d: pt.x + pt.z + 0.3, f: function () { drawPart(pt); } }); });
+    // pollen motes drifting in the light round the kid
+    while (post && hubMotes.length < 36) hubMotes.push({ x: h.x + (Math.random() - 0.5) * 18, z: h.z + (Math.random() - 0.5) * 18, y: 0.3 + Math.random() * 2.5, ph: Math.random() * 6.3 });
+    hubMotes.forEach(function (m) {
+      m.x += Math.sin(time * 0.7 + m.ph) * 0.3 * dt; m.z += Math.cos(time * 0.5 + m.ph * 2) * 0.3 * dt; m.y += Math.sin(time * 1.1 + m.ph) * 0.12 * dt;
+      if (Math.abs(m.x - h.x) > 10 || Math.abs(m.z - h.z) > 10) { m.x = h.x + (Math.random() - 0.5) * 18; m.z = h.z + (Math.random() - 0.5) * 18; }
+      items.push({ d: m.x + m.z + 0.5, f: function () {
+        var q = P(m.x, m.y, m.z), tw = 0.5 + 0.5 * Math.sin(time * 3 + m.ph * 5), sz = Math.max(2, Math.round(hw / 16));
+        ctx.globalAlpha = 0.45 + 0.55 * tw; ctx.fillStyle = '#fffbe6'; ctx.fillRect(Math.round(q[0]), Math.round(q[1]), sz, sz); ctx.globalAlpha = 1;
+        glow(q[0], q[1], hw * 0.35, SKY.hills.mote, 0.45 * tw);
+      } });
+    });
     items.sort(function (a, b) { return a.d - b.d; });
     items.forEach(function (it) { it.f(); });
     end(P(h.x, 0, h.z)[1]);
