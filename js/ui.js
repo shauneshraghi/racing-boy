@@ -240,24 +240,23 @@
     results = res; save();
     var rows = r.order.map(function (c) { return '<tr class="' + (c.i === 0 ? 'me' : '') + '"><td>' + ord(c.place) + '</td><td>' + c.name + '</td><td>' + D.CARS[c.carId].name + '</td><td>' + fmtT(c.finishT) + '</td></tr>'; }).join('');
     var parts = res.parts.map(function (n, i) { return n ? D.PARTS[i].icon + ' +' + n : ''; }).filter(Boolean).join(' ');
-    var list = D.WORLDS[r.world].tracks, next = list[list.indexOf(r.id) + 1];
     var el = $('results');
     el.innerHTML = '<h2>' + D.TRACKS[r.id].name + '</h2><div class="place">' + ord(res.place) + '</div>' +
       '<table>' + rows + '</table>' +
       '<div class="pay">🪙 +' + res.coins + ' <small>(' + res.trackCoins + ' picked up)</small> &nbsp; ' + parts + (res.newBest ? '<br>⏱ New best time!' : '') + '</div>' +
       res.unlocked.map(function (u) { return '<div class="unlock">🔓 ' + u + ' is open!</div>'; }).join('') +
       (res.place > 1 ? '<p class="note">Win 1st to open the next track. Upgrades in the 🔧 Garage help!</p>' : '') +
-      '<div class="btns"><button class="btn" id="rAgain">🔁 Race again</button>' + (next && D.trackUnlocked(S, next) ? '<button class="btn big" id="rNext">Next: ' + D.TRACKS[next].name + '</button>' : '') + '<button class="btn" id="rHome">🏠 Garage</button></div>';
+      '<div class="btns"><button class="btn big" id="rHome">🔧 To the garage</button></div>';
     el.classList.add('show');
-    $('rAgain').onclick = function () { startRace(r.id); };
-    if ($('rNext')) $('rNext').onclick = function () { startRace(next); };
-    $('rHome').onclick = goHome;
+    $('rHome').onclick = toGarage;
     if (res.unlocked.length) A.sfx('unlock');
   }
-  function goHome() {
+  function goHome(at) {
     $('results').classList.remove('show'); $('pause').classList.remove('show');
-    race = null; S.race = null; paused = false; hub = D.newHub(); setMode('hub'); updateHubHud();
+    race = null; S.race = null; paused = false; hub = D.newHub(at); setMode('hub'); updateHubHud();
   }
+  // every race ends in the garage: the kid stands on its pad with the panel open
+  function toGarage() { goHome('garage'); openStation('garage'); }
   function setPause(on) {
     if (mode !== 'race' || results) return;
     paused = on; $('pause').classList.toggle('show', on);
@@ -279,7 +278,7 @@
     if (k === 'm' || k === 'M') { A.setMute(!A.isMuted()); return; }
     if (mode === 'race' && (k === 'h' || k === 'H')) { A.horn(S.cars[S.car].look.horn); return; }
     if (!$('splash').classList.contains('hide') && (k === 'Enter' || k === ' ')) { start(); e.preventDefault(); return; }
-    if (mode === 'race' && results && k === 'Enter') { startRace(race.id); return; }
+    if (mode === 'race' && results && k === 'Enter') { toGarage(); return; }
     if (mode === 'race' && ['ArrowUp', 'w', 'W', 'x', 'X', 'e', 'E', 'Enter'].indexOf(k) >= 0 && !e.repeat) itemTap = true;
     keys[k.length === 1 ? k.toLowerCase() : k] = true;
     if (k.indexOf('Arrow') === 0 || k === ' ') e.preventDefault();

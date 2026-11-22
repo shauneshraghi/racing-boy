@@ -31,3 +31,8 @@ test('walls and buildings stop the kid', () => {
   assert.ok(R.hubOpen(h.x, h.z) && h.z > 1.2, 'stopped at the top wall, z ' + h.z);
   assert.equal(R.hubWalkTo(h, 2.5, 2.5), false, 'cannot walk into the garage');
 });
+
+test('after a race the kid comes back standing on the garage pad', () => {
+  const h = R.newHub('garage');
+  assert.equal(R.hubStation(h), 'garage');
+});
