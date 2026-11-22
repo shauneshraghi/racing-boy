@@ -324,7 +324,7 @@
   $('bItem').addEventListener('pointerdown', function (e) { e.preventDefault(); audio(); itemTap = true; });
   // the scene. In a race the screen is split: a finger on the left half is a joystick that appears where it lands
   // (left and right steer), and a finger on the right half is the drift button (a press hops, held while steering it drifts, trick in the air).
-  // On the plaza a tap walks there and a drag walks that way.
+  // On the plaza a tap or click walks there and a finger drag walks that way. A mouse gets neither the stick nor the split.
   var cvEl = $('cv'), down = null, stickId = null, driftIds = {};
   // race stick: no steering within STICK_DEAD px of where the thumb landed, full lock at STICK_FULL px, and a
   // curve (power STICK_CURVE) so small movements turn gently
@@ -336,7 +336,9 @@
   cvEl.addEventListener('pointerdown', function (e) {
     audio();
     try { cvEl.setPointerCapture(e.pointerId); } catch (er) {}
+    var mouse = e.pointerType === 'mouse'; // a mouse never gets the stick or the split-screen race controls; it clicks to walk
     if (mode === 'race') {
+      if (mouse) return;
       e.preventDefault();
       if (e.clientX >= cvEl.getBoundingClientRect().width / 2) { driftIds[e.pointerId] = true; showDrift(); return; }
       if (stickId !== null) return;
@@ -344,10 +346,10 @@
       var st = $('stick'); st.style.left = e.clientX + 'px'; st.style.top = e.clientY + 'px'; st.classList.remove('idle'); st.classList.add('show');
       return;
     }
-    down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, moved: false };
+    down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, moved: false, mouse: mouse };
   });
   cvEl.addEventListener('pointermove', function (e) {
-    if (!down || e.pointerId !== down.id) return;
+    if (!down || e.pointerId !== down.id || down.mouse) return;
     var dx = e.clientX - down.x, dy = e.clientY - down.y;
     if (!down.moved && Math.hypot(dx, dy) > 12) { down.moved = true; var st = $('stick'); st.style.left = down.x + 'px'; st.style.top = down.y + 'px'; st.classList.add('show'); }
     if (down.moved) {
