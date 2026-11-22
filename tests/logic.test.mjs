@@ -487,9 +487,9 @@ test('a stock-car drift arc fits the world-1 bends: wide against, about a bend n
     return v / ((p.h - h0) * 60);
   };
   const wide = radius(-1), neutral = radius(0), tight = radius(1);
-  assert.ok(wide >= 40, 'against ' + wide);
-  assert.ok(neutral >= 11 && neutral <= 18, 'neutral ' + neutral);
-  assert.ok(tight <= 10, 'into ' + tight);
+  assert.ok(wide >= 60, 'against ' + wide);
+  assert.ok(neutral >= 15 && neutral <= 21, 'neutral ' + neutral);
+  assert.ok(tight <= 11, 'into ' + tight);
 });
 
 // start a right-hand drift on the start straight; keep() holds the car in place at a fixed speed, clear of the walls.
