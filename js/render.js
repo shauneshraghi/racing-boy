@@ -245,7 +245,7 @@ var RBRender = (function () {
       if (e.type === 'blocked') burst(c.x, 0.7, c.z, ['#bff7ff', '#ffffff'], 16, 3, 0.15, true);
       if (e.type === 'boost' && c.i === 0 && e.from === 'trick') floater(c.x, 1.6, c.z, 'Trick boost!', '#8fd8ff');
       if (e.type === 'boost' && c.i === 0 && e.from === 'glide') floater(c.x, 1.6, c.z, 'Glide boost!', '#ffd23f');
-      if (e.type === 'boost' && c.i === 0 && e.from === 'drift') floater(c.x, 1.6, c.z, e.big ? 'Super drift!' : 'Drift boost!', e.big ? '#ff8a1c' : '#8fd8ff');
+      if (e.type === 'boost' && c.i === 0 && e.from === 'drift') floater(c.x, 1.6, c.z, ['Drift boost!', 'Super drift!', 'Ultra drift!'][e.tier - 1], ['#8fd8ff', '#ff8a1c', '#ff7ae0'][e.tier - 1]);
       if (e.type === 'box') burst(c.x, 0.8, c.z, ['#ffd23f', '#c9853a', '#fff3b0'], 10, 2.5, 0.14, true);
       if (e.type === 'wall' && c.i === 0) shake = Math.max(shake, 0.18);
     });
@@ -421,7 +421,7 @@ var RBRender = (function () {
   function drawCar7(r, c) {
     var ry = c.y + (c.hopY || 0); if (c.fallT > 0) ry = Math.min(0, c.y);
     var p = proj(c.x, ry, c.z); if (!vis(p, 60)) return null;
-    var hv = c.h + (c.driftDir ? c.driftDir * 0.38 : 0) + (c.trickT > 0 ? (1 - c.trickT / 0.45) * Math.PI * 2 : 0);
+    var hv = c.h + (c.slip ? c.slipDir * 0.5 * c.slip : 0) + (c.trickT > 0 ? (1 - c.trickT / 0.45) * Math.PI * 2 : 0);
     var va = viewAngle(c.x, c.z), el = elevTo(ry, p.d);
     if (c.fallT <= 0) shadow7(c.x, c.z, 0.7, c.air ? 0.18 : 0.3);
     var spr = S.carView(c.carId, c.look, hv - va, el, p.k), alpha = c.fallT > 0 ? Math.max(0, c.fallT / 1.1) : undefined;
@@ -443,7 +443,7 @@ var RBRender = (function () {
     }
     if (c.slowT > 0) for (var i = 0; i < 3; i++) { var a = time * 5 + i * 2.1, q = proj(c.x + Math.cos(a) * 0.5, ry + 1.2, c.z + Math.sin(a) * 0.5); if (q) { var st = Math.max(1, Math.round(q.k * 0.12)); x2.fillStyle = '#ffd23f'; x2.fillRect(q.x - st, q.y - st, st * 2, st * 2); } }
     if (c.driftDir && c.drift > 0.2) {
-      var col = c.drift >= 1.4 ? '#ff8a1c' : c.drift >= 0.6 ? '#3fa8ff' : '#f4f1ea';
+      var T = D.DRIFT_TIERS, col = c.drift >= T[2] ? '#ff6ad5' : c.drift >= T[1] ? '#ff8a1c' : c.drift >= T[0] ? '#3fa8ff' : '#f4f1ea';
       for (var j = 0; j < 2; j++) { var sd = j ? 1 : -1, wq = proj(c.x - Math.cos(c.h) * 0.6 - Math.sin(c.h) * 0.45 * sd, 0.1, c.z - Math.sin(c.h) * 0.6 + Math.cos(c.h) * 0.45 * sd);
         if (!wq) continue; var z2 = Math.max(1, Math.round(wq.k * 0.09)); x2.fillStyle = col; x2.fillRect(wq.x - z2 + Math.random() * z2 * 2, wq.y - z2 * 2 - Math.random() * z2 * 3, z2 * 2, z2 * 2); G(wq.x, wq.y, wq.k * 0.6, col, 0.7); }
     }
