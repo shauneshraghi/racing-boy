@@ -624,13 +624,15 @@ var RBRender = (function () {
     // fence posts and tyres between the camera and the car fade sooner: up close they are a few huge pale texels
     if (it.kind === 'post' || it.kind === 'tyres') fade = Math.min(fade, Math.max(0, (p.d - 3) / Math.max(1, rc.playerD - 4)));
     if (fade <= 0.02 || !vis(p, big ? p.k * 6 : p.k * 3)) return;
-    // between the camera and the player's car and overlapping it on screen (not off to the side, framing the view):
-    // see-through, kept out of the depth buffer so its blur never smears the car, and gone once it is close
-    var half = it.kind === 'spr' ? (BILL_H[it.name] || 1) * p.k * S.scenery(it.name).width / S.scenery(it.name).height / 2 : big ? p.k * 3 : p.k * 0.3;
-    var front = p.d < rc.playerD - 0.5 && Math.abs(p.x - rc.cx) < half + rc.f / rc.playerD;
-    if (front && (p.d < rc.playerD - 2.5 || it.kind === 'post' || it.kind === 'tyres')) return;
-    items.push({ d: p.d, stamp: !front, f: function () {
-      lo.ctx.globalAlpha = (front ? 0.3 : 1) * fade;
+    // between the camera and the player's car: it fades out as it slides over the car on screen (things off to the
+    // side stay, framing the view), and only an opaque one is stamped into the depth buffer, so a near blur never
+    // smears the car
+    var half = it.kind === 'spr' ? (BILL_H[it.name] || 1) * p.k * S.scenery(it.name).width / S.scenery(it.name).height * 0.42 : big ? p.k * 3 : p.k * 0.15;
+    var ov = half + rc.f / rc.playerD * 0.75, side = 1;
+    if (p.d < rc.playerD - 0.5) side = Math.min(1, Math.max(0, (Math.abs(p.x - rc.cx) - ov * 0.75) / (ov * 0.25)));
+    if (fade * side <= 0.02) return;
+    items.push({ d: p.d, stamp: side > 0.95, f: function () {
+      lo.ctx.globalAlpha = fade * side;
       drawDecor7(it, p);
       lo.ctx.globalAlpha = 1;
     } });
@@ -759,7 +761,7 @@ var RBRender = (function () {
         lights: lights, amb: [1.0, 0.99, 0.97], focus: [0, vh, vh, 0], bloom: 0.75, thr: 0.8, sat: sk.sat, vig: 0.5, caustic: 0,
         shadowTint: sk.sh, hiTint: sk.hi, lift: sk.lift, time: time, scale: 1, dapple: [sk.dap, 0.3], dapCol: sk.dapCol,
         // tilt-shift by depth: sharp from just in front of the car to the next bends, soft beyond and up close
-        depth: lo.dcv, dof: [rc.playerD * DOF.nearFull, rc.playerD - DOF.nearSharp, DOF.far[0], DOF.far[1]], dofK: DOF.k, skyK: DOF.sky,
+        depth: lo.dcv, dof: [rc.playerD * DOF.nearFull, rc.playerD - DOF.nearSharp, DOF.far[0], DOF.far[1]], dofK: DOF.k, skyK: DOF.sky, carD: [rc.playerD, 1.6],
         fogCol: rgb3(sk.fog), fog: [50, 160, 0.42], cam: [rc.x, rc.z, rc.fx, rc.fz, rc.f, rc.camY, rc.y0, rc.cx],
         cloud: sk.cloudK, wind: [0.035, 0.018], sun: spn ? [spn.x * PX, spn.y * PX] : null, shaft: spn ? 1.0 * spn.k : 0, shaftCol: sk.shaft,
         speed: rc.boost * 0.75, grain: 0.022
