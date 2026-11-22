@@ -1,6 +1,6 @@
 // Drift lab: drives an ideal drifting bot through every bend of the world-1 tracks and reports how the drift's
 // turn envelope fits the bends. Run from the repo root:
-//   node .claude/skills/drift-tune/drift-lab.mjs [--set NAME=value,...] [--car pip] [--tracks meadow,creek] [--v 9]
+//   node .claude/skills/drift-tune/drift-lab.mjs [--set NAME=value,...] [--car pip] [--mode stick|keys|hands] [--tracks meadow,creek] [--v 9]
 // --set overrides tuning vars at the top of js/logic.js for this run only (e.g. --set DRIFT_TURN=0.8,DRIFT_WIDE=0.2).
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -19,6 +19,7 @@ const ctx = {}; vm.createContext(ctx); vm.runInContext(src, ctx, { filename: 'js
 const R = ctx.RB, DT = R.DT, angDiff = R.angDiff, clamp = R.clamp;
 const tracks = (args.tracks || R.WORLDS[0].tracks.join(',')).split(',');
 const carId = args.car || R.START_CAR;
+const mode = args.mode || "stick"; // stick (analog), keys (-1/0/+1 eased, like desktop), hands (stick let go once drifting)
 
 // bends: same-sign runs of curvature over ~1/40 per cell (radius under 40 cells) that turn at least 35°
 function bends(g) {
@@ -63,8 +64,9 @@ function run(id, drift) {
         const rate = st.grip * Math.min(1, p.v / 4), Ld = Math.max(1, Math.hypot(aim.x - p.x, aim.z - p.z));
         const want = 2 * p.v * Math.sin(alpha) / Ld; // pure-pursuit yaw rate
         const ud = clamp(2 * ((want * p.driftDir / rate - K.WIDE) / (K.TURN - K.WIDE)) - 1, -1, 1); // +1 into, -1 against
-        inp = { steer: ud * p.driftDir, drift: true };
-        S.n++; S.u += ud; if (ud <= -0.95) S.against++; if (ud >= 0.95) S.into++; S.drifted = 1;
+        const key = mode === "hands" ? 0 : mode === "keys" ? (ud < -0.33 ? -1 : ud > 0.33 ? 1 : 0) : ud; // keys: -1/0/+1, eased
+        inp = { steer: key * p.driftDir, drift: true, ease: mode === "keys" };
+        S.n++; S.u += ud; if (ud <= -0.95) S.against++; if (ud >= 0.95) S.into++; S.drifted = 1; // ud is what the ideal driver wants
       }
       const d = Math.abs(g.query(p.x, p.z).d);
       S.dmax = Math.max(S.dmax, d); if (d > g.hw) S.off += DT; if (d > g.hw + K.RUNOFF - 0.7) S.wall++;
@@ -76,7 +78,7 @@ function run(id, drift) {
 }
 const tierOf = c => R.DRIFT_TIERS.filter(x => c >= x).length;
 
-console.log(`car ${carId}  DRIFT_TURN ${K.TURN}  DRIFT_WIDE ${K.WIDE}  DRIFT_SLIDE ${K.SLIDE}` + (sets.length ? '  (overrides: ' + args.set + ')' : ''));
+console.log(`car ${carId}  mode ${mode}  DRIFT_TURN ${K.TURN}  DRIFT_WIDE ${K.WIDE}  DRIFT_SLIDE ${K.SLIDE}` + (sets.length ? '  (overrides: ' + args.set + ')' : ''));
 const f = (x, n = 2) => x.toFixed(n).padStart(5);
 let all = { n: 0, u: 0, against: 0, into: 0, off: 0, wall: 0 }, worst = 0;
 for (const id of tracks) {

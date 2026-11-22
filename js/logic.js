@@ -29,7 +29,7 @@ var RB = (function () {
   var DRIFT_SLIDE = 0.1, SLIDE_RISE = 6; // outward slide speed × v at full slip, and how fast the slip builds and fades
   var HOP_T = 0.22, HOP_H = 0.35; // pressing drift on the ground hops; the drift starts on landing
   var HOP_STEER = 0.2;          // turn rate × grip while hopping, so steering to pick the drift's side barely turns the car
-  var DRIFT_TURN = 0.45, DRIFT_WIDE = 0.06; // drift turn rate × grip steering in, and with the stick fully against the drift
+  var DRIFT_TURN = 0.38, DRIFT_WIDE = 0.04; // drift turn rate × grip steering in, and with the stick fully against the drift
   var STEER_RISE = 8, STEER_FALL = 16; // on/off steering (inp.ease: keys, ◀ ▶) eases toward full lock per second, back faster
   var SLOW_MUL = 0.55;
   var BEE_SPEED = 17, BEE_TURN = 6, BEE_LIFE = 6;
