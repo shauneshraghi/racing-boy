@@ -226,7 +226,7 @@
       else if (e.type === 'box') A.sfx('box');
       else if (e.type === 'boxEmpty') A.sfx('boxEmpty');
       else if (e.type === 'putback') A.sfx('putback');
-      else if (e.type === 'pass') A.sfx('pass');
+      else if (e.type === 'pass') { A.sfx('pass'); banner('Up to ' + ord(e.place) + '!'); }
       else if (e.type === 'lostPlace') A.sfx('lostPlace');
       else if (e.type === 'item') A.sfx('item', e.item);
       else if (e.type === 'hit') A.sfx('hit');
@@ -267,6 +267,7 @@
     el.innerHTML = '<h2>' + D.TRACKS[r.id].name + '</h2><div class="place">' + ord(res.place) + '</div>' +
       '<table>' + rows + '</table>' +
       '<div class="pay">🪙 +' + res.coins + ' <small>(' + res.trackCoins + ' picked up)</small> &nbsp; ' + parts + (res.newBest ? '<br>⏱ New best time!' : '') + '</div>' +
+      (res.bonus ? '<div class="unlock">⭐ First win bonus! 🪙 +' + res.bonus.coins + ' ' + res.bonus.parts.map(function (n, i) { return n ? D.PARTS[i].icon + ' +' + n : ''; }).filter(Boolean).join(' ') + '</div>' : '') +
       res.unlocked.map(function (u) { return '<div class="unlock">🔓 ' + u + ' is open!</div>'; }).join('') +
       (res.place > 1 ? '<p class="note">Win 1st to open the next track. Upgrades in the 🔧 Garage help!</p>' : '') +
       '<div class="btns"><button class="btn big" id="rHome">🔧 To the garage</button></div>';
