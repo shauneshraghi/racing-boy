@@ -467,6 +467,31 @@ test('a drift keeps its direction while held and turns no harder than plain driv
   assert.ok(rate <= p.stats.grip * 1.2, 'drift turn rate ' + rate + ' vs grip ' + p.stats.grip);
 });
 
+test('steering through the hop turns the car only a little', () => {
+  const { r } = freshRace(W1[0]);
+  r.phase = 'race'; r.cars.length = 1;
+  const p = r.cars[0]; p.v = p.stats.speed;
+  R.input(r, { steer: 0, drift: true }); R.stepRace(r, 1 / 60);
+  const h0 = p.h;
+  while (p.hopT > 0) { R.input(r, { steer: 1, drift: true }); R.stepRace(r, 1 / 60); }
+  assert.ok(p.h - h0 > 0 && p.h - h0 < 0.15, 'turned ' + (p.h - h0) + ' rad in the hop');
+});
+
+test('a stock-car drift arc fits the world-1 bends: wide against, about a bend neutral, tight into', () => {
+  const radius = steer => {
+    const { r, p } = startDrift(), v = p.stats.speed, x0 = p.x, z0 = p.z;
+    const hold = () => { p.x = x0; p.z = z0; p.v = v; };
+    for (let i = 0; i < 30; i++) { hold(); R.input(r, { steer, drift: true }); R.stepRace(r, 1 / 60); }
+    hold(); const h0 = p.h;
+    R.input(r, { steer, drift: true }); R.stepRace(r, 1 / 60);
+    return v / ((p.h - h0) * 60);
+  };
+  const wide = radius(-1), neutral = radius(0), tight = radius(1);
+  assert.ok(wide >= 40, 'against ' + wide);
+  assert.ok(neutral >= 11 && neutral <= 18, 'neutral ' + neutral);
+  assert.ok(tight <= 10, 'into ' + tight);
+});
+
 // start a right-hand drift on the start straight; keep() holds the car in place at a fixed speed, clear of the walls.
 // The rivals are left out so no bump moves the car.
 function startDrift() {
