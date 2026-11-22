@@ -46,7 +46,7 @@ var RBPost = (function () {
       'uniform vec3 shadowTint, hiTint;\n' +
       'uniform int hasDep; uniform vec4 dof; uniform vec2 dofK; uniform float skyK; uniform vec3 fogCol, fog;\n' +
       'uniform vec4 camA, camB; uniform float cloudK; uniform vec2 wind; uniform float shaftK, speedK, grain;\n' +
-      'uniform int iso; uniform vec2 dap; uniform vec3 dapCol, lift;\n' +
+      'uniform int iso; uniform vec2 dap, carD; uniform vec3 dapCol, lift;\n' +
       'vec3 knee(vec3 c) { vec3 e = max(c - 0.82, 0.0); return min(c, 0.82) + e / (1.0 + e / 0.18); }\n' +
       'float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\n' +
       'float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);\n' +
@@ -62,8 +62,8 @@ var RBPost = (function () {
       // near bleed: a pixel next to something near takes that thing's spread-out blur, so its edge goes soft too
       'bool standing(vec2 q) { float row = floor((1.0 - q.y) * sres.y) - camB.z; return row <= 0.0 || depthAt(q) < camB.x * camB.y / (row + 0.5) * 0.93; }\n' +
       'vec3 dofAt(vec2 q) { float coc = cocAt(q); vec3 c = texture(s, q).rgb;\n' +
-      // (not onto things standing in the sharp band, like the player's car seen past a near tree)
-      '  vec4 e = texture(eb, q); if (hasDep == 1 && !(standing(q) && coc < 0.05)) coc = max(coc, min(1.0, e.a * 2.2) * dofK.x);\n' +
+      // (not onto the cars round the player's distance carD.x ± carD.y, so the player's car stays sharp past a near tree)
+      '  vec4 e = texture(eb, q); if (hasDep == 1 && e.a > 0.0 && !(abs(depthAt(q) - carD.x) < carD.y && standing(q))) coc = max(coc, min(1.0, e.a * 2.2) * dofK.x);\n' +
       '  if (coc > 0.0) { vec3 h = texture(hb, q).rgb, b = texture(qb, q).rgb;\n' +
       '    c = coc < 0.5 ? mix(c, h, coc * 2.0) : coc < 1.0 ? mix(h, b, coc * 2.0 - 1.0) : mix(b, e.rgb, min(1.0, (coc - 1.0) * 1.8)); }\n' +
       '  return c; }\n' +
@@ -189,6 +189,7 @@ var RBPost = (function () {
   }
   // p: { lights: [{x, y, r, i, c: [r, g, b]}], amb: [r, g, b], focus: [top, bottom, ramp, strength],
   //      bloom, thr, sat, vig, caustic, shadowTint, hiTint, lift (added to the darkest tones), time, scale (blur radius in scene texels),
+  //      carD: [depth, half-window] of the player's car, which near blur never bleeds onto,
   //      dapple: [strength, cells^-1 frequency] and dapCol (the lit pools' tint) for dappled light on the world,
   //      cloud and wind for cloud shadows; on the plaza iso: [ox, oy, hw, hh] (canvas pixels) places the world under each pixel,
   //      and for races: depth (canvas, same size as the scene), dof: [nearFull, nearSharp, farSharp, farFull],
@@ -235,7 +236,7 @@ var RBPost = (function () {
       gl.uniform3fv(u.fogCol, p.fogCol || [1, 1, 1]); gl.uniform3fv(u.fog, p.fog || [1e4, 2e4, 0]);
       gl.uniform4f(u.camA, cam[0], cam[1], cam[2], cam[3]); gl.uniform4f(u.camB, cam[4], cam[5], cam[6], cam[7]);
       gl.uniform1f(u.cloudK, hasDep || iso ? p.cloud || 0 : 0); gl.uniform2fv(u.wind, p.wind || [0, 0]);
-      gl.uniform1i(u.iso, iso && !hasDep ? 1 : 0); gl.uniform2fv(u.dap, dap); gl.uniform3fv(u.dapCol, p.dapCol || [1.2, 1.1, 0.9]); gl.uniform3fv(u.lift, p.lift || [0, 0, 0]);
+      gl.uniform1i(u.iso, iso && !hasDep ? 1 : 0); gl.uniform2fv(u.dap, dap); gl.uniform3fv(u.dapCol, p.dapCol || [1.2, 1.1, 0.9]); gl.uniform3fv(u.lift, p.lift || [0, 0, 0]); gl.uniform2fv(u.carD, p.carD || [-1e4, 0]);
       gl.uniform1f(u.shaftK, shaft); gl.uniform1f(u.speedK, p.speed || 0); gl.uniform1f(u.grain, p.grain || 0);
     });
   }
