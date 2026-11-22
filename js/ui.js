@@ -52,7 +52,7 @@
     $('raceHud').classList.toggle('show', m === 'race');
     $('raceCtl').classList.toggle('show', m === 'race');
     $('stick').classList.toggle('idle', m === 'race'); $('stick').classList.remove('show');
-    A.setMood(m === 'race' ? 'race' : 'hub');
+    A.setMood(m === 'race' ? 'race' : 'hub', race && race.id);
     if (m !== 'race') A.setEngine(false, 0, false);
   }
 

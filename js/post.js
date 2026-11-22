@@ -1,12 +1,13 @@
-// Racing Boy: HD-2D post-process, copied from Dig Through Worlds (RBPost). The 2D renderer draws the pixel-art scene and a
-// half-size emissive layer into offscreen canvases; this WebGL2 pass lights the scene with screen-space
-// point lights, blurs it with a tilt-shift depth of field around the working layer, adds bloom from the
-// emissive layer, and grades the colours. init() returns false when WebGL2 is unavailable, and the
-// renderer then draws straight to the visible canvas instead.
+// Racing Boy: HD-2D post-process (RBPost), grown from Dig Through Worlds' version. The 2D renderer draws the pixel-art
+// scene and a half-size emissive layer into offscreen canvases; this WebGL2 pass upscales the scene with hard pixels,
+// blurs it with a depth of field (a screen band on the plaza, a per-pixel depth buffer in races), adds distance fog,
+// drifting cloud shadows, sun shafts, screen-space point lights and bloom, and grades the colours (warm highlights,
+// cool shadows, vignette, a little grain). Boosting adds a radial speed blur and a colour fringe. init() returns
+// false when WebGL2 is unavailable, and the renderer then draws straight to the visible canvas instead.
 var RBPost = (function () {
   'use strict';
-  var MAXL = 24;
-  var gl = null, prog = {}, vbo, tex = {}, fb = {}, W = 0, H = 0;
+  var MAXL = 24, DMAX = 160; // depth buffer: red = sqrt(depth / DMAX), so near depths get the finer steps
+  var gl = null, prog = {}, vbo, tex = {}, fb = {}, W = 0, H = 0, SW = 0, SH = 0;
 
   var VS = '#version 300 es\nin vec2 p; out vec2 uv; void main() { uv = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }';
   var HEAD = '#version 300 es\nprecision highp float; in vec2 uv; out vec4 o;\n';
@@ -22,19 +23,49 @@ var RBPost = (function () {
     bright: HEAD + 'uniform sampler2D s; uniform sampler2D e; uniform float thr; void main() {' +
       ' vec3 c = texture(s, uv).rgb; float l = dot(c, vec3(0.299, 0.587, 0.114));' +
       ' o = vec4(texture(e, uv).rgb + c * clamp((l - thr) / max(0.001, 1.0 - thr), 0.0, 1.0) * 0.5, 1.0); }',
+    // sun shafts: march from each pixel toward the sun, gathering bright open sky; trees and buildings block it
+    shafts: HEAD + 'uniform sampler2D s, dep; uniform vec2 sun; uniform vec3 col; void main() {' +
+      ' vec2 st = (sun - uv) / 32.0; vec2 q = uv; float w = 1.0, acc = 0.0;' +
+      ' for (int i = 0; i < 32; i++) { float sky = step(0.995, texture(dep, q).r); float l = dot(texture(s, q).rgb, vec3(0.299, 0.587, 0.114));' +
+      '   acc += sky * smoothstep(0.86, 1.0, l) * w; w *= 0.955; q += st; }' +
+      ' float fall = 1.0 - smoothstep(0.0, 0.9, length((sun - uv) * vec2(1.6, 1.0)));' +
+      ' o = vec4(col * acc / 14.0 * fall, 1.0); }',
     final: HEAD +
-      'uniform sampler2D s, hb, qb, bl; uniform vec2 res; uniform float time;\n' +
+      'uniform sampler2D s, hb, qb, bl, dep, sh; uniform vec2 res, sres; uniform float time;\n' +
       'uniform vec4 L[' + MAXL + ']; uniform vec3 LC[' + MAXL + ']; uniform int nL;\n' +
       'uniform vec3 amb; uniform vec4 focus; uniform float bloomK, sat, vig, caustic;\n' +
       'uniform vec3 shadowTint, hiTint;\n' +
+      'uniform int hasDep; uniform vec4 dof; uniform vec2 dofK; uniform float skyK; uniform vec3 fogCol, fog;\n' +
+      'uniform vec4 camA, camB; uniform float cloudK; uniform vec2 wind; uniform float shaftK, speedK, grain;\n' +
       'vec3 knee(vec3 c) { vec3 e = max(c - 0.82, 0.0); return min(c, 0.82) + e / (1.0 + e / 0.18); }\n' +
+      'float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\n' +
+      'float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);\n' +
+      '  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }\n' +
+      'float depthAt(vec2 q) { float v = texture(dep, q).r; return v * v * ' + DMAX.toFixed(1) + '; }\n' +
+      // circle of confusion: the plaza blurs outside a screen band [focus.x, focus.y] over focus.z pixels; races blur
+      // nearer than dof.y (fully by dof.x) and farther than dof.z (fully by dof.w), scaled by dofK (near, far)
+      'float cocAt(vec2 q) {\n' +
+      '  if (hasDep == 0) { float y = (1.0 - q.y) * res.y; return clamp(max(focus.x - y, y - focus.y) / focus.z, 0.0, 1.0) * focus.w; }\n' +
+      '  if (texture(dep, q).r > 0.995) return skyK;\n' + // open sky stays only a little soft, so clouds and the sun read
+      '  float d = depthAt(q); return max((1.0 - smoothstep(dof.x, dof.y, d)) * dofK.x, smoothstep(dof.z, dof.w, d) * dofK.y); }\n' +
+      'vec3 dofAt(vec2 q) { float coc = cocAt(q); vec3 c = texture(s, q).rgb;\n' +
+      '  if (coc > 0.0) { vec3 h = texture(hb, q).rgb, b = texture(qb, q).rgb; c = coc < 0.5 ? mix(c, h, coc * 2.0) : mix(h, b, coc * 2.0 - 1.0); }\n' +
+      '  return c; }\n' +
       'void main() {\n' +
       '  vec2 px = vec2(uv.x * res.x, (1.0 - uv.y) * res.y);\n' +
-      // tilt-shift: sharp inside [focus.x, focus.y], blurring over focus.z pixels outside it
-      '  float d = max(focus.x - px.y, px.y - focus.y); float coc = clamp(d / focus.z, 0.0, 1.0) * focus.w;\n' +
-      '  vec3 c = texture(s, uv).rgb;\n' +
-      '  if (coc > 0.0) { vec3 h = texture(hb, uv).rgb, q = texture(qb, uv).rgb;\n' +
-      '    c = coc < 0.5 ? mix(c, h, coc * 2.0) : mix(h, q, coc * 2.0 - 1.0); }\n' +
+      '  vec3 c;\n' +
+      // boost: a colour fringe and a radial blur that grow toward the edges
+      '  if (speedK > 0.0) { vec2 dv = uv - vec2(0.5, 0.45); float ca = speedK * 0.007;\n' +
+      '    c = vec3(dofAt(uv + dv * ca).r, dofAt(uv).g, dofAt(uv - dv * ca).b);\n' +
+      '    vec3 z = vec3(0.0); for (int i = 1; i <= 6; i++) z += texture(hb, uv - dv * float(i) * 0.018 * speedK).rgb;\n' +
+      '    c = mix(c, z / 6.0, clamp(speedK * smoothstep(0.12, 0.55, length(dv)), 0.0, 0.85)); }\n' +
+      '  else c = dofAt(uv);\n' +
+      '  bool world = hasDep == 1 && texture(dep, uv).r < 0.995; float d = hasDep == 1 ? depthAt(uv) : 0.0;\n' +
+      // cloud shadows: the world point under this pixel (camera forward camA.zw, right = (-fz, fx); camB = f, camY, y0, cx)
+      '  if (world && cloudK > 0.0) { float sx = uv.x * sres.x; float lat = (sx - camB.w) * d / camB.x;\n' +
+      '    vec2 w = camA.xy + camA.zw * d + vec2(-camA.w, camA.z) * lat;\n' +
+      '    float n = vnoise(w * 0.03 + wind * time) * 0.65 + vnoise(w * 0.08 - wind * time * 1.4 + 7.0) * 0.35;\n' +
+      '    c *= 1.0 - cloudK * smoothstep(0.52, 0.64, n); }\n' +
       // lighting: ambient plus screen-space point lights (xy = centre, z = radius, w = intensity)
       '  vec3 lit = amb;\n' +
       '  for (int i = 0; i < ' + MAXL + '; i++) { if (i >= nL) break;\n' +
@@ -42,12 +73,16 @@ var RBPost = (function () {
       '  c *= lit;\n' +
       '  if (caustic > 0.0) { vec2 q = px / res.y * 9.0; float k = sin(q.x * 1.7 + time * 1.3 + sin(q.y * 1.3 + time)) * sin(q.y * 1.9 - time * 1.1 + sin(q.x * 0.9 - time * 0.7));\n' +
       '    c += c * caustic * smoothstep(0.55, 1.0, k); }\n' +
+      // aerial perspective: far things fade toward the haze colour (the sky keeps its own gradient)
+      '  if (world) c = mix(c, fogCol, smoothstep(fog.x, fog.y, d) * fog.z);\n' +
+      '  if (shaftK > 0.0) c += texture(sh, uv).rgb * shaftK;\n' +
       '  c += texture(bl, uv).rgb * bloomK;\n' +
       '  float l = dot(c, vec3(0.299, 0.587, 0.114));\n' +
       '  c = mix(vec3(l), c, sat);\n' +
       '  c *= mix(shadowTint, hiTint, smoothstep(0.05, 0.75, l));\n' +
       '  c = knee(c);\n' +
       '  vec2 v = (uv - 0.5) * vec2(res.x / res.y, 1.0) * 0.9; c *= 1.0 - vig * smoothstep(0.35, 1.05, length(v));\n' +
+      '  if (grain > 0.0) c += (hash(floor(px / 2.0) + fract(time * 7.0) * 61.0) - 0.5) * grain;\n' +
       '  o = vec4(c, 1.0);\n' +
       '}'
   };
@@ -66,9 +101,9 @@ var RBPost = (function () {
     for (var i = 0; i < n; i++) { var a = gl.getActiveUniform(p, i), nm = a.name.replace(/\[0\]$/, ''); u[nm] = gl.getUniformLocation(p, a.name); }
     return { p: p, u: u };
   }
-  function mkTex() {
-    var t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  function mkTex(nearest) {
+    var t = gl.createTexture(), f = nearest ? gl.NEAREST : gl.LINEAR; gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, f); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, f);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return t;
   }
@@ -78,12 +113,14 @@ var RBPost = (function () {
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
     return { f: f, t: t, w: w, h: h };
   }
+  // the blur targets follow the scene's size (full-size on the plaza, the small race buffer in races)
   function sizeTo(w, h) {
-    if (w === W && h === H) return;
-    W = w; H = h;
+    W = gl.canvas.width; H = gl.canvas.height;
+    if (w === SW && h === SH) return;
+    SW = w; SH = h;
     Object.keys(fb).forEach(function (k) { gl.deleteFramebuffer(fb[k].f); gl.deleteTexture(fb[k].t); });
     var hw = Math.max(1, w >> 1), hh = Math.max(1, h >> 1), qw = Math.max(1, w >> 2), qh = Math.max(1, h >> 2);
-    fb = { h1: mkFb(hw, hh), h2: mkFb(hw, hh), q1: mkFb(qw, qh), q2: mkFb(qw, qh), b1: mkFb(qw, qh), b2: mkFb(qw, qh) };
+    fb = { h1: mkFb(hw, hh), h2: mkFb(hw, hh), q1: mkFb(qw, qh), q2: mkFb(qw, qh), b1: mkFb(qw, qh), b2: mkFb(qw, qh), s1: mkFb(qw, qh), s2: mkFb(qw, qh) };
   }
   function pass(pr, target, binds, set) {
     gl.useProgram(pr.p);
@@ -104,7 +141,7 @@ var RBPost = (function () {
   }
 
   return {
-    MAXL: MAXL,
+    MAXL: MAXL, DMAX: DMAX,
     // Try a throwaway canvas first: once the visible canvas holds a WebGL context it can no longer fall
     // back to 2D, so a shader that fails to compile must fail there.
     init: function (canvas) { return setup(document.createElement('canvas')) && setup(canvas); },
@@ -119,16 +156,21 @@ var RBPost = (function () {
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
       gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-      tex.scene = mkTex(); tex.emit = mkTex();
+      tex.scene = mkTex(true); tex.emit = mkTex(); tex.dep = mkTex(true);
       return true;
     } catch (e) { console.warn('HD-2D post-process off:', e.message); gl = null; return false; }
   }
   // p: { lights: [{x, y, r, i, c: [r, g, b]}], amb: [r, g, b], focus: [top, bottom, ramp, strength],
-  //      bloom, thr, sat, vig, caustic, shadowTint, hiTint, time }, all positions in canvas pixels
+  //      bloom, thr, sat, vig, caustic, shadowTint, hiTint, time, scale (blur radius in scene texels),
+  //      and for races: depth (canvas, same size as the scene), dof: [nearFull, nearSharp, farSharp, farFull],
+  //      dofK: [near, far], skyK (blur of open sky), fogCol, fog: [start, end, max], cam: [x, z, fx, fz, f, camY, y0, cx] (scene pixels),
+  //      cloud, wind: [x, z], sun: [x, y] (canvas pixels) or null, shaft, shaftCol, speed, grain },
+  // positions in canvas pixels; the scene may be smaller than the canvas and is scaled up with hard pixels
   function render(scene, emit, p) {
     sizeTo(scene.width, scene.height);
-    var k = p.scale || 1; // blur radii follow the tile size, so the look holds at any pixel ratio
+    var k = p.scale || 1, hasDep = !!p.depth;
     upload(tex.scene, scene); upload(tex.emit, emit);
+    if (hasDep) upload(tex.dep, p.depth);
     // depth-of-field sources: half- and quarter-size blurs of the scene
     pass(prog.copy, fb.h1, { t: tex.scene });
     blur(fb.h1, fb.h2, 1.25 * k);
@@ -137,16 +179,28 @@ var RBPost = (function () {
     // bloom: bright parts, blurred twice at quarter size
     pass(prog.bright, fb.b1, { s: fb.h1.t, e: tex.emit }, function (u) { gl.uniform1f(u.thr, p.thr); });
     blur(fb.b1, fb.b2, 1.5 * k); blur(fb.b1, fb.b2, 3.5 * k);
+    var shaft = hasDep && p.sun && p.shaft > 0 ? p.shaft : 0;
+    if (shaft) {
+      pass(prog.shafts, fb.s1, { s: fb.h1.t, dep: tex.dep }, function (u) { gl.uniform2f(u.sun, p.sun[0] / W, 1 - p.sun[1] / H); gl.uniform3fv(u.col, p.shaftCol); });
+      blur(fb.s1, fb.s2, 1.0 * k);
+    }
     var Ls = new Float32Array(MAXL * 4), LC = new Float32Array(MAXL * 3), n = Math.min(MAXL, p.lights.length);
     for (var i = 0; i < n; i++) {
       var l = p.lights[i]; Ls.set([l.x, l.y, l.r, l.i], i * 4); LC.set(l.c, i * 3);
     }
-    pass(prog.final, null, { s: tex.scene, hb: fb.h1.t, qb: fb.q1.t, bl: fb.b1.t }, function (u) {
-      gl.uniform2f(u.res, W, H); gl.uniform1f(u.time, p.time);
+    var cam = p.cam || [0, 0, 1, 0, 1, 1, 0, 0];
+    pass(prog.final, null, { s: tex.scene, hb: fb.h1.t, qb: fb.q1.t, bl: fb.b1.t, dep: tex.dep, sh: fb.s1.t }, function (u) {
+      gl.uniform2f(u.res, W, H); gl.uniform2f(u.sres, SW, SH); gl.uniform1f(u.time, p.time);
       gl.uniform4fv(u.L, Ls); gl.uniform3fv(u.LC, LC); gl.uniform1i(u.nL, n);
       gl.uniform3fv(u.amb, p.amb); gl.uniform4fv(u.focus, p.focus);
       gl.uniform1f(u.bloomK, p.bloom); gl.uniform1f(u.sat, p.sat); gl.uniform1f(u.vig, p.vig); gl.uniform1f(u.caustic, p.caustic);
       gl.uniform3fv(u.shadowTint, p.shadowTint); gl.uniform3fv(u.hiTint, p.hiTint);
+      gl.uniform1i(u.hasDep, hasDep ? 1 : 0);
+      gl.uniform4fv(u.dof, p.dof || [0, 1, 1e4, 2e4]); gl.uniform2fv(u.dofK, p.dofK || [0, 0]); gl.uniform1f(u.skyK, p.skyK || 0);
+      gl.uniform3fv(u.fogCol, p.fogCol || [1, 1, 1]); gl.uniform3fv(u.fog, p.fog || [1e4, 2e4, 0]);
+      gl.uniform4f(u.camA, cam[0], cam[1], cam[2], cam[3]); gl.uniform4f(u.camB, cam[4], cam[5], cam[6], cam[7]);
+      gl.uniform1f(u.cloudK, hasDep ? p.cloud || 0 : 0); gl.uniform2fv(u.wind, p.wind || [0, 0]);
+      gl.uniform1f(u.shaftK, shaft); gl.uniform1f(u.speedK, p.speed || 0); gl.uniform1f(u.grain, p.grain || 0);
     });
   }
 })();
