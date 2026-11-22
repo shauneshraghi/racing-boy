@@ -27,11 +27,24 @@ var RB = (function () {
   var DRIFT_MIN_V = 5;
   var DRIFT_TIERS = [0.6, 1.3, 2.1], DRIFT_BOOST = [0.5, 1.0, 1.5]; // charge for each boost tier, and its boost × boostDur
   var DRIFT_CHARGE_WIDE = 0.5;  // charge rate with the stick fully against the drift (1 steering fully into it)
-  var DRIFT_SLIDE = 0.1, SLIDE_RISE = 6; // outward slide speed × v at full slip, and how fast the slip builds and fades
+  var DRIFT_SLIDE = 0.06, SLIDE_RISE = 6; // outward slide speed × v at full slip, and how fast the slip builds and fades
   var HOP_T = 0.22, HOP_H = 0.35; // pressing drift on the ground hops; the drift starts on landing
   var HOP_STEER = 0.2;          // turn rate × grip while hopping, so steering to pick the drift's side barely turns the car
   var DRIFT_TURN = 0.44, DRIFT_WIDE = 0.04; // drift turn rate × grip steering in, and with the stick fully against the drift
-  var STEER_RISE = 8, STEER_FALL = 16; // on/off steering (inp.ease: keys, ◀ ▶) eases toward full lock per second, back faster
+  var STEER_RISE = 12, STEER_FALL = 16; // on/off steering (inp.ease: keys, ◀ ▶) eases toward full lock per second, back faster
+  // weight: the yaw rate follows the steering with a lag of YAW_LAG s × √weight, and the direction of travel swings
+  // toward where the car points at GRIP_BITE × grip / √weight per second (AIR_BITE × that in the air), so a turn
+  // winds in, carries on a moment after letting go, and the car runs a little wide of where it points
+  var YAW_LAG = 0.12, GRIP_BITE = 6, AIR_BITE = 0.2;
+  var DRIFT_LAG = 0.4, DRIFT_BITE = 3; // the yaw lag and the bite in a drift, × the above
+  // body animation, springs in the car's frame: roll (+ = right side down) leans out of a turn at ROLL_K rad per
+  // cell/s² of sideways pull, pitch (+ = nose up) squats under throttle at PITCH_K, dip (cells) compresses on landing
+  // at DIP_K × the fall speed; BODY_W is the springs' frequency (rad/s) and BODY_Z their damping ratio
+  var ROLL_K = 0.003, ROLL_MAX = 0.12, PITCH_K = 0.008, PITCH_MAX = 0.1, DIP_K = 0.25, BODY_W = 14, BODY_Z = 0.45;
+  // the sloppy test bot eases its stick toward what it wants by DT × BOT_REACT per call (drive() calls
+  // it every 1/20 s, so 7 is a reaction lag of about 0.4 s)
+  var BOT_REACT = 7;
+  var WHEEL_RATE = 18, WHEEL_COUNTER = 0.5; // front wheels follow the steering at this rate per second; a drift counter-steers them
   var SLOW_MUL = 0.55;
   var BEE_SPEED = 21, BEE_TURN = 6, BEE_LIFE = 6;
   var GOO_LIFE = 25;
@@ -369,7 +382,8 @@ var RB = (function () {
         stats: ai ? statsFor(id) : carStats(s, id), skill: ai ? W.skill[c - 1] : 1, lane: ai ? (R() * 2 - 1) * 1.6 : 0,
         x: 0, z: 0, h: 0, v: 0, y: 0, vy: 0, air: false, s: 0, prog: 0, lap: 1, place: c + 1, done: false, finishT: 0,
         boostT: 0, slowT: 0, shieldT: 0, magnetT: 0, drift: 0, driftDir: 0, driftReady: false, slip: 0, slipDir: 0, hopT: 0, hopY: 0, trick: false, trickT: 0, fallT: 0, onRamp: -1,
-        item: null, rollT: 0, itemDelay: 0, coins: 0, inp: {}, prevDrift: false, prevItem: false, pad: -1, bumpT: 0, steerOut: 0, botSteer: 0 };
+        item: null, rollT: 0, itemDelay: 0, coins: 0, inp: {}, prevDrift: false, prevItem: false, pad: -1, bumpT: 0, steerOut: 0, botSteer: 0,
+        vh: 0, yawV: 0, roll: 0, rollV: 0, pitch: 0, pitchV: 0, dip: 0, dipV: 0, wheel: 0 };
       var slot = gridOrder[c], row = Math.floor(slot / 2), col = slot % 2;
       place(r, car, -2.5 - row * 2.6 - col * 1.3, col ? 1.5 : -1.5);
       car.prog = car.s - g.L;
@@ -381,8 +395,21 @@ var RB = (function () {
   }
   function place(r, car, s, off) {
     var p = pointAt(r.g, s, off);
-    car.x = p.x; car.z = p.z; car.h = p.h; car.s = wrapS(r.g, s); car.prog = car.s;
+    car.x = p.x; car.z = p.z; car.h = p.h; car.vh = p.h; car.yawV = 0; car.s = wrapS(r.g, s); car.prog = car.s;
     car.air = false; car.y = 0; car.vy = 0; car.onRamp = -1; car.fallT = 0; car.drift = 0; car.driftDir = 0; car.hopT = 0; car.hopY = 0;
+  }
+  // the body's springs (roll, pitch, dip) and the front wheels' steer angle, for the renderer
+  function body(car, steer, accel) {
+    function spring(x, vx, target, max) {
+      vx += (BODY_W * BODY_W * (target - x) - 2 * BODY_Z * BODY_W * vx) * DT;
+      return [clamp(x + vx * DT, -max, max), vx];
+    }
+    var grounded = !car.air, a;
+    a = spring(car.roll, car.rollV, grounded ? clamp(-ROLL_K * car.v * car.yawV, -ROLL_MAX, ROLL_MAX) : 0, ROLL_MAX); car.roll = a[0]; car.rollV = a[1];
+    a = spring(car.pitch, car.pitchV, grounded ? clamp(PITCH_K * accel, -PITCH_MAX, PITCH_MAX) : 0, PITCH_MAX); car.pitch = a[0]; car.pitchV = a[1];
+    a = spring(car.dip, car.dipV, 0, 0.15); car.dip = a[0]; car.dipV = a[1];
+    var wWant = car.driftDir ? -car.driftDir * WHEEL_COUNTER + steer * 0.25 : steer;
+    car.wheel += (wWant - car.wheel) * Math.min(1, WHEEL_RATE * DT);
   }
   // a press is latched until a fixed step uses it, so a frame too short for a step cannot drop it
   function input(r, inp) { var p = r.cars[0]; p.inp = inp || {}; if (p.inp.item) p.itemQueued = true; }
@@ -437,8 +464,10 @@ var RB = (function () {
     var inp = {}, g = r.g;
     if (style === 'sloppy') {
       // a steady weave; its stick swing shrinks with PACE so the sideways error stays the same at any pace
-      var want = angDiff(aimAhead(r, car, 2 + car.v * 0.25, 0), car.h) * 2.5 + Math.sin(r.t * 1.7) * 0.45 / PACE;
-      car.botSteer += (clamp(want, -1, 1) - car.botSteer) * Math.min(1, DT * 6);
+      // it steers on the heading the car is winding toward, as a driver anticipates the car's weight
+      var ahead = car.h + car.yawV * YAW_LAG * Math.sqrt(car.stats.weight || 1);
+      var want = angDiff(aimAhead(r, car, 2 + car.v * 0.25, 0), ahead) * 2.5 + Math.sin(r.t * 1.7) * 0.45 / PACE;
+      car.botSteer += (clamp(want, -1, 1) - car.botSteer) * Math.min(1, DT * BOT_REACT);
       inp.steer = car.botSteer;
     } else {
       var lane = 0;
@@ -506,20 +535,25 @@ var RB = (function () {
     car.slip = clamp((car.slip || 0) + (car.driftDir ? 1 : -1) * SLIDE_RISE * DT, 0, 1);
     if (car.air && driftPress && !car.trick) { car.trick = true; car.trickT = 0.45; ev(r, 'trick', car); }
     // speed
-    var top = car.ai ? aiTop(r, car) : st.speed;
+    var top = car.ai ? aiTop(r, car) : st.speed, v0 = car.v;
     var vmax = top * surf * (car.slowT > 0 ? SLOW_MUL : 1) * (car.boostT > 0 ? st.boostMul : 1) * (car.air && st.glide ? 1 + 0.04 * st.glide : 1);
     if (r.phase !== 'race' && !car.done) vmax = 0;
     var acc = st.accel * (car.boostT > 0 ? BOOST_ACC : 1);
     if (car.v < vmax) car.v = Math.min(vmax, car.v + acc * DT * (1 - 0.4 * car.v / Math.max(1, vmax)));
     else car.v = Math.max(vmax, car.v - (2.5 + (car.v - vmax) * 2) * DT);
     if (car.driftDir) car.v *= 1 - 0.12 * DT;
+    var accel = (car.v - v0) / DT;
     // turning
     var rate = st.grip * Math.min(1, car.v / 4) * (car.air ? 0.3 + 0.1 * (st.glide || 0) : car.hopT > 0 ? HOP_STEER : 1);
     // in a drift the car always turns its own way: steering in tightens it, steering against widens it
-    if (car.driftDir) car.h += car.driftDir * rate * (DRIFT_WIDE + (DRIFT_TURN - DRIFT_WIDE) * (1 + steer * car.driftDir) / 2) * DT;
-    else car.h += steer * rate * DT;
-    // move
-    car.x += Math.cos(car.h) * car.v * DT; car.z += Math.sin(car.h) * car.v * DT;
+    var yawWant = car.driftDir ? car.driftDir * rate * (DRIFT_WIDE + (DRIFT_TURN - DRIFT_WIDE) * (1 + steer * car.driftDir) / 2) : steer * rate;
+    var wt = Math.sqrt(st.weight || 1);
+    car.yawV += (yawWant - car.yawV) * Math.min(1, DT / (YAW_LAG * wt * (car.driftDir ? DRIFT_LAG : 1)));
+    car.h += car.yawV * DT;
+    // move along the direction of travel, which swings toward the heading as the tyres bite
+    var bite = GRIP_BITE * st.grip / wt * (car.air ? AIR_BITE : car.driftDir ? DRIFT_BITE : 1);
+    car.vh += angDiff(car.h, car.vh) * Math.min(1, bite * DT);
+    car.x += Math.cos(car.vh) * car.v * DT; car.z += Math.sin(car.vh) * car.v * DT;
     // a drift slides the car toward the outside of the turn (the left of a right-hand drift)
     if (car.slip > 0) { var sl = car.slipDir * DRIFT_SLIDE * car.slip * car.v * DT; car.x += Math.sin(car.h) * sl; car.z -= Math.cos(car.h) * sl; }
     q = g.query(car.x, car.z);
@@ -539,6 +573,7 @@ var RB = (function () {
       // the glider opens on the way down and slows the fall
       car.vy -= G * DT * (car.vy < 0 && st.glide ? Math.max(0.25, 1 - 0.22 * st.glide) : 1); car.y += car.vy * DT;
       if (car.y <= 0) {
+        car.dipV += DIP_K * Math.max(0, -car.vy);
         car.y = 0; car.air = false; car.vy = 0;
         if (car.trick) { car.boostT = Math.max(car.boostT, 0.9 * st.boostDur * (st.perk === 'air' ? 1.6 : 1)); ev(r, 'boost', car, { from: 'trick' }); }
         else if (st.glide) { car.boostT = Math.max(car.boostT, 0.15 * st.glide * st.boostDur); ev(r, 'boost', car, { from: 'glide' }); } // the wings fold into a little boost
@@ -559,12 +594,14 @@ var RB = (function () {
       var sg = q.d > 0 ? 1 : -1, nx = -q.tz * sg, nz = q.tx * sg;
       car.x = q.px + nx * lim; car.z = q.pz + nz * lim;
       var road = Math.atan2(q.tz, q.tx), fwd = Math.cos(car.h - road) >= 0 ? road : road + Math.PI;
-      car.h += angDiff(fwd, car.h) * 0.35;
+      car.h += angDiff(fwd, car.h) * 0.35; car.vh = car.h; car.yawV *= 0.3;
       car.v *= 0.9;
+      if (car.bumpT <= 0) car.rollV += sg * 1.2;
       if (car.bumpT <= 0) { ev(r, 'wall', car); car.bumpT = 0.4; }
       q = g.query(car.x, car.z); ds = dS(g, q.s, car.s);
     }
     car.s = q.s; car.prog += ds; car.d = q.d;
+    body(car, steer, accel);
     // boost pads
     if (!car.air) {
       var onPad = -1;

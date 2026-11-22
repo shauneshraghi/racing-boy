@@ -324,7 +324,9 @@
   $('bItem').addEventListener('pointerdown', function (e) { e.preventDefault(); audio(); itemTap = true; });
   // the scene. In a race the screen is split: a finger on the left half is a joystick that appears where it lands
   // (left and right steer), and a finger on the right half is the drift button (a press hops, held while steering it drifts, trick in the air).
-  // On the plaza a tap or click walks there and a finger drag walks that way. A mouse gets neither the stick nor the split.
+  // On the plaza a tap walks there and a finger drag brings up the stick. The stick and the split are touch only: a
+  // mouse held down walks the kid to the cell under the pointer, retargeting each time it crosses into another cell
+  // (as in Dig), and in a race the mouse uses the buttons and keys.
   var cvEl = $('cv'), down = null, stickId = null, driftIds = {};
   // race stick: no steering within STICK_DEAD px of where the thumb landed, full lock at STICK_FULL px, and a
   // curve (power STICK_CURVE) so small movements turn gently
@@ -336,7 +338,7 @@
   cvEl.addEventListener('pointerdown', function (e) {
     audio();
     try { cvEl.setPointerCapture(e.pointerId); } catch (er) {}
-    var mouse = e.pointerType === 'mouse'; // a mouse never gets the stick or the split-screen race controls; it clicks to walk
+    var mouse = e.pointerType === 'mouse';
     if (mode === 'race') {
       if (mouse) return;
       e.preventDefault();
@@ -346,10 +348,19 @@
       var st = $('stick'); st.style.left = e.clientX + 'px'; st.style.top = e.clientY + 'px'; st.classList.remove('idle'); st.classList.add('show');
       return;
     }
-    down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, moved: false, mouse: mouse };
+    down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, moved: false, mouse: mouse, cell: null };
+    if (mouse) mouseWalk(e);
   });
+  function mouseWalk(e) {
+    if (mode !== 'hub' || station) return;
+    var rc = cvEl.getBoundingClientRect(), w = R.screenToWorld(e.clientX - rc.left, e.clientY - rc.top), key = Math.floor(w.x) + ',' + Math.floor(w.z);
+    if (key === down.cell) return;
+    down.cell = key;
+    if (D.hubWalkTo(hub, w.x, w.z)) padLock = null;
+  }
   cvEl.addEventListener('pointermove', function (e) {
-    if (!down || e.pointerId !== down.id || down.mouse) return;
+    if (!down || e.pointerId !== down.id) return;
+    if (down.mouse) { mouseWalk(e); return; }
     var dx = e.clientX - down.x, dy = e.clientY - down.y;
     if (!down.moved && Math.hypot(dx, dy) > 12) { down.moved = true; var st = $('stick'); st.style.left = down.x + 'px'; st.style.top = down.y + 'px'; st.classList.add('show'); }
     if (down.moved) {
@@ -362,7 +373,7 @@
   function upHandler(e) {
     if (driftIds[e.pointerId]) { delete driftIds[e.pointerId]; showDrift(); return; }
     if (!down || e.pointerId !== down.id) return;
-    if (!down.moved && mode === 'hub' && !station) { var w = R.screenToWorld(e.clientX - cvEl.getBoundingClientRect().left, e.clientY - cvEl.getBoundingClientRect().top); if (D.hubWalkTo(hub, w.x, w.z)) padLock = null; }
+    if (!down.moved && !down.mouse && mode === 'hub' && !station) { var w = R.screenToWorld(e.clientX - cvEl.getBoundingClientRect().left, e.clientY - cvEl.getBoundingClientRect().top); if (D.hubWalkTo(hub, w.x, w.z)) padLock = null; }
     down = null; stick = null; stickId = null; stickHome();
   }
   cvEl.addEventListener('pointerup', upHandler); cvEl.addEventListener('pointercancel', upHandler);
