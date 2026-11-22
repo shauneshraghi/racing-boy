@@ -245,17 +245,42 @@ var RBSprites = (function () {
 
   // ---------- scenery ----------
   var SCN = {};
+  var OAK = [
+    '.....gggg.....', '...gggGggggg...', '..ggGgggggGgg..', '.gggggggGggggg.', 'ggGgggggggggGgg', 'gggggGgggggggg', 'GgggggggGggggG',
+    '.GGgggggggggGG.', '..GGGgggggGGG..', '....GGGGGGG....', '......tt......', '......tt......', '.....tTtt.....'
+  ];
+  var BUSH = ['..bbbb..', '.bbBbbb.', 'bbbbbBbb', 'bBbbbbbb', '.bbbbbb.'];
+  // the deep woods: a big dark tree with a sunlit crown edge, for the dense band beyond the fences
+  var ELM = [
+    '......lll.......', '....llgggll.....', '...lgggGgggl....', '..lggGggggggl...', '.lgggggggGgggg..', 'lggGggggggggGgg.', 'gggggGgggggggggg',
+    'ggGggggggGgggGgg', 'GggggGggggggggGG', '.GGggggggGgggGG.', '..GGGGggggGGGG..', '...GGGGGGGGGG...', '.......tt.......', '.......tT.......', '......tTtt......'
+  ];
   function scenery(name) {
     if (SCN[name]) return SCN[name];
     var c;
-    if (name === 'oak') c = grid([
-      '.....gggg.....', '...gggGggggg...', '..ggGgggggGgg..', '.gggggggGggggg.', 'ggGgggggggggGgg', 'gggggGgggggggg', 'GgggggggGggggG',
-      '.GGgggggggggGG.', '..GGGgggggGGG..', '....GGGGGGG....', '......tt......', '......tt......', '.....tTtt.....'
-    ], { g: '#5cb84a', G: '#3f8f3a', t: '#7a4f2a', T: '#5a3a1e' });
+    if (name === 'oak') c = grid(OAK, { g: '#58a646', G: '#3a7f3c', t: '#7a4f2a', T: '#5a3a1e' });
+    else if (name === 'oakD') c = grid(OAK, { g: '#3f7a3c', G: '#2a5534', t: '#5a3a22', T: '#3f2818' });
+    else if (name === 'elm') c = grid(ELM, { l: '#8fb84e', g: '#3a6f38', G: '#244a2e', t: '#5a3a22', T: '#3a2616' });
+    else if (name === 'bushD') c = grid(BUSH, { b: '#3f7a3c', B: '#2a5534' });
+    else if (name === 'bushF') c = grid(['..bbbb..', '.bpBbyb.', 'bbbbbBpb', 'bBbybbbb', '.bbbbbb.'], { b: '#5aa648', B: '#3a7f3c', p: '#ff8ac8', y: '#ffe066' });
+    // the canyon: saguaro cactus, a dry shrub, red boulders, a hoodoo pillar and a palm for the oases
+    else if (name === 'cactus') c = grid([
+      '....cc....', '...cCcd...', '...cCcd...', 'c..cCcd...', 'cd.cCcd..c', 'cd.cCcd.cd', 'cCccCcd.cd', '.cCcCcdccd', '..ccCcd...',
+      '...cCcd...', '...cCcd...', '...cCcd...', '...cCcd...'
+    ], { c: '#6a9a50', C: '#9cc070', d: '#40683a' });
+    else if (name === 'shrub') c = grid(['..y.y..y.', '.yYy.yYy.', 'yYyyYyyYy', '.yYyyyYy.', '..bbbbb..'], { y: '#a8924a', Y: '#d0b468', b: '#6a5030' });
+    else if (name === 'redrock') c = grid(['...rrrr...', '.rrRrrrr..', 'rRRrrrrrd.', 'rRrrrrrddd', 'rrrrrdddd.', '.dddddddd.'], { r: '#c0643c', R: '#e8946a', d: '#863c28' });
+    else if (name === 'pillar') c = grid([
+      '.RRRRR.', 'rRrrrrd', '.rrrrd.', '..rrd..', '..rRd..', '..rrd..', '.rRrdd.', '.LLLLL.', '.rrrrd.', 'rRrrrdd', 'rRrrrdd', 'LLLLLLL', 'rRrrrdd', 'rrrrddd'
+    ], { r: '#c4683e', R: '#ec9a68', d: '#8a3f2a', L: '#e8b088' });
+    else if (name === 'palm') c = grid([
+      '..ff.....ff..', '.fFff.f.ffFf.', 'ff..fffFf..ff', 'f..ffFtFff..f', '..ff..t..ff..', '.f....t....f.', '......t......', '.....tT......',
+      '.....tT......', '......tT.....', '......tT.....', '.....tT......', '.....tT......'
+    ], { f: '#3f8a4a', F: '#72b85a', t: '#9a7442', T: '#6a4a28' });
     else if (name === 'pine') c = grid([
       '....p....', '...ppp...', '..pPppp..', '...ppp...', '..ppPpp..', '.ppppppp.', '...ppp...', '..pPppPp.', '.ppppPppp', 'ppPpppppp', '....t....', '....t....'
     ], { p: '#3f9a5a', P: '#2a6f42', t: '#6a4424' });
-    else if (name === 'bush') c = grid(['..bbbb..', '.bbBbbb.', 'bbbbbBbb', 'bBbbbbbb', '.bbbbbb.'], { b: '#6ccf5a', B: '#4aa548' });
+    else if (name === 'bush') c = grid(BUSH, { b: '#62b850', B: '#43984a' });
     else if (name === 'flowers') c = grid(['.r..y.', 'rgr.yy', '.g.ygy', '..g.g.'], { r: '#ff7ac8', y: '#ffd23f', g: '#3f8f3a' }, false);
     else if (name === 'hay') c = grid(['.hhhhhh.', 'hHhhhhHh', 'hhhhhhhh', 'hHhhhhHh', 'hhhhhhhh', '.HHHHHH.'], { h: '#f2cf5c', H: '#c9a23a' });
     else if (name === 'post') c = grid(['ww', 'ww', 'wW', 'wW', 'WW'], { w: '#f4ecd6', W: '#c9bb98' });
@@ -291,6 +316,17 @@ var RBSprites = (function () {
     house2: [2.6, 2.6, 1.7, '#ffe9a8', '#c0392b', '#3f8f4a']
   };
   Object.keys(BLD).forEach(function (k) { MODELS[k] = function () { return buildingBoxes.apply(null, BLD[k]); }; });
+  // the canyon's buildings: a flat-roofed adobe house with beams and a window, and a stepped red-rock butte
+  MODELS.adobe = function () {
+    return [box(-1.4, 1.4, -1.2, 1.2, 0, 1.6, '#e0a070', '#c08058', '#d89466'), box(-1.5, 1.5, -1.3, 1.3, 1.6, 1.8, '#c88a5a', '#a86e46'),
+      box(1.4, 1.44, -0.35, 0.35, 0, 1.1, '#5a3422'), box(1.4, 1.44, 0.6, 0.95, 0.75, 1.15, '#3a5a7a'),
+      box(-1.0, -0.9, -1.45, 1.45, 1.45, 1.55, '#7a4a2a'), box(0.0, 0.1, -1.45, 1.45, 1.45, 1.55, '#7a4a2a'), box(0.9, 1.0, -1.45, 1.45, 1.45, 1.55, '#7a4a2a')];
+  };
+  MODELS.butte = function () {
+    return [box(-2.4, 2.4, -1.8, 1.8, 0, 1.3, '#b8603a', '#94482c', '#a8542f'), box(-1.9, 2.0, -1.5, 1.4, 1.3, 2.5, '#d07a4a', '#a8502f', '#bc6438'),
+      box(-1.9, 2.0, -1.5, 1.4, 2.5, 2.62, '#eab088', '#c88a64'), box(-1.3, 1.2, -1.0, 1.0, 2.62, 3.6, '#c86c40', '#9c4a2e', '#b45a36'),
+      box(-1.35, 1.25, -1.05, 1.05, 3.6, 3.75, '#f0b890', '#d09068')];
+  };
   MODELS.stand = function () { var b = []; for (var i = 0; i < 3; i++) b.push(box(-3, 3, -0.6 + i * 0.5, -0.1 + i * 0.5, 0, 0.35 + i * 0.35, i % 2 ? '#3fa8ff' : '#e5483a', '#9aa3b2')); return b; };
   MODELS.crate = function () { return crateBoxes(); };
   MODELS.mill = function () { return millBoxes(); };
