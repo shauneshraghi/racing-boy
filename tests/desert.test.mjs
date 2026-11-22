@@ -83,6 +83,7 @@ test('desert entry gate: a level-2 Pip wins a clean drive in 2-3 minutes; a stoc
     assert.ok(wins >= 3, id + ' level-2 clean wins ' + wins);
     for (const x of up) assert.ok(x.t >= 120 && x.t <= 180, id + ' took ' + x.t);
     assert.ok(mean(up) > mean(stock) + 5, id + ' upgrades should matter');
+    assert.ok(mean(stock) < 3, id + ' a stock Pip should not win easily: ' + mean(stock));
     for (const x of up.concat(stock)) assert.ok(x.maxStep < 2, id + ' progress jumped ' + x.maxStep);
   }
 });
