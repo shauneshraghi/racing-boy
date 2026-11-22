@@ -14,7 +14,7 @@ The drift's feel is numbers in the tuning block at the top of `js/logic.js` (`DR
 3. **Every starter car.** Rerun the chosen values with `--car` for `pip rumble hopper comet clover`. Low-grip fast cars (`comet`) drift wider and can miss the creek hairpin; note it rather than tune it away (it is the car's "a bit slippery" identity) unless it hits walls on most bends.
 4. **Every world.** Rerun the chosen values with `--world 2 --up 2`; the same targets apply there.
 5. **Commit the numbers, test first.** Move the drift-arc bounds in `tests/logic.test.mjs` ("a stock-car drift arc fits the world-1 bends") to the new target and watch it go red, then edit the tuning block. Run `node --test tests/*.test.mjs`: the world-1 race-time and win checks must still pass. Bump every `?v=N` in `index.html`.
-6. **Hand it to the player.** Serve (`python3 -m http.server 8766 --bind 127.0.0.1`) and give the user `http://localhost:8766/?race=meadow&dev=1&fresh=1&nosplash=1`. Feel is the user's call; ask which bend felt wrong and feed that bend's row back into step 2.
+6. **Hand it to the player.** Serve (`npm run serve`) and give the user `http://localhost:8766/?race=meadow&dev=1&fresh=1&nosplash=1`; in a cloud session, push to `main` and give the GitHub Pages link with the same query instead. Feel is the user's call; ask which bend felt wrong and feed that bend's row back into step 2.
 
 ## Reading the lab
 
