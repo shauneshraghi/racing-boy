@@ -53,7 +53,21 @@
     $('raceCtl').classList.toggle('show', m === 'race');
     $('stick').classList.toggle('idle', m === 'race'); $('stick').classList.remove('show');
     A.setMood(m === 'race' ? 'race' : 'hub', race && race.id);
+    A.setIntensity(0); A.setPaused(false);
     if (m !== 'race') A.setEngine(false, 0, false);
+  }
+  // music and sound-effect volume sliders (saved by RBAudio in localStorage), for the menu panel and the pause screen
+  function volumeRows(parent) {
+    var box = document.createElement('div'); box.style.cssText = 'display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;margin:0 0 8px;text-align:left;font-size:15px';
+    [['music', '🎵 Music'], ['sfx', '🔔 Effects']].forEach(function (k) {
+      var lab = document.createElement('label'); lab.textContent = k[1]; lab.setAttribute('for', 'vol-' + k[0]);
+      var inp = document.createElement('input'); inp.type = 'range'; inp.id = 'vol-' + k[0]; inp.min = 0; inp.max = 100; inp.step = 5; inp.value = Math.round(A.getVolume(k[0]) * 100);
+      inp.style.cssText = 'width:100%;min-height:28px;accent-color:var(--gold)';
+      inp.oninput = function () { A.setVolume(k[0], inp.value / 100); };
+      inp.onchange = function () { A.sfx(k[0] === 'sfx' ? 'click' : 'tick', 3); };
+      box.appendChild(lab); box.appendChild(inp);
+    });
+    parent.appendChild(box);
   }
 
   // ---------- plaza HUD and panels ----------
@@ -68,7 +82,7 @@
     station = st; panelKey = ''; fromMenu = false;
     $('panel').classList.toggle('show', !!st);
     $('hubHint').classList.toggle('show', mode === 'hub' && !st);
-    if (st) { A.sfx('click'); renderPanel(); }
+    if (st) { A.sfx('panel'); renderPanel(); }
     fitView();
   }
   var WIDE = window.matchMedia('(min-aspect-ratio: 1/1) and (min-width: 700px)');
@@ -159,6 +173,7 @@
       });
       var m = document.createElement('button'); m.className = 'btn'; m.style.cssText = 'width:100%;margin-bottom:8px';
       m.textContent = A.isMuted() ? '🔇 Sound off' : '🔊 Sound on'; m.onclick = function () { A.setMute(!A.isMuted()); renderPanel(); }; body.appendChild(m);
+      volumeRows(body);
       body.insertAdjacentHTML('beforeend', '<p class="note">Keys: ← → steer · ↓ or Space hop and drift, and trick in the air · ↑ or X use item · H horn · Esc pause. On a phone, put a thumb on the left half of the screen and slide it left or right to steer; press anywhere on the right half to hop, and keep holding while steering to drift; let go for a boost (blue, then orange, then pink sparks).</p>');
       var so = document.createElement('button'); so.className = 'btn'; so.style.cssText = 'font-size:14px;background:#5a2030'; so.textContent = 'Start over…';
       so.onclick = function () {
@@ -188,36 +203,41 @@
     openStation(null);
     race = D.startRace(S, id);
     results = null; raceEnd = 0; paused = false;
-    $('results').classList.remove('show'); $('pause').classList.remove('show');
+    $('results').classList.remove('show'); $('pause').classList.remove('show'); payT.forEach(clearTimeout); payT = [];
+    airMax = 0; driftTier = 0;
     setMode('race');
     R.warm(id);
     lastCount = -1;
     A.horn(S.cars[S.car].look.horn);
   }
-  var lastCount = -1;
+  var lastCount = -1, airMax = 0, driftTier = 0, stepT = 0, payT = [];
   function raceEvents(r) {
     var list = r.events.splice(0, r.events.length);
     R.events(r, list);
     list.forEach(function (e) {
       var me = e.car === 0;
-      if (e.type === 'count') { showCount(e.n); A.sfx('count'); }
+      if (e.type === 'count') { showCount(e.n); A.sfx('count', e.n); }
       else if (e.type === 'go') { showCount('GO!'); A.sfx('go'); }
       if (!me) return;
-      if (e.type === 'boost') A.sfx('boost');
+      if (e.type === 'boost') A.sfx('boost', e.from, e.tier);
       else if (e.type === 'coin') A.sfx('coin');
       else if (e.type === 'box') A.sfx('box');
-      else if (e.type === 'item') A.sfx('item');
+      else if (e.type === 'boxEmpty') A.sfx('boxEmpty');
+      else if (e.type === 'putback') A.sfx('putback');
+      else if (e.type === 'pass') A.sfx('pass');
+      else if (e.type === 'lostPlace') A.sfx('lostPlace');
+      else if (e.type === 'item') A.sfx('item', e.item);
       else if (e.type === 'hit') A.sfx('hit');
       else if (e.type === 'blocked') A.sfx('blocked');
       else if (e.type === 'wall') A.sfx('wall');
       else if (e.type === 'bump') A.sfx('bump');
       else if (e.type === 'jump') A.sfx('jump');
-      else if (e.type === 'land') A.sfx('land');
+      else if (e.type === 'land') { A.sfx('land', airMax / 2); airMax = 0; }
       else if (e.type === 'trick') A.sfx('trick');
       else if (e.type === 'hop') A.sfx('hop');
       else if (e.type === 'splash') { A.sfx('splash'); banner('Splash!'); }
       else if (e.type === 'drift') A.sfx('drift');
-      else if (e.type === 'lap') { if (e.lap === r.laps) { banner('Final lap!'); A.sfx('finalLap'); } else { banner('Lap ' + e.lap); A.sfx('lap'); } }
+      else if (e.type === 'lap') { if (e.lap === r.laps) { banner('Final lap!'); A.sfx('finalLap'); A.setIntensity(1); } else { banner('Lap ' + e.lap); A.sfx('lap'); } }
       else if (e.type === 'raceOver') { banner(e.place === 1 ? '🏆 You win!' : 'Finished ' + ord(e.place)); A.sfx(e.place === 1 ? 'win' : 'finish'); raceEnd = 2.6; }
     });
   }
@@ -238,6 +258,7 @@
   function showResults() {
     var r = race, res = D.finishRace(S, r);
     results = res; save();
+    A.setMood('results', res.place === 1); A.setEngine(false, 0, false);
     var rows = r.order.map(function (c) { return '<tr class="' + (c.i === 0 ? 'me' : '') + '"><td>' + ord(c.place) + '</td><td>' + c.name + '</td><td>' + D.CARS[c.carId].name + '</td><td>' + fmtT(c.finishT) + '</td></tr>'; }).join('');
     var parts = res.parts.map(function (n, i) { return n ? D.PARTS[i].icon + ' +' + n : ''; }).filter(Boolean).join(' ');
     var el = $('results');
@@ -250,9 +271,13 @@
     el.classList.add('show');
     $('rHome').onclick = toGarage;
     if (res.unlocked.length) A.sfx('unlock');
+    payT.forEach(clearTimeout); payT = [];
+    var ticks = Math.min(10, Math.ceil(res.coins / 25)); // the payout counts up, then chimes
+    for (var i = 0; i < ticks; i++) (function (n) { payT.push(setTimeout(function () { A.sfx('tick', n); }, 500 + n * 70)); })(i);
+    payT.push(setTimeout(function () { A.sfx('payout'); }, 550 + ticks * 70));
   }
   function goHome(at) {
-    $('results').classList.remove('show'); $('pause').classList.remove('show');
+    $('results').classList.remove('show'); $('pause').classList.remove('show'); payT.forEach(clearTimeout); payT = [];
     race = null; S.race = null; paused = false; hub = D.newHub(at); setMode('hub'); updateHubHud();
   }
   // every race ends in the garage: the kid stands on its pad with the panel open
@@ -261,7 +286,8 @@
     if (mode !== 'race' || results) return;
     paused = on; $('pause').classList.toggle('show', on);
     $('bMute2').textContent = A.isMuted() ? '🔇 Sound off' : '🔊 Sound on';
-    if (on) A.setEngine(false, 0, false);
+    A.setPaused(on);
+    if (on) { A.setEngine(false, 0, false); var pm = $('pause'); if (!pm.querySelector('#vol-music')) volumeRows(pm); }
   }
   $('bPause').onclick = function () { setPause(!paused); };
   $('bResume').onclick = function () { setPause(false); };
@@ -369,12 +395,17 @@
         D.stepRace(r, dt);
         raceEvents(r);
         var p = r.cars[0];
-        A.setEngine(true, p.v, p.boostT > 0);
+        A.setEngine(r.phase !== 'done', p.v, p.boostT > 0);
+        if (p.air) airMax = Math.max(airMax, p.y);
+        var tier = 0; if (p.driftDir) while (tier < D.DRIFT_TIERS.length && p.drift >= D.DRIFT_TIERS[tier]) tier++;
+        if (tier > driftTier) A.sfx('tier', tier);
+        driftTier = tier;
         if (raceEnd > 0) { raceEnd -= dt; if (raceEnd <= 0 && !results) showResults(); }
       }
       if (draw) { R.drawRace(r, paused ? 0 : dt); hudT -= dt; if (hudT <= 0) { updateRaceHud(r); hudT = 0.08; } }
     } else {
       D.hubStep(hub, dt, hubDir());
+      if (hub.moving && !station) { stepT -= dt; if (stepT <= 0) { A.sfx('step'); stepT = 0.25; } } else stepT = 0;
       var st = D.hubStation(hub);
       if (padLock && st !== padLock) padLock = null;
       if (st && st !== padLock && station !== st && station !== 'menu' && !fromMenu) openStation(st);
