@@ -294,39 +294,65 @@ var RBSprites = (function () {
   }
   function mirror(c) { var m = mkCanvas(c.width, c.height), x = m.getContext('2d'); x.translate(c.width, 0); x.scale(-1, 1); x.drawImage(c, 0, 0); return m; }
 
-  // the kid driver: cap, jacket, jeans; four facings with a two-step walk
-  var KID_PAL = { h: '#e5483a', H: '#a8322a', s: SKIN, S: '#d9a27c', e: '#2b2233', j: '#3fa8ff', J: '#2a6fb0', p: '#3a4a8a', P: '#2a3566', b: '#5a3a22', w: '#ffffff', y: '#ffd23f' };
+  // the kid driver: a racing cap with goggles on the band, chestnut hair, a scarf, a short jacket, trousers and boots.
+  // Three tones a material (light from the upper left, then mid, then shade); a big head as in HD-2D sprites.
+  // Front, back and side views (the side is mirrored for the other way), with the legs in three frames.
+  var KID_PAL = {
+    k: '#c25a44', c: '#9a3c2e', C: '#64241e',                 // cap
+    g: '#4a3a30', l: '#7fb0b4', L: '#d8f0ec',                 // goggles
+    i: '#a8683a', h: '#7a4626', H: '#4c2a18',                 // hair
+    s: '#f0c49c', S: '#c88e6a', e: '#2a1e24', E: '#f4ecdc', m: '#a85a4a', // skin, eyes, mouth
+    y: '#e8b65a', r: '#c88a34', R: '#8a5a22',                 // scarf
+    q: '#5e8496', j: '#3c5a6e', J: '#25394a',                 // jacket
+    w: '#e8dcc0', o: '#7a5236',                               // shirt, gloves
+    p: '#6a5240', P: '#463428', b: '#3a2a22', B: '#5c4434'    // trousers, boots
+  };
   var KID = {
     front: [
-      '..hhhhhh..', '.hhhhhhhh.', 'HHHHHHHHHH', '..ssssss..', '..sesses..', '..ssssss..', '...sSSs...',
-      '.jjjyyjjj.', 'jjjjyyjjjj', 'sjjjjjjjjs', 's.jjjjjj.s', '..pppppp..', '..pp..pp..', '..pp..pp..', '..bb..bb..'
+      '.....kkcccC.....', '...kkcccccccC...', '..kcccccccccCC..', '..cglLgcglLgcC..', '..cgllgcgllgCC..', '.CCCCCCCCCCCCCC.',
+      '..HihhihhhihhH..', '..ihshhsshhshH..', '..hsssssssssSH..', '..hsEesssEesSH..', '..hseesssseeSH..', '...sssssmssSS...',
+      '....SssssssS....', '...yyyyrrrrrR...', '..qyyrrrrrrRRJ..',
+      '.qjJqjjrRwjjjJjJ', '.qjJqjjyRwwjjJjJ', '.qjJqjjjRwwjjJjJ', '.qjJqjjjjwwjjJjJ', '.ooJqjjjjjjjjJoo', '.ooJPPPPPPPPPJoo'
     ],
     back: [
-      '..hhhhhh..', '.hhhhhhhh.', '.hhhhhhhh.', '..bbbbbb..', '..bbbbbb..', '..bbbbbb..', '...ssss...',
-      '.jjjjjjjj.', 'jjjjJJjjjj', 'sjjjjjjjjs', 's.jjjjjj.s', '..pppppp..', '..pp..pp..', '..pp..pp..', '..bb..bb..'
+      '......kccc......', '....kkcccccC....', '..kcccccccccCC..', '..cccccccccccC..', '..ggggggggggggg.', '..kcccccccccCC..',
+      '..ihhihhhihhhH..', '..ihhihhhihhHH..', '..hihhihhhihhH..', '..ihhihhhhihHH..', '..HhhhhhHhhhHH..', '...HhhHhhhHH....',
+      '....SsssssS.....', '...yyyyrrrrrR...', '..qjyrrrrrrRJJ..',
+      '.qjJqjjrRjjjjJjJ', '.qjJqjjrRjjjjJjJ', '.qjJqjjjRjjjjJjJ', '.qjJqjjjjjjjjJjJ', '.ooJqjjjjjjjjJoo', '.ooJPPPPPPPPPJoo'
     ],
     side: [
-      '...hhhhh..', '..hhhhhhh.', '..hhhhhhHHH', '...bssss..', '...bsses..', '...ssssss.', '....sSs...',
-      '...jjjjj..', '..jjjjjjj.', '..jjjsjj..', '...jjsjj..', '...ppppp..', '...pp.pp..', '...pp.pp..', '...bb.bb..'
+      '.....kkcccc.....', '...kkcccccccC...', '..kcccccccccCC..', '..cccccgllgCCC..', '..cccccgLlgCCCCC', '..HCCCCCCCCC....',
+      '..ihhhhssssss...', '..hihhsssEes....', '..ihhhssseess...', '..hhihsssssss...', '..Hhhhssssms....', '...HhhSsssS.....',
+      '....SSssS.......', '....yyrrrR......', '..yRyqjjjjJ.....',
+      '.yR.qjjjjjJ.....', '.R..qjqqjJJ.....', '....qjqjjJJ.....', '....qjqjjJJ.....', '....qjoojJJ.....', '....PPooPPP.....'
     ]
   };
+  // legs: standing, then the two steps of the walk
+  var KID_LEGS = {
+    front: [
+      ['....pppppppPP...', '....pppPP.pPP...', '....pppP..ppP...', '....pppP..ppP...', '...BbbbB.BbbbB..', '...bbbbb.bbbbb..'],
+      ['....pppppppPP...', '....pppPP.pPP...', '....pppP..ppP...', '...BbbbB..ppP...', '...bbbbb.BbbbB..', '.........bbbbb..'],
+      ['....pppppppPP...', '....pppPP.pPP...', '....pppP..ppP...', '....pppP.BbbbB..', '...BbbbB.bbbbb..', '...bbbbb........']
+    ],
+    side: [
+      ['....pppppP......', '....pppPPP......', '....pppPP.......', '....pppPP.......', '....BbbbbB......', '....bbbbbbb.....'],
+      ['....pppppP......', '...pppP.pPP.....', '..ppP....pPP....', '..pP......pP....', '.BbbB.....BbbB..', '.bbb......bbbbb.'],
+      ['....pppppP......', '....ppPpPP......', '....pPP.pP......', '...pP...pP......', '..BbbB.BbbbB....', '..bbb..bbbbbb...']
+    ]
+  };
+  KID_LEGS.back = KID_LEGS.front;
   var kidCache = {};
-  function legsShift(rows, phase) {
-    if (!phase) return rows;
-    var out = rows.slice(), n = rows.length;
-    // swap one leg up for the walk frame
-    out[n - 1] = phase > 0 ? rows[n - 1].replace(/bb(\.+)bb/, 'bb$1..') : rows[n - 1].replace(/bb(\.+)bb/, '..$1bb');
-    out[n - 2] = phase > 0 ? rows[n - 2] : rows[n - 2];
-    return out;
-  }
-  // facing in world radians; screen direction decides the sprite
+  // facing in world radians; screen direction decides the view
   function kid(face, walk, moving) {
     var sx = Math.cos(face) - Math.sin(face), sy = Math.cos(face) + Math.sin(face); // screen-space direction
     var view = Math.abs(sx) > Math.abs(sy) * 1.2 ? 'side' : sy > 0 ? 'front' : 'back';
     var flip = view === 'side' && sx < 0;
-    var phase = moving ? (Math.floor(walk * 3) % 2 ? 1 : -1) : 0;
+    var phase = moving ? (Math.floor(walk * 3) % 2 ? 1 : 2) : 0;
     var key = view + flip + phase;
-    if (!kidCache[key]) { var c = grid(legsShift(KID[view], phase), KID_PAL); kidCache[key] = flip ? mirror(c) : c; }
+    if (!kidCache[key]) {
+      var c = grid(KID[view].concat(KID_LEGS[view][phase]), KID_PAL, 0.18); c.ay = c.height - 1;
+      kidCache[key] = flip ? mirror(c) : c; kidCache[key].ay = c.ay;
+    }
     return kidCache[key];
   }
 

@@ -908,7 +908,7 @@ var RBRender = (function () {
     });
     // the kid, in a warm pool of light
     if (post) { var kp = P(h.x, 0, h.z); light(kp[0], kp[1], hw * 9, 0.4, '#ffcf8a'); }
-    items.push({ d: h.x + h.z + 0.1, f: function () { shadow(h.x, h.z, 0.35, 0.3); sprite(S.kid(h.face, h.walk, h.moving), h.x, 0, h.z, 1.4); } });
+    items.push({ d: h.x + h.z + 0.1, f: function () { shadow(h.x, h.z, 0.35, 0.3); sprite(S.kid(h.face, h.walk, h.moving), h.x, 0, h.z, 0.95); } });
     parts.forEach(function (pt) { items.push({ d: pt.x + pt.z + 0.3, f: function () { drawPart(pt); } }); });
     // pollen motes drifting in the light round the kid
     while (post && hubMotes.length < 36) hubMotes.push({ x: h.x + (Math.random() - 0.5) * 18, z: h.z + (Math.random() - 0.5) * 18, y: 0.3 + Math.random() * 2.5, ph: Math.random() * 6.3 });
