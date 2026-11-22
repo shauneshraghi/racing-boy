@@ -28,7 +28,8 @@ var RB = (function () {
   var DRIFT_CHARGE_WIDE = 0.5;  // charge rate with the stick fully against the drift (1 steering fully into it)
   var DRIFT_SLIDE = 0.1, SLIDE_RISE = 6; // outward slide speed × v at full slip, and how fast the slip builds and fades
   var HOP_T = 0.22, HOP_H = 0.35; // pressing drift on the ground hops; the drift starts on landing
-  var DRIFT_TURN = 1.1, DRIFT_WIDE = 0.35; // drift turn rate × grip steering in, and with the stick fully against the drift
+  var HOP_STEER = 0.2;          // turn rate × grip while hopping, so steering to pick the drift's side barely turns the car
+  var DRIFT_TURN = 0.45, DRIFT_WIDE = 0.06; // drift turn rate × grip steering in, and with the stick fully against the drift
   var STEER_RISE = 8, STEER_FALL = 16; // on/off steering (inp.ease: keys, ◀ ▶) eases toward full lock per second, back faster
   var SLOW_MUL = 0.55;
   var BEE_SPEED = 17, BEE_TURN = 6, BEE_LIFE = 6;
@@ -484,7 +485,7 @@ var RB = (function () {
     else car.v = Math.max(vmax, car.v - (2.5 + (car.v - vmax) * 2) * DT);
     if (car.driftDir) car.v *= 1 - 0.12 * DT;
     // turning
-    var rate = st.grip * Math.min(1, car.v / 4) * (car.air ? 0.3 + 0.1 * (st.glide || 0) : 1);
+    var rate = st.grip * Math.min(1, car.v / 4) * (car.air ? 0.3 + 0.1 * (st.glide || 0) : car.hopT > 0 ? HOP_STEER : 1);
     // in a drift the car always turns its own way: steering in tightens it, steering against widens it
     if (car.driftDir) car.h += car.driftDir * rate * (DRIFT_WIDE + (DRIFT_TURN - DRIFT_WIDE) * (1 + steer * car.driftDir) / 2) * DT;
     else car.h += steer * rate * DT;
