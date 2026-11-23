@@ -682,3 +682,72 @@ test('small stick moves turn gently, full lock keeps the full turn', () => {
   assert.ok(yawAt(0.6) < 0.45, 'yaw at 0.6 stick ' + yawAt(0.6));
   assert.ok(yawAt(1) > 0.9, 'yaw at full lock ' + yawAt(1));
 });
+
+// ---------- elevation ----------
+// a long oval with a steep short climb onto a plateau whose far edge drops away (a crest), then a long ramp down
+R.TRACKS.hilltest = {
+  name: 'Hill Test', world: 0, laps: 3, hw: 3.6, scale: 1,
+  pts: [[20, 20], [140, 20], [200, 60], [140, 100], [20, 100], [-40, 60]],
+  elev: [[0, 0], [0.06, 0], [0.12, 4], [0.2, 4], [0.215, 0], [0.5, 0], [0.75, 3], [0.95, 0]],
+  pads: [], ramps: [], boxes: [], coins: []
+};
+function hillCar() {
+  const s = R.newState(3), r = R.startRace(s, 'hilltest');
+  r.phase = 'race'; r.cars.length = 1;
+  const p = r.cars[0]; R._place(r, p, 0, 0); p.prog = 0; p.v = p.stats.speed;
+  return { r, p, g: r.g };
+}
+
+test('elevation: the ground follows the keys, flat tracks stay at 0', () => {
+  const g = R.track('hilltest');
+  assert.ok(Math.abs(R.groundAt(g, 0.16 * g.L) - 4) < 1e-6, 'plateau ' + R.groundAt(g, 0.16 * g.L));
+  assert.ok(Math.abs(R.groundAt(g, 0.4 * g.L)) < 1e-6);
+  const mid = R.groundAt(g, 0.85 * g.L);
+  assert.ok(mid > 0.5 && mid < 3, 'half way down ' + mid);
+  const m = R.track('meadow');
+  for (let s = 0; s < m.L; s += 7) assert.equal(R.groundAt(m, s), 0);
+});
+
+test('elevation: a car climbs with the road, flies off a sharp crest at speed and lands', () => {
+  const { r, p, g } = hillCar();
+  let maxGap = 0, flew = false, landed = false, jumped = false;
+  for (let i = 0; i < 60 * 14; i++) {
+    R.input(r, { aim: R.headingAt(g, p.s + 4) }); R.stepRace(r, 1 / 60);
+    const u = p.s / g.L;
+    if (u > 0.07 && u < 0.11) maxGap = Math.max(maxGap, Math.abs(p.y));
+    if (p.air && u > 0.19 && u < 0.3) flew = true;
+    if (flew && !p.air) landed = true;
+    if (r.events.some(e => e.type === 'jump' && e.car === 0)) jumped = true;
+    r.events.length = 0;
+    assert.ok(Math.abs(p.gy - R.groundAt(g, p.s)) < 1e-6, 'gy is the ground under the car');
+  }
+  assert.ok(maxGap < 0.05, 'stays on the road going up, gap ' + maxGap);
+  assert.ok(flew && landed && jumped, 'flew ' + flew + ' landed ' + landed + ' jump event ' + jumped);
+});
+
+test('elevation: a gentle slope never launches the car, and climbing is slower than descending', () => {
+  const { r, p, g } = hillCar();
+  R._place(r, p, 0.5 * g.L, 0); p.v = p.stats.speed * 1.4;
+  let up = 0, nu = 0, down = 0, nd = 0;
+  for (let i = 0; i < 60 * 16; i++) {
+    R.input(r, { aim: R.headingAt(g, p.s + 4) }); R.stepRace(r, 1 / 60);
+    const u = p.s / g.L;
+    assert.ok(!p.air || u < 0.5 || u > 0.97, 'airborne on a gentle slope at u ' + u);
+    if (u > 0.62 && u < 0.7) { up += p.v; nu++; }
+    if (u > 0.8 && u < 0.88) { down += p.v; nd++; }
+  }
+  assert.ok(nu && nd, 'reached both slopes');
+  assert.ok(down / nd > up / nu + 0.3, 'up ' + (up / nu) + ' down ' + (down / nd));
+});
+
+test('elevation: a trick off a crest boosts on landing', () => {
+  const { r, p, g } = hillCar();
+  let boosted = false, pressed = false;
+  for (let i = 0; i < 60 * 14 && !boosted; i++) {
+    const drift = p.air && !pressed; if (drift) pressed = true;
+    R.input(r, { aim: R.headingAt(g, p.s + 4), drift }); R.stepRace(r, 1 / 60);
+    if (r.events.some(e => e.type === 'boost' && e.from === 'trick')) boosted = true;
+    r.events.length = 0;
+  }
+  assert.ok(boosted);
+});
