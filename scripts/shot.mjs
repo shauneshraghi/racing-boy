@@ -63,6 +63,8 @@ try {
   page.on('pageerror', (e) => { threw = true; console.error('pageerror:', e.message); });
   page.on('console', (m) => { if (m.type() === 'error') console.error('console:', m.text()); });
   page.setDefaultTimeout(timeout * 1000);
+  // web fonts can hang a load on a locked-down network; the fallback font is fine for a check
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (rt) => rt.abort());
   await page.goto(`http://127.0.0.1:${port}/?${query}`, { waitUntil: 'load' });
   const at = opt('--at', ''), look = opt('--look', ''), cam = opt('--cam', '');
   if (at) await page.evaluate((a) => { const G = window.__game, r = G.race, [u, off] = a.split(',').map(Number); G.D._place(r, r.cars[0], u * r.g.L, off || 0); r.phase = 'race'; r.cd = 0; }, at);
