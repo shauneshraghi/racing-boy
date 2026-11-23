@@ -329,8 +329,8 @@
   // (as in Dig), and in a race the mouse uses the buttons and keys.
   var cvEl = $('cv'), down = null, stickId = null, driftIds = {};
   // race stick: no steering within STICK_DEAD px of where the thumb landed, full lock at STICK_FULL px, and a
-  // curve (power STICK_CURVE) so small movements turn gently
-  var STICK_DEAD = 18, STICK_FULL = 56, STICK_CURVE = 1.6;
+  // curve (power STICK_CURVE) on top of the logic's own steering curve (STEER_LIN), so small movements turn gently
+  var STICK_DEAD = 10, STICK_FULL = 80, STICK_CURVE = 1;
   function stickSteer(dx) { var a = Math.min(1, Math.max(0, (Math.abs(dx) - STICK_DEAD) / (STICK_FULL - STICK_DEAD))); return (dx < 0 ? -1 : 1) * Math.pow(a, STICK_CURVE); }
   function driftHeld() { for (var k in driftIds) return true; return false; }
   function showDrift() { $('bDrift').classList.toggle('held', held.drift || driftHeld()); }
@@ -364,7 +364,7 @@
     var dx = e.clientX - down.x, dy = e.clientY - down.y;
     if (!down.moved && Math.hypot(dx, dy) > 12) { down.moved = true; var st = $('stick'); st.style.left = down.x + 'px'; st.style.top = down.y + 'px'; st.classList.add('show'); }
     if (down.moved) {
-      if (mode === 'race') { var kx = Math.max(-50, Math.min(50, dx)); $('knob').style.transform = 'translate(' + kx + 'px,0)'; stick = Math.abs(dx) > STICK_DEAD ? { dx: dx, dy: 0 } : null; return; }
+      if (mode === 'race') { var kx = Math.max(-STICK_FULL, Math.min(STICK_FULL, dx)) * 50 / STICK_FULL; $('knob').style.transform = 'translate(' + kx + 'px,0)'; stick = Math.abs(dx) > STICK_DEAD ? { dx: dx, dy: 0 } : null; return; }
       var l = Math.hypot(dx, dy), m = Math.min(l, 50), kx2 = l ? dx / l * m : 0, ky = l ? dy / l * m : 0;
       $('knob').style.transform = 'translate(' + kx2 + 'px,' + ky + 'px)';
       stick = l > 14 ? { dx: dx, dy: dy } : null;

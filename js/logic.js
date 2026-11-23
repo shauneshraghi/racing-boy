@@ -19,6 +19,9 @@ var RB = (function () {
   var GRASS = 0.58;             // speed factor on rough grass (Tires raise it)
   var G = 26;                   // gravity in the air, cells/s²
   var RAMP_LEN = 2.5, RAMP_H = 0.9;
+  // hills: a track's elev keys ([u, height in cells]) are joined by smooth S-curves; climbing slows the car by
+  // SLOPE_K × the slope, and where the road drops away faster than gravity (a crest at speed) the car flies
+  var SLOPE_K = 0.6;
   var PAD_LEN = 2.4, PAD_W = 2.4;
   var BOX_RESPAWN = 10, BOX_R = 1.1, ROLL_T = 0.9;
   var COIN_R = 0.9, MAGNET_R = 5, COIN_RESPAWN = 8;
@@ -31,7 +34,10 @@ var RB = (function () {
   var HOP_T = 0.22, HOP_H = 0.35; // pressing drift on the ground hops; the drift starts on landing
   var HOP_STEER = 0.2;          // turn rate × grip while hopping, so steering to pick the drift's side barely turns the car
   var DRIFT_TURN = 0.44, DRIFT_WIDE = 0.04; // drift turn rate × grip steering in, and with the stick fully against the drift
-  var STEER_RISE = 12, STEER_FALL = 16; // on/off steering (inp.ease: keys, ◀ ▶) eases toward full lock per second, back faster
+  var STEER_RISE = 3.5, STEER_FALL = 16, DRIFT_RISE = 12; // on/off steering (inp.ease: keys, ◀ ▶) eases toward full lock per second (a tap is a nudge; DRIFT_RISE while drifting, where keys only set how tight), back faster
+  // outside a drift the player's steer goes through a curve, STEER_LIN × s + (1 − STEER_LIN) × s³, so small stick
+  // moves and key taps make small corrections while full lock keeps the authority hairpins need (aim is not curved)
+  var STEER_LIN = 0.5;
   // weight: the yaw rate follows the steering with a lag of YAW_LAG s × √weight, and the direction of travel swings
   // toward where the car points at GRIP_BITE × grip / √weight per second (AIR_BITE × that in the air), so a turn
   // winds in, carries on a moment after letting go, and the car runs a little wide of where it points
@@ -46,6 +52,15 @@ var RB = (function () {
   var BOT_REACT = 7;
   var WHEEL_RATE = 18, WHEEL_COUNTER = 0.5; // front wheels follow the steering at this rate per second; a drift counter-steers them
   var SLOW_MUL = 0.55;
+  // hazards cross the road and back (amplitude hw + HAZ_OVER, a sine of period s); r is the hit radius, h the height a
+  // car must clear, gap the spacing of a flock (n of them), bounce how high it hops; a hit slows a little (HAZ_SLOW s)
+  var HAZ = {
+    sheep: { r: 0.65, h: 1.0, period: 9, gap: 2.6 },
+    bale: { r: 0.85, h: 1.3, period: 5, gap: 4 },
+    tumble: { r: 0.6, h: 0.9, period: 4, gap: 5, bounce: 0.9 },
+    boulder: { r: 1.0, h: 1.6, period: 7, gap: 5 }
+  };
+  var HAZ_OVER = 1.2, HAZ_SLOW = 0.8, HAZ_COOL = 1;
   var BEE_SPEED = 21, BEE_TURN = 6, BEE_LIFE = 6;
   var GOO_LIFE = 25;
   var COUNTDOWN = 3;
@@ -184,55 +199,82 @@ var RB = (function () {
   // ---------- worlds and tracks ----------
   // Control points of the closed centreline, in cells; features are placed by fraction u of the lap and a
   // lateral offset in cells (+ is the driver's right).
+  // Control points of the closed centreline, in cells; features are placed by fraction u of the lap and a
+  // lateral offset in cells (+ is the driver's right). elev keys are [u, ground height in cells]; a short steep drop
+  // after a rise is a crest the car flies off, a run of short humps is a set of whoops (a pad before them means big
+  // air). Jump gaps sit on level ground. hazards: { u, kind (HAZ), n (a flock), period, phase }.
   var TRACKS = {
+    // the intro: a long start straight, a climb up Sheep Hill (a flock wanders across the top) and a hop off its
+    // crest, a ramp in the S-bends and home along the woods
     meadow: {
-      name: 'Meadow Loop', world: 0, laps: 3, hw: 3.6, scale: 1.47,
-      pts: [[20, 20], [60, 14], [100, 20], [114, 40], [100, 60], [76, 60], [62, 72], [68, 92], [50, 106], [24, 100], [12, 76], [14, 46]],
-      pads: [{ u: 0.06, off: 0 }, { u: 0.33, off: -1.5 }, { u: 0.62, off: 1.5 }, { u: 0.86, off: 0 }],
-      ramps: [{ u: 0.48, gap: 0 }],
-      boxes: [0.2, 0.7],
-      coins: [{ u: 0.12, off: 1.6, n: 6 }, { u: 0.4, off: -1.6, n: 6 }, { u: 0.55, off: 0, n: 5 }, { u: 0.78, off: -1.2, n: 6 }, { u: 0.93, off: 1.4, n: 5 }]
+      name: 'Meadow Loop', world: 0, laps: 3, hw: 3.6, scale: 1.1,
+      pts: [[30, 30], [80, 22], [130, 26], [162, 46], [166, 80], [146, 104], [112, 108], [92, 128], [66, 140], [38, 128], [44, 100], [22, 78], [14, 52]],
+      elev: [[0, 0], [0.2, 0], [0.33, 3], [0.42, 3], [0.4325, 1], [0.55, 0]],
+      hazards: [{ u: 0.345, kind: 'sheep', n: 3 }],
+      pads: [{ u: 0.05, off: 0 }, { u: 0.4, off: 0 }, { u: 0.6, off: 1.5 }, { u: 0.86, off: 0 }],
+      ramps: [{ u: 0.64, gap: 0 }],
+      boxes: [0.25, 0.72],
+      coins: [{ u: 0.12, off: 1.6, n: 6 }, { u: 0.29, off: -1.6, n: 6 }, { u: 0.47, off: 0, n: 5 }, { u: 0.78, off: -1.2, n: 6 }, { u: 0.93, off: 1.4, n: 5 }]
     },
+    // downhill to the creek jump, a climbing hairpin up to the farm, hay bales rolling across the farm lane, down
+    // through the chicane and a pad into the whoops
     creek: {
-      name: 'Creek Jump', world: 0, laps: 3, hw: 3.5, scale: 1.45,
-      pts: [[16, 30], [40, 14], [74, 16], [96, 28], [118, 20], [136, 36], [128, 62], [100, 70], [82, 90], [56, 96], [36, 80], [40, 58], [20, 52]],
-      pads: [{ u: 0.1, off: 0 }, { u: 0.36, off: 1.4 }, { u: 0.58, off: 0 }, { u: 0.8, off: -1.4 }],
-      ramps: [{ u: 0.24, gap: 4 }, { u: 0.68, gap: 0 }],
-      boxes: [0.15, 0.5],
-      coins: [{ u: 0.05, off: -1.5, n: 6 }, { u: 0.3, off: 0, n: 5 }, { u: 0.45, off: 1.5, n: 6 }, { u: 0.74, off: 0, n: 5 }, { u: 0.9, off: 1.5, n: 6 }]
+      name: 'Creek Jump', world: 0, laps: 3, hw: 3.5, scale: 1,
+      pts: [[30, 40], [70, 24], [115, 22], [160, 30], [196, 24], [220, 42], [204, 62], [182, 58], [162, 70], [166, 98], [140, 118], [108, 110], [86, 126], [58, 120], [44, 96], [22, 76]],
+      elev: [[0, 2], [0.06, 2], [0.19, 0], [0.33, 0], [0.48, 3.5], [0.62, 3.5], [0.72, 1], [0.79, 1], [0.8, 2], [0.81, 1], [0.82, 2], [0.83, 1], [0.84, 2], [0.85, 1], [0.95, 2]],
+      hazards: [{ u: 0.54, kind: 'bale', n: 2 }],
+      pads: [{ u: 0.1, off: 0 }, { u: 0.36, off: 1.4 }, { u: 0.58, off: -1.4 }, { u: 0.775, off: 0 }],
+      ramps: [{ u: 0.235, gap: 4 }],
+      boxes: [0.15, 0.66],
+      coins: [{ u: 0.05, off: -1.5, n: 6 }, { u: 0.3, off: 0, n: 5 }, { u: 0.45, off: 1.5, n: 6 }, { u: 0.7, off: 0, n: 5 }, { u: 0.9, off: 1.5, n: 6 }]
     },
+    // up Windmill Hill to a ramp off the summit, down past the flock, the creek jump in the valley, the switchback
+    // climb with bales rolling down it and a hop off the last crest
     windmill: {
-      name: 'Windmill Hills', world: 0, laps: 2, hw: 3.6, scale: 1.47,
-      pts: [[20, 24], [56, 12], [96, 16], [130, 12], [156, 30], [150, 58], [120, 64], [104, 84], [128, 104], [118, 128], [84, 132], [64, 112], [42, 120], [18, 106], [26, 80], [12, 56]],
-      pads: [{ u: 0.05, off: 0 }, { u: 0.22, off: -1.5 }, { u: 0.4, off: 1.5 }, { u: 0.57, off: 0 }, { u: 0.75, off: -1.5 }, { u: 0.9, off: 1.4 }],
-      ramps: [{ u: 0.31, gap: 0 }, { u: 0.64, gap: 4.25 }],
+      name: 'Windmill Hills', world: 0, laps: 2, hw: 3.6, scale: 1,
+      pts: [[30, 40], [80, 24], [140, 22], [196, 30], [226, 56], [210, 82], [176, 80], [160, 100], [188, 122], [214, 146], [196, 178], [150, 186], [118, 166], [96, 190], [60, 196], [30, 176], [40, 148], [64, 130], [46, 104], [18, 78]],
+      elev: [[0, 0], [0.1, 0], [0.26, 5], [0.33, 5], [0.45, 1.5], [0.6, 0], [0.72, 0], [0.85, 3], [0.9, 3], [0.9125, 1], [0.98, 0]],
+      hazards: [{ u: 0.53, kind: 'sheep', n: 4 }, { u: 0.79, kind: 'bale', period: 6 }],
+      pads: [{ u: 0.05, off: 0 }, { u: 0.2, off: -1.5 }, { u: 0.3, off: 0 }, { u: 0.57, off: 0 }, { u: 0.7, off: -1.5 }, { u: 0.88, off: 0 }],
+      ramps: [{ u: 0.315, gap: 0 }, { u: 0.65, gap: 4.25 }],
       boxes: [0.14, 0.56],
-      coins: [{ u: 0.1, off: 1.5, n: 6 }, { u: 0.27, off: 0, n: 6 }, { u: 0.45, off: -1.5, n: 6 }, { u: 0.6, off: 1.4, n: 5 }, { u: 0.7, off: 0, n: 6 }, { u: 0.86, off: -1.5, n: 6 }, { u: 0.96, off: 0, n: 5 }]
+      coins: [{ u: 0.08, off: 1.5, n: 6 }, { u: 0.24, off: 0, n: 6 }, { u: 0.4, off: -1.5, n: 6 }, { u: 0.53, off: 1.4, n: 5 }, { u: 0.75, off: 0, n: 6 }, { u: 0.86, off: -1.5, n: 6 }, { u: 0.95, off: 0, n: 5 }]
     },
     // world 2, Sunbaked Canyon: a ramp's gap is a canyon on mesa and a water creek on oasis
+    // dune hopping along the top, a ramp at the bend, tumbleweeds, up the big dune and off its lip
     dune: {
-      name: 'Dune Sweep', world: 1, laps: 3, hw: 3.8, scale: 1.65,
-      pts: [[20, 40], [50, 16], [92, 12], [128, 26], [140, 56], [122, 80], [96, 74], [72, 88], [60, 112], [30, 108], [14, 80]],
-      pads: [{ u: 0.05, off: 0 }, { u: 0.3, off: 1.5 }, { u: 0.55, off: -1.5 }, { u: 0.8, off: 0 }],
-      ramps: [{ u: 0.42, gap: 0 }],
-      boxes: [0.18, 0.66],
-      coins: [{ u: 0.1, off: -1.5, n: 6 }, { u: 0.25, off: 0, n: 6 }, { u: 0.48, off: 1.5, n: 6 }, { u: 0.72, off: 0, n: 5 }, { u: 0.9, off: -1.4, n: 6 }]
+      name: 'Dune Sweep', world: 1, laps: 3, hw: 3.8, scale: 1,
+      pts: [[30, 60], [70, 26], [130, 18], [190, 30], [218, 70], [200, 110], [160, 116], [128, 100], [96, 118], [90, 154], [56, 174], [24, 150], [20, 104]],
+      elev: [[0, 0], [0.07, 0], [0.084, 2.4], [0.098, 0.4], [0.112, 2.6], [0.126, 0.4], [0.14, 2.4], [0.154, 0], [0.58, 0], [0.7, 4], [0.74, 4], [0.752, 2], [0.84, 0]],
+      hazards: [{ u: 0.52, kind: 'tumble', n: 2 }, { u: 0.88, kind: 'tumble', n: 3 }],
+      pads: [{ u: 0.05, off: 0 }, { u: 0.3, off: 1.5 }, { u: 0.62, off: -1.5 }, { u: 0.72, off: 0 }],
+      ramps: [{ u: 0.43, gap: 0 }],
+      boxes: [0.2, 0.66],
+      coins: [{ u: 0.18, off: -1.5, n: 6 }, { u: 0.25, off: 0, n: 6 }, { u: 0.48, off: 1.5, n: 6 }, { u: 0.8, off: 0, n: 5 }, { u: 0.94, off: -1.4, n: 6 }]
     },
+    // up onto the mesa, a canyon leap across its top, a hop off the edge, down the switchbacks into boulder alley,
+    // a second canyon in the gulch and over the ridge home
     mesa: {
-      name: 'Mesa Leap', world: 1, laps: 3, hw: 3.5, scale: 1.35,
-      pts: [[16, 24], [56, 12], [100, 16], [124, 30], [110, 46], [78, 44], [60, 58], [78, 74], [110, 74], [124, 92], [104, 110], [60, 112], [30, 100], [12, 64]],
-      pads: [{ u: 0.03, off: 0 }, { u: 0.33, off: -1.4 }, { u: 0.6, off: 1.4 }, { u: 0.85, off: 0 }],
+      name: 'Mesa Leap', world: 1, laps: 3, hw: 3.5, scale: 1,
+      pts: [[24, 40], [74, 18], [130, 20], [170, 36], [160, 62], [120, 62], [96, 80], [118, 100], [160, 100], [184, 124], [166, 154], [118, 162], [80, 150], [48, 164], [20, 136], [14, 90]],
+      elev: [[0, 0], [0.02, 0], [0.08, 4], [0.28, 4], [0.285, 2.4], [0.45, 0], [0.84, 0], [0.9, 1.5], [0.93, 1.5], [0.94, 0.3], [0.99, 0]],
+      hazards: [{ u: 0.48, kind: 'boulder', n: 2 }, { u: 0.6, kind: 'tumble' }],
+      pads: [{ u: 0.03, off: 0 }, { u: 0.2, off: -1.4 }, { u: 0.55, off: 1.4 }, { u: 0.68, off: 0 }, { u: 0.88, off: 0 }],
       ramps: [{ u: 0.12, gap: 3.8 }, { u: 0.72, gap: 3.8 }],
-      boxes: [0.2, 0.52],
-      coins: [{ u: 0.07, off: 1.5, n: 6 }, { u: 0.28, off: 0, n: 5 }, { u: 0.45, off: -1.5, n: 6 }, { u: 0.66, off: 0, n: 5 }, { u: 0.92, off: 1.5, n: 6 }]
+      boxes: [0.22, 0.52],
+      coins: [{ u: 0.07, off: 1.5, n: 6 }, { u: 0.26, off: 0, n: 5 }, { u: 0.4, off: -1.5, n: 6 }, { u: 0.64, off: 0, n: 5 }, { u: 0.92, off: 1.5, n: 6 }]
     },
+    // the long tour: the oasis creek, up the dunes and over the whoops, a ramp, tumbleweeds and a boulder on the
+    // flats, the second creek and a hop off the last ridge
     oasis: {
-      name: 'Oasis Run', world: 1, laps: 2, hw: 3.6, scale: 1.62,
-      pts: [[20, 30], [60, 14], [104, 20], [140, 14], [170, 34], [164, 66], [136, 74], [120, 98], [146, 118], [150, 146], [116, 158], [80, 146], [58, 124], [30, 134], [12, 104], [26, 72]],
-      pads: [{ u: 0.04, off: 0 }, { u: 0.2, off: 1.5 }, { u: 0.38, off: -1.5 }, { u: 0.55, off: 0 }, { u: 0.74, off: 1.5 }, { u: 0.9, off: -1.4 }],
-      ramps: [{ u: 0.12, gap: 3.8 }, { u: 0.47, gap: 0 }, { u: 0.66, gap: 3.8 }],
+      name: 'Oasis Run', world: 1, laps: 2, hw: 3.6, scale: 1,
+      pts: [[30, 50], [90, 22], [160, 28], [230, 20], [272, 50], [262, 94], [220, 104], [196, 134], [230, 160], [246, 206], [206, 236], [150, 228], [120, 200], [88, 222], [48, 212], [22, 176], [44, 140], [26, 100]],
+      elev: [[0, 0], [0.12, 0], [0.24, 3], [0.25, 3], [0.257, 4.4], [0.264, 3], [0.271, 4.4], [0.278, 3], [0.32, 3], [0.42, 0], [0.8, 0], [0.9, 2.5], [0.93, 2.5], [0.94, 0.8], [0.99, 0]],
+      hazards: [{ u: 0.56, kind: 'tumble', n: 2 }, { u: 0.64, kind: 'boulder' }, { u: 0.84, kind: 'tumble' }],
+      pads: [{ u: 0.03, off: 0 }, { u: 0.2, off: 1.5 }, { u: 0.245, off: 0 }, { u: 0.47, off: -1.5 }, { u: 0.68, off: 1.5 }, { u: 0.9, off: -1.4 }],
+      ramps: [{ u: 0.06, gap: 3.8 }, { u: 0.5, gap: 0 }, { u: 0.73, gap: 3.8 }],
       boxes: [0.16, 0.6],
-      coins: [{ u: 0.08, off: -1.5, n: 6 }, { u: 0.25, off: 0, n: 6 }, { u: 0.42, off: 1.5, n: 6 }, { u: 0.58, off: -1.4, n: 5 }, { u: 0.7, off: 0, n: 6 }, { u: 0.84, off: 1.5, n: 6 }, { u: 0.95, off: 0, n: 5 }]
+      coins: [{ u: 0.09, off: -1.5, n: 6 }, { u: 0.3, off: 0, n: 6 }, { u: 0.42, off: 1.5, n: 6 }, { u: 0.53, off: -1.4, n: 5 }, { u: 0.77, off: 0, n: 6 }, { u: 0.86, off: 1.5, n: 6 }, { u: 0.96, off: 0, n: 5 }]
     }
   };
   // aiSpeed is the rivals' top speed in cells/s before PACE; pay multiplies the place money
@@ -279,7 +321,9 @@ var RB = (function () {
       var A = samples[(i - 2 + ns) % ns], B = samples[(i + 2) % ns];
       samples[i].k = angDiff(Math.atan2(B.tz, B.tx), Math.atan2(A.tz, A.tx)) / (4 * SAMPLE);
     }
-    samples.push({ x: samples[0].x, z: samples[0].z, s: L, hw: T.hw, tx: samples[0].tx, tz: samples[0].tz, k: samples[0].k }); // closing copy
+    for (i = 0; i < ns; i++) samples[i].y = elevAt(T.elev, i / ns);
+    for (i = 0; i < ns; i++) samples[i].gy = (samples[(i + 1) % ns].y - samples[(i - 1 + ns) % ns].y) / (2 * SAMPLE);
+    samples.push({ x: samples[0].x, z: samples[0].z, s: L, hw: T.hw, tx: samples[0].tx, tz: samples[0].tz, k: samples[0].k, y: samples[0].y, gy: samples[0].gy }); // closing copy
     var g = { id: id, def: T, L: L, hw: T.hw, samples: samples, n: ns };
     // nearest-sample lookup grid
     var minX = 1e9, minZ = 1e9, maxX = -1e9, maxZ = -1e9, pad = T.hw + RUNOFF + 14;
@@ -298,6 +342,12 @@ var RB = (function () {
     g.query = function (x, z) { return query(g, x, z); };
     // features
     g.pads = T.pads.map(function (p) { return { s: p.u * L, off: p.off }; });
+    g.hazards = [];
+    (T.hazards || []).forEach(function (hz, k) {
+      var K = HAZ[hz.kind], n = hz.n || 1;
+      for (var m = 0; m < n; m++) g.hazards.push({ s: wrapS({ L: L }, hz.u * L + m * K.gap), kind: hz.kind, r: K.r, h: K.h, bounce: K.bounce || 0,
+        period: hz.period || K.period, phase: (hz.phase !== undefined ? hz.phase : k * 0.37) + m * 0.11, amp: T.hw + HAZ_OVER });
+    });
     g.ramps = T.ramps.map(function (m) { return { s: m.u * L, len: RAMP_LEN, gap: m.gap, h: RAMP_H }; });
     g.boxes = [];
     T.boxes.forEach(function (u) { [-0.55, 0, 0.55].forEach(function (f) { g.boxes.push(feature(g, u * L, f * T.hw)); }); });
@@ -307,6 +357,27 @@ var RB = (function () {
     g.ramps.forEach(function (m) { var f = feature(g, m.s, 0); m.x = f.x; m.z = f.z; m.dir = f.h; });
     CACHE[id] = g;
     return g;
+  }
+  // the height of the elev keys at lap fraction u (0 with no keys): smoothstep between neighbouring keys, wrapping
+  function elevAt(keys, u) {
+    if (!keys || !keys.length) return 0;
+    var n = keys.length, i = n - 1;
+    for (var j = 0; j < n; j++) if (keys[j][0] <= u) i = j;
+    var a = keys[i], b = keys[(i + 1) % n], ua = a[0], ub = b[0];
+    if (ub <= ua) ub += 1;
+    var uu = u < ua ? u + 1 : u, t = clamp((uu - ua) / Math.max(1e-9, ub - ua), 0, 1);
+    return a[1] + (b[1] - a[1]) * t * t * (3 - 2 * t);
+  }
+  // the ground height at arc length s, and its slope along the lap
+  function groundAt(g, s) {
+    s = wrapS(g, s);
+    var f = s / SAMPLE, i = Math.floor(f), t = f - i, a = g.samples[i], b = g.samples[i + 1];
+    return a.y + (b.y - a.y) * t;
+  }
+  function slopeAt(g, s) {
+    s = wrapS(g, s);
+    var f = s / SAMPLE, i = Math.floor(f), t = f - i, a = g.samples[i], b = g.samples[i + 1];
+    return a.gy + (b.gy - a.gy) * t;
   }
   function feature(g, s, off) { var p = pointAt(g, s, off); return { s: wrapS(g, s), off: off, x: p.x, z: p.z, h: p.h }; }
   // the centreline point at arc length s, moved off cells to the right, and the road heading there
@@ -380,7 +451,7 @@ var RB = (function () {
       if (ai) { look = JSON.parse(JSON.stringify(look)); look.paint = paints[Math.floor(R() * paints.length)]; }
       var car = { i: c, ai: ai, name: ai ? names[c - 1] : 'You', carId: id, look: look,
         stats: ai ? statsFor(id) : carStats(s, id), skill: ai ? W.skill[c - 1] : 1, lane: ai ? (R() * 2 - 1) * 1.6 : 0,
-        x: 0, z: 0, h: 0, v: 0, y: 0, vy: 0, air: false, s: 0, prog: 0, lap: 1, place: c + 1, done: false, finishT: 0,
+        x: 0, z: 0, h: 0, v: 0, y: 0, vy: 0, gy: 0, gvy: 0, air: false, s: 0, prog: 0, lap: 1, place: c + 1, done: false, finishT: 0,
         boostT: 0, slowT: 0, shieldT: 0, magnetT: 0, drift: 0, driftDir: 0, driftReady: false, slip: 0, slipDir: 0, hopT: 0, hopY: 0, trick: false, trickT: 0, fallT: 0, onRamp: -1,
         item: null, rollT: 0, itemDelay: 0, coins: 0, inp: {}, prevDrift: false, prevItem: false, pad: -1, bumpT: 0, steerOut: 0, botSteer: 0,
         vh: 0, yawV: 0, roll: 0, rollV: 0, pitch: 0, pitchV: 0, dip: 0, dipV: 0, wheel: 0 };
@@ -396,7 +467,7 @@ var RB = (function () {
   function place(r, car, s, off) {
     var p = pointAt(r.g, s, off);
     car.x = p.x; car.z = p.z; car.h = p.h; car.vh = p.h; car.yawV = 0; car.s = wrapS(r.g, s); car.prog = car.s;
-    car.air = false; car.y = 0; car.vy = 0; car.onRamp = -1; car.fallT = 0; car.drift = 0; car.driftDir = 0; car.hopT = 0; car.hopY = 0;
+    car.air = false; car.y = 0; car.vy = 0; car.gy = groundAt(r.g, car.s); car.gvy = 0; car.gvyOk = false; car.onRamp = -1; car.fallT = 0; car.drift = 0; car.driftDir = 0; car.hopT = 0; car.hopY = 0;
   }
   // the body's springs (roll, pitch, dip) and the front wheels' steer angle, for the renderer
   function body(car, steer, accel) {
@@ -416,13 +487,14 @@ var RB = (function () {
   function surfaceSpeed(r, car, d) { return Math.abs(d) <= r.g.hw ? 1 : car.stats.grass; }
   function ev(r, type, car, extra) { var e = { type: type, car: car ? car.i : -1 }; if (extra) for (var k in extra) e[k] = extra[k]; r.events.push(e); if (r.events.length > 200) r.events.shift(); }
 
-  function hit(r, car, kind) {
+  function hit(r, car, kind, extra) {
     if (car.shieldT > 0) { car.shieldT = 0; ev(r, 'blocked', car); return false; }
-    var base = kind === 'bee' ? 1.6 : 1.2;
+    var base = kind === 'bee' ? 1.6 : kind === 'hazard' ? HAZ_SLOW : 1.2;
     car.slowT = Math.max(car.slowT, base * car.stats.armor);
-    car.v *= kind === 'bee' ? 0.55 : 0.7;
+    car.v *= kind === 'bee' ? 0.55 : kind === 'hazard' ? 0.75 : 0.7;
     car.drift = 0; car.driftDir = 0; car.boostT = 0;
-    ev(r, 'hit', car, { kind: kind });
+    var e = { kind: kind }; if (extra) for (var k in extra) e[k] = extra[k];
+    ev(r, 'hit', car, e);
     return true;
   }
   function useItem(r, car) {
@@ -441,13 +513,34 @@ var RB = (function () {
     ev(r, 'item', car, { item: it });
   }
 
+  // where hazard i is at the race time: x, z, arc s, offset d, the heading it walks or rolls, its hop y and roll angle
+  function hazardAt(r, i, t) {
+    var hz = r.g.hazards[i], ph = TAU * ((t === undefined ? r.t : t) / hz.period + hz.phase), d = hz.amp * Math.sin(ph), p = pointAt(r.g, hz.s, d);
+    var dir = Math.cos(ph) >= 0 ? 1 : -1;
+    return { x: p.x, z: p.z, s: hz.s, d: d, h: p.h + dir * Math.PI / 2, y: hz.bounce * Math.abs(Math.sin(ph * 3)), roll: d / hz.r, kind: hz.kind, r: hz.r };
+  }
+  // the lane a car should take past hazards it will reach in the next few cells, or lane if none is in the way
+  function dodge(r, car, lane) {
+    var g = r.g;
+    for (var i = 0; i < g.hazards.length; i++) {
+      var ahead = dS(g, g.hazards[i].s, car.s);
+      if (ahead < 0.5 || ahead > 12) continue;
+      if (car.ai && (car.i * 7 + i * 3 + car.lap) % 4 === 0) continue; // rivals miss one now and then
+      var hz = hazardAt(r, i, r.t + ahead / Math.max(4, car.v)), room = hz.r + CAR_R + 0.9;
+      if (Math.abs(hz.d - lane) < room) {
+        var side = Math.abs(hz.d) > g.hw - room ? -Math.sign(hz.d) : lane >= hz.d ? 1 : -1;
+        lane = clamp(hz.d + side * room, -g.hw + 0.6, g.hw - 0.6);
+      }
+    }
+    return lane;
+  }
   // the AI and the test bots steer toward a point ahead on their lane; returns an input
   function aimAhead(r, car, look, lane) {
     var p = pointAt(r.g, car.s + look, lane);
     return Math.atan2(p.z - car.z, p.x - car.x);
   }
   function aiInput(r, car) {
-    var inp = { aim: aimAhead(r, car, 3 + car.v * 0.35, car.lane) };
+    var inp = { aim: aimAhead(r, car, 3 + car.v * 0.35, dodge(r, car, car.lane)) };
     if (car.item && car.rollT <= 0) {
       car.itemDelay -= DT;
       if (car.itemDelay <= 0) {
@@ -459,6 +552,13 @@ var RB = (function () {
     }
     return inp;
   }
+  // the stick position whose curved steer (STEER_LIN) is u: the sloppy bot aims for a turn rate, as a player who has
+  // learned the stick does
+  function unshape(u) {
+    var x = u;
+    for (var i = 0; i < 6; i++) x -= (STEER_LIN * x + (1 - STEER_LIN) * x * x * x - u) / (STEER_LIN + 3 * (1 - STEER_LIN) * x * x);
+    return clamp(x, -1, 1);
+  }
   // style 'clean' drives the racing line and takes boost pads; 'sloppy' reacts late, wobbles and misses pads
   function botInput(r, car, style) {
     var inp = {}, g = r.g;
@@ -468,11 +568,11 @@ var RB = (function () {
       var ahead = car.h + car.yawV * YAW_LAG * Math.sqrt(car.stats.weight || 1);
       var want = angDiff(aimAhead(r, car, 2 + car.v * 0.25, 0), ahead) * 2.5 + Math.sin(r.t * 1.7) * 0.45 / PACE;
       car.botSteer += (clamp(want, -1, 1) - car.botSteer) * Math.min(1, DT * BOT_REACT);
-      inp.steer = car.botSteer;
+      inp.steer = unshape(car.botSteer);
     } else {
       var lane = 0;
       for (var i = 0; i < g.pads.length; i++) { var d = dS(g, g.pads[i].s, car.s); if (d > 0 && d < 14) lane = g.pads[i].off; }
-      inp.aim = aimAhead(r, car, 3 + car.v * 0.35, lane);
+      inp.aim = aimAhead(r, car, 3 + car.v * 0.35, dodge(r, car, lane));
     }
     if (car.item && car.rollT <= 0) inp.item = !car.prevItem;
     return inp;
@@ -503,10 +603,10 @@ var RB = (function () {
     if (itemPress && !car.air) useItem(r, car);
     else if (itemPress && car.air) useItem(r, car);
     // steering
-    var steer = inp.steer || 0;
-    if (inp.aim !== undefined && inp.aim !== null) steer = clamp(angDiff(inp.aim, car.h) * 2.5, -1, 1);
+    var steer = inp.steer || 0, aimed = inp.aim !== undefined && inp.aim !== null;
+    if (aimed) steer = clamp(angDiff(inp.aim, car.h) * 2.5, -1, 1);
     else if (inp.ease) {
-      var want = clamp(steer, -1, 1), cur = car.steerOut, sr = want * cur < 0 || Math.abs(want) < Math.abs(cur) ? STEER_FALL : STEER_RISE;
+      var want = clamp(steer, -1, 1), cur = car.steerOut, sr = want * cur < 0 || Math.abs(want) < Math.abs(cur) ? STEER_FALL : car.driftDir ? DRIFT_RISE : STEER_RISE;
       steer = cur + clamp(want - cur, -sr * DT, sr * DT);
     }
     steer = clamp(steer, -1, 1);
@@ -537,6 +637,7 @@ var RB = (function () {
     // speed
     var top = car.ai ? aiTop(r, car) : st.speed, v0 = car.v;
     var vmax = top * surf * (car.slowT > 0 ? SLOW_MUL : 1) * (car.boostT > 0 ? st.boostMul : 1) * (car.air && st.glide ? 1 + 0.04 * st.glide : 1);
+    if (!car.air) { var slope = slopeAt(g, q.s) * (Math.cos(car.vh) * q.tx + Math.sin(car.vh) * q.tz); vmax *= clamp(1 - SLOPE_K * slope, 0.7, 1.3); }
     if (r.phase !== 'race' && !car.done) vmax = 0;
     var acc = st.accel * (car.boostT > 0 ? BOOST_ACC : 1);
     if (car.v < vmax) car.v = Math.min(vmax, car.v + acc * DT * (1 - 0.4 * car.v / Math.max(1, vmax)));
@@ -546,7 +647,8 @@ var RB = (function () {
     // turning
     var rate = st.grip * Math.min(1, car.v / 4) * (car.air ? 0.3 + 0.1 * (st.glide || 0) : car.hopT > 0 ? HOP_STEER : 1);
     // in a drift the car always turns its own way: steering in tightens it, steering against widens it
-    var yawWant = car.driftDir ? car.driftDir * rate * (DRIFT_WIDE + (DRIFT_TURN - DRIFT_WIDE) * (1 + steer * car.driftDir) / 2) : steer * rate;
+    var shaped = aimed ? steer : STEER_LIN * steer + (1 - STEER_LIN) * steer * steer * steer;
+    var yawWant = car.driftDir ? car.driftDir * rate * (DRIFT_WIDE + (DRIFT_TURN - DRIFT_WIDE) * (1 + steer * car.driftDir) / 2) : shaped * rate;
     var wt = Math.sqrt(st.weight || 1);
     car.yawV += (yawWant - car.yawV) * Math.min(1, DT / (YAW_LAG * wt * (car.driftDir ? DRIFT_LAG : 1)));
     car.h += car.yawV * DT;
@@ -564,21 +666,10 @@ var RB = (function () {
       for (var i = 0; i < g.ramps.length; i++) { var mm = g.ramps[i], into = dS(g, q.s, mm.s); if (into >= 0 && into <= mm.len && Math.abs(q.d) <= g.hw + 0.3) { on = i; car.y = into / mm.len * mm.h; } }
       if (on < 0 && car.onRamp >= 0) {
         var lip = g.ramps[car.onRamp];
-        if (dS(g, q.s, lip.s) > lip.len - 0.01) { car.air = true; car.trick = false; car.y = lip.h; car.vy = (2 + 0.38 * car.v) * (st.perk === 'air' ? 1.2 : 1); ev(r, 'jump', car); }
+        if (dS(g, q.s, lip.s) > lip.len - 0.01) { car.air = true; car.trick = false; car.y = lip.h; car.vy = car.gvy + (2 + 0.38 * car.v) * (st.perk === 'air' ? 1.2 : 1); ev(r, 'jump', car); }
         else car.y = 0;
       }
       car.onRamp = on;
-    }
-    if (car.air) {
-      // the glider opens on the way down and slows the fall
-      car.vy -= G * DT * (car.vy < 0 && st.glide ? Math.max(0.25, 1 - 0.22 * st.glide) : 1); car.y += car.vy * DT;
-      if (car.y <= 0) {
-        car.dipV += DIP_K * Math.max(0, -car.vy);
-        car.y = 0; car.air = false; car.vy = 0;
-        if (car.trick) { car.boostT = Math.max(car.boostT, 0.9 * st.boostDur * (st.perk === 'air' ? 1.6 : 1)); ev(r, 'boost', car, { from: 'trick' }); }
-        else if (st.glide) { car.boostT = Math.max(car.boostT, 0.15 * st.glide * st.boostDur); ev(r, 'boost', car, { from: 'glide' }); } // the wings fold into a little boost
-        car.trick = false; ev(r, 'land', car);
-      }
     }
     // jump gaps: landing short drops the car in
     if (!car.air && car.onRamp < 0) {
@@ -601,6 +692,28 @@ var RB = (function () {
       q = g.query(car.x, car.z); ds = dS(g, q.s, car.s);
     }
     car.s = q.s; car.prog += ds; car.d = q.d;
+    // height: car.y is above the ground under the car (car.gy); vy is the true vertical speed. On the ground the car
+    // rides the hills (gvy); where the ground falls away faster than gravity pulls, it flies off the crest
+    var gNew = groundAt(g, q.s), gvyNew = (gNew - car.gy) / DT;
+    if (!car.air && car.onRamp < 0) {
+      if (car.gvyOk && car.v > DRIFT_MIN_V && car.gvy - gvyNew > G * DT * 1.05) {
+        car.air = true; car.trick = false; car.vy = car.gvy; car.y = car.gy + car.gvy * DT - gNew; ev(r, 'jump', car, { crest: true });
+      }
+      car.gvyOk = true;
+    }
+    if (car.air) {
+      // the glider opens on the way down and slows the fall
+      car.vy -= G * DT * (car.vy < 0 && st.glide ? Math.max(0.25, 1 - 0.22 * st.glide) : 1);
+      car.y += car.gy - gNew + car.vy * DT;
+      if (car.y <= 0) {
+        car.dipV += DIP_K * Math.max(0, gvyNew - car.vy);
+        car.y = 0; car.air = false; car.vy = 0;
+        if (car.trick) { car.boostT = Math.max(car.boostT, 0.9 * st.boostDur * (st.perk === 'air' ? 1.6 : 1)); ev(r, 'boost', car, { from: 'trick' }); }
+        else if (st.glide) { car.boostT = Math.max(car.boostT, 0.15 * st.glide * st.boostDur); ev(r, 'boost', car, { from: 'glide' }); } // the wings fold into a little boost
+        car.trick = false; ev(r, 'land', car);
+      }
+    }
+    car.gvy = gvyNew; car.gy = gNew;
     body(car, steer, accel);
     // boost pads
     if (!car.air) {
@@ -673,6 +786,20 @@ var RB = (function () {
       b.h += clamp(angDiff(want, b.h), -BEE_TURN * DT, BEE_TURN * DT);
       b.x += Math.cos(b.h) * BEE_SPEED * DT; b.z += Math.sin(b.h) * BEE_SPEED * DT;
       if (tgt && (tgt.x - b.x) * (tgt.x - b.x) + (tgt.z - b.z) * (tgt.z - b.z) < 1) { hit(r, tgt, 'bee'); r.bees.splice(i, 1); }
+    }
+    // hazards: a car low enough to touch one is hit, then gets HAZ_COOL s to get clear
+    for (i = 0; i < g.hazards.length; i++) {
+      var hz = null;
+      for (j = 0; j < r.cars.length; j++) {
+        var hc = r.cars[j];
+        if (hc.fallT > 0 || (hc.hazT || 0) > r.t) continue;
+        if (Math.abs(dS(g, hc.s, g.hazards[i].s)) > 3) continue;
+        hz = hz || hazardAt(r, i);
+        var rr = hz.r + CAR_R;
+        if (hc.y > hz.h - hz.y || (hc.x - hz.x) * (hc.x - hz.x) + (hc.z - hz.z) * (hc.z - hz.z) > rr * rr) continue;
+        hc.hazT = r.t + HAZ_COOL;
+        hit(r, hc, 'hazard', { hazard: hz.kind });
+      }
     }
     // cars bump each other apart, the lighter one moving more
     for (i = 0; i < r.cars.length; i++) for (j = i + 1; j < r.cars.length; j++) {
@@ -943,8 +1070,8 @@ var RB = (function () {
     DT: DT, PACE: PACE, DRIFT_TIERS: DRIFT_TIERS, RUNOFF: RUNOFF, RAMP_LEN: RAMP_LEN, PAD_LEN: PAD_LEN, PAD_W: PAD_W, MAGNET_R: MAGNET_R, ROLL_T: ROLL_T, START_CAR: START_CAR,
     PLACE_PAY: PLACE_PAY, PART_PAY: PART_PAY, PARTS: PARTS, ITEMS: ITEMS, ITEM_KEYS: ITEM_KEYS, UPGRADES: UPGRADES, UP_KEYS: UP_KEYS,
     PERKS: PERKS, CARS: CARS, LOOKS: LOOKS, LOOK_KEYS: LOOK_KEYS, TRACKS: TRACKS, WORLDS: WORLDS, HUB: HUB,
-    rng: rng, angDiff: angDiff, clamp: clamp, track: track, pointAt: pointAt, headingAt: headingAt, lookOpt: lookOpt,
-    rollItem: rollItem, carStats: carStats, statsFor: statsFor, startRace: startRace, input: input, stepRace: stepRace,
+    rng: rng, angDiff: angDiff, clamp: clamp, track: track, pointAt: pointAt, groundAt: groundAt, slopeAt: slopeAt, headingAt: headingAt, lookOpt: lookOpt,
+    rollItem: rollItem, hazardAt: hazardAt, HAZ: HAZ, carStats: carStats, statsFor: statsFor, startRace: startRace, input: input, stepRace: stepRace,
     surfaceSpeed: surfaceSpeed, hit: hit, botInput: botInput, finishRace: finishRace, trackUnlocked: trackUnlocked,
     worldUnlocked: worldUnlocked, canAfford: canAfford, upgradeCost: upgradeCost, buyUpgrade: buyUpgrade, buyCar: buyCar,
     selectCar: selectCar, carUnlocked: carUnlocked, carLockReason: carLockReason, buyLook: buyLook, equip: equip, newState: newState, serialize: serialize, deserialize: deserialize,

@@ -833,6 +833,28 @@ var RB3DWorld = (function () {
       dist[z * W + x] = dd;
     }
     this.dist = dist; this.W = W; this.H = H;
+    // the road's height carried out over the land (hills): exactly the ground under the road out past the walls,
+    // then a smooth blend of the nearby stretches (inverse distance on a coarse grid), fading back to the plain
+    // land far out, so a climb sits on a hillside and a summit on a hill
+    var hilly = S.some(function (sm) { return Math.abs(sm.y || 0) > 1e-6; });
+    this.ry = null;
+    if (hilly) {
+      var GC = 4, CW = Math.ceil(W / GC) + 1, CHh = Math.ceil(H / GC) + 1, coarse = new Float32Array(CW * CHh), pts = [];
+      for (var j2 = 0; j2 < g.n; j2 += 4) pts.push(S[j2]);
+      for (var cz = 0; cz < CHh; cz++) for (var cx = 0; cx < CW; cx++) {
+        var px = this.x0 + cx * GC, pz = this.z0 + cz * GC, sw = 0, sy = 0;
+        for (var k = 0; k < pts.length; k++) { var e2 = (pts[k].x - px) * (pts[k].x - px) + (pts[k].z - pz) * (pts[k].z - pz), w = 1 / ((e2 + 9) * (e2 + 9)); sw += w; sy += w * pts[k].y; }
+        coarse[cz * CW + cx] = sy / sw;
+      }
+      var ry = new Float32Array(W * H);
+      for (z = 0; z < H; z++) for (x = 0; x < W; x++) {
+        var fx = x / GC, fz = z / GC, ix = Math.min(CW - 2, Math.floor(fx)), iz = Math.min(CHh - 2, Math.floor(fz)), tx = fx - ix, tz = fz - iz;
+        var idw = (coarse[iz * CW + ix] * (1 - tx) + coarse[iz * CW + ix + 1] * tx) * (1 - tz) + (coarse[(iz + 1) * CW + ix] * (1 - tx) + coarse[(iz + 1) * CW + ix + 1] * tx) * tz;
+        var d0 = dist[z * W + x], wx2 = this.x0 + x, wz2 = this.z0 + z, near = d0 < lim + 12 ? D.groundAt(g, g.query(wx2, wz2).s) : idw;
+        ry[z * W + x] = lerp(near, idw, smooth(lim + 1, lim + 11, d0)) * (1 - smooth(lim + 40, lim + 110, d0));
+      }
+      this.ry = ry;
+    }
     // creeks: across the road at each jump gap, running out along the road's normal until they near another stretch
     this.creeks = [];
     g.ramps.forEach(function (m, i) {
@@ -848,7 +870,7 @@ var RB3DWorld = (function () {
         ext[k] = e - 4;
       });
       var canyon = worldId === 'desert' && trackId === 'mesa';
-      self.creeks.push({ x: mid.x, z: mid.z, tx: mid.tx, tz: mid.tz, nx: nx, nz: nz, half: m.gap / 2, ext: ext, a: a, b: b, depth: canyon ? 3.2 : 1.1, water: canyon ? -2.7 : -0.32, canyon: canyon });
+      self.creeks.push({ y0: D.groundAt ? D.groundAt(g, (a + b) / 2) : 0, x: mid.x, z: mid.z, tx: mid.tx, tz: mid.tz, nx: nx, nz: nz, half: m.gap / 2, ext: ext, a: a, b: b, depth: canyon ? 3.2 : 1.1, water: canyon ? -2.7 : -0.32, canyon: canyon });
     });
     var amp = L.hill, desert = worldId === 'desert';
     this.hillAt = function (x, z) {
@@ -860,6 +882,13 @@ var RB3DWorld = (function () {
     var fx = x - this.x0, fz = z - this.z0;
     if (fx < 0 || fz < 0 || fx >= this.W - 1 || fz >= this.H - 1) return 999;
     var ix = Math.floor(fx), iz = Math.floor(fz), tx = fx - ix, tz = fz - iz, W = this.W, d = this.dist, k = iz * W + ix;
+    return (d[k] * (1 - tx) + d[k + 1] * tx) * (1 - tz) + (d[k + W] * (1 - tx) + d[k + W + 1] * tx) * tz;
+  };
+  Field.prototype.roadY = function (x, z) {
+    if (!this.ry) return 0;
+    var fx = x - this.x0, fz = z - this.z0;
+    if (fx < 0 || fz < 0 || fx >= this.W - 1 || fz >= this.H - 1) return 0;
+    var ix = Math.floor(fx), iz = Math.floor(fz), tx = fx - ix, tz = fz - iz, W = this.W, d = this.ry, k = iz * W + ix;
     return (d[k] * (1 - tx) + d[k + 1] * tx) * (1 - tz) + (d[k + W] * (1 - tx) + d[k + W + 1] * tx) * tz;
   };
   // creek profile at a point: 0 dry .. 1 the channel's bed, and the local across-channel coordinate
@@ -880,8 +909,10 @@ var RB3DWorld = (function () {
     var d = this.distAt(x, z), y = this.hillAt(x, z) * smooth(this.lim + 5, this.lim + 38, d);
     // flatten a valley round each creek so its water lies level, then cut the channel
     for (var i = 0; i < this.creeks.length; i++) { var c = this.creeks[i], t = Math.abs((x - c.x) * c.tx + (z - c.z) * c.tz), n = Math.abs((x - c.x) * c.nx + (z - c.z) * c.nz); if (n < Math.max(c.ext[0], c.ext[1]) + 10) y *= smooth(c.half + 1, c.half + 12, t); }
-    var ck = this.creekAt(x, z);
-    if (ck) y = lerp(y, -ck.c.depth, ck.p);
+    var ck = this.creekAt(x, z), base = this.roadY(x, z);
+    // tuck the land a little under the road so it never pokes through on a crest
+    y += base - 0.06 * (1 - smooth(this.g.hw, this.g.hw + 1, d));
+    if (ck) y = lerp(y, ck.c.y0 - ck.c.depth, ck.p);
     return y;
   };
   // walkable/clear test for placing scenery: away from the road, creeks and water
@@ -926,7 +957,7 @@ var RB3DWorld = (function () {
       if (bx <= ax || bz <= az) continue;
       // resolution: fine where the road or a creek is near
       var near = 1e9, wet = false; for (var sz = az; sz <= bz; sz += 2) for (var sx = ax; sx <= bx; sx += 2) { near = Math.min(near, F.distAt(sx, sz)); if (!wet) { var ckk = F.creekAt(sx, sz); wet = !!(ckk && ckk.p > 0); } }
-      var res = wet ? 1 : near < F.lim + 30 ? 2 : 4, nx = Math.ceil((bx - ax) / res), nz = Math.ceil((bz - az) / res);
+      var res = wet || (F.ry && near < F.lim + 6) ? 1 : near < F.lim + 30 ? 2 : 4, nx = Math.ceil((bx - ax) / res), nz = Math.ceil((bz - az) / res);
       var nv = (nx + 1) * (nz + 1), skirtN = 2 * (nx + nz), pos = new Float32Array((nv + skirtN * 2) * 3), nor = new Float32Array(pos.length), clr = new Float32Array(pos.length), uv = new Float32Array((nv + skirtN * 2) * 2), idx = [];
       var hts = new Float32Array((nx + 3) * (nz + 3));
       for (var j = -1; j <= nz + 1; j++) for (var i = -1; i <= nx + 1; i++) hts[(j + 1) * (nx + 3) + i + 1] = F.height(ax + Math.min(i * res, bx - ax + res), az + Math.min(j * res, bz - az + res));
@@ -1000,7 +1031,7 @@ var RB3DWorld = (function () {
     var pos = [], uv = [], clr = [], idx = [], n = across || 1, cols = n + 1;
     list.forEach(function (s, i) {
       for (var k = 0; k <= n; k++) {
-        var d = lerp(d0, d1, k / n), p = D.pointAt(g, s, d), yy = typeof y === 'function' ? y(s, d, k / n) : y;
+        var d = lerp(d0, d1, k / n), p = D.pointAt(g, s, d), yy = (typeof y === 'function' ? y(s, d, k / n) : y) + (D.groundAt && g.samples ? D.groundAt(g, s) : 0);
         pos.push(p.x, yy, p.z); uv.push(ufn ? ufn(d, k / n) : k / n, vfn ? vfn(s) : s);
         var c = cfn ? cfn(s, d, i, k) : WHITE; clr.push(c.r, c.g, c.b);
       }
@@ -1023,11 +1054,55 @@ var RB3DWorld = (function () {
   }
   function polyMat(m, f) { m.polygonOffset = true; m.polygonOffsetFactor = f; m.polygonOffsetUnits = f; return m; }
 
+  // ---------- hazards ----------
+  // a model for each logic hazard kind (RB.HAZ), facing +x (the way it walks or rolls), on the ground at y = 0;
+  // userData.pose(hz, t) turns its roll and steps its legs from RB.hazardAt
+  function hazardObj(kind) {
+    var grp = new THREE.Group(), inner = new THREE.Group(), b = new Batch(0), I = new THREE.Matrix4(), legs = [];
+    grp.add(inner);
+    if (kind === 'sheep') {
+      var wool = blob(0.5, 2, 7, 0.78, 0.35); wool.scale(1.3, 1, 1); wool.translate(0, 0.78, 0); paint(wool, function (x, y) { return mixC(col('#c8c2b4'), col('#fbf8f0'), clamp((y - 0.5) / 0.6, 0, 1)); }); b.add('plain', wool, I);
+      var head = new THREE.SphereGeometry(0.22, 12, 8); head.scale(1.25, 1, 0.9); head.translate(0.78, 0.92, 0); paint(head, col('#2e2a2a')); b.add('plain', head, I);
+      var fluff = blob(0.2, 1, 3, 0.7, 0.4); fluff.translate(0.68, 1.12, 0); paint(fluff, col('#f4f0e6')); b.add('plain', fluff, I);
+      [-1, 1].forEach(function (sd) {
+        var ear = new THREE.BoxGeometry(0.08, 0.05, 0.2); ear.translate(0.72, 1.0, sd * 0.2); paint(ear, col('#2e2a2a')); b.add('plain', ear, I);
+        var eye = new THREE.SphereGeometry(0.035, 6, 4); eye.translate(0.95, 0.98, sd * 0.1); paint(eye, col('#f4f0e6')); b.add('shiny', eye, I);
+      });
+      b.build(inner, { cast: true });
+      [[0.4, 1], [0.4, -1], [-0.4, 1], [-0.4, -1]].forEach(function (lp, k) {
+        var leg = new THREE.Group(), lg = new THREE.CylinderGeometry(0.06, 0.05, 0.5, 6); lg.translate(0, -0.25, 0); paint(lg, col('#2e2a2a'));
+        var lm = new THREE.Mesh(lg, MAT('plain')); lm.castShadow = true; leg.add(lm); leg.position.set(lp[0], 0.5, lp[1] * 0.22); inner.add(leg); legs.push([leg, k % 3 ? 1 : -1]);
+      });
+    } else if (kind === 'bale') {
+      var bale = cyl(0.85, 0.85, 1.5, 18, 1.5); bale.translate(0, -0.75, 0); bale.rotateX(Math.PI / 2); paint(bale, col('#e6c070')); b.add('straw', bale, I);
+      [-0.45, 0.45].forEach(function (zz) { var band = new THREE.TorusGeometry(0.86, 0.025, 4, 24); band.translate(0, 0, zz); paint(band, col('#c0392b')); b.add('plain', band, I); });
+      b.build(inner, { cast: true }); inner.position.y = 0.85;
+    } else if (kind === 'tumble') {
+      var core = blob(0.42, 1, 11, 1, 0.3); paint(core, col('#8a6a3a')); b.add('plain', core, I); b.build(inner, { cast: true });
+      inner.children[0].material = MATS.tumbleCore || (MATS.tumbleCore = std({ vertexColors: true, roughness: 1, transparent: true, opacity: 0.45, depthWrite: false }));
+      var twig = new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(0.6, 1));
+      var lines = new THREE.LineSegments(twig, MATS.twig || (MATS.twig = new THREE.LineBasicMaterial({ color: col('#6a4a24') })));
+      var lines2 = lines.clone(); lines2.rotation.set(0.7, 0.4, 1.1); lines2.scale.setScalar(0.85);
+      inner.add(lines, lines2); inner.position.y = 0.6;
+    } else {
+      var rk = rockGeo(1.0, 4, 0.95); paint(rk, function (x, y) { return mixC(col('#8a5a3a'), col('#d09060'), clamp(y + 0.5, 0, 1)); }); b.add('strata', rk, I);
+      b.build(inner, { cast: true }); inner.position.y = 0.85;
+    }
+    grp.userData.pose = function (hz, t) {
+      if (kind === 'sheep') { legs.forEach(function (l) { l[0].rotation.z = Math.sin(t * 9) * 0.45 * l[1]; }); inner.position.y = Math.abs(Math.sin(t * 9)) * 0.04; }
+      else inner.rotation.z = -hz.roll;
+      if (kind === 'tumble') inner.rotation.x = hz.roll * 0.6;
+    };
+    grp.traverse(function (o) { if (o.isMesh) o.receiveShadow = true; });
+    return grp;
+  }
+
   // ---------- race ----------
   function race(trackId, g, worldId) {
     g = g || D.track(trackId);
     var t0 = performance.now(), desert = worldId === 'desert', L = lookOf(worldId), group = new THREE.Group(), r = prng(g.n * 13 + 7), lim = g.hw + D.RUNOFF;
     var F = new Field(g, L, worldId, trackId), info = { tris: 0 }, anim = [];
+    function GY(s) { return D.groundAt ? D.groundAt(g, s) : 0; } // the road's height at arc length s
     group.add(makeSky(L)); var lt = lights(group, L);
     info.tris += buildTerrain(group, F, L, desert);
     info.tris += mountains(group, F.x0 + F.w / 2, F.z0 + F.h / 2, L, desert, g.n % 17);
@@ -1068,14 +1143,14 @@ var RB3DWorld = (function () {
     group.add(new THREE.Mesh(chk, chkMat)); chk.computeVertexNormals();
     // the start gantry: two towers outside the walls and a beam with a chequered banner and lights
     (function () {
-      var p0 = D.pointAt(g, 0.6, 0), m = mtx(p0.x, 0, p0.z, -p0.h), span = lim + 0.9, top = 4.6;
+      var p0 = D.pointAt(g, 0.6, 0), y0 = GY(0.6), m = mtx(p0.x, y0, p0.z, -p0.h), span = lim + 0.9, top = 4.6;
       [-1, 1].forEach(function (sd) {
         b.add('metal', box(0.4, top + 0.6, 0.4).translate(0, 0, sd * span), m, col('#c8ccd2'));
         b.add('plain', box(0.7, 0.3, 0.7).translate(0, 0, sd * span), m, col('#555a60'));
       });
       b.add('metal', box(0.5, 0.55, 2 * span + 0.4).translate(0, top, 0), m, col('#d8dce2'));
       var ban = new THREE.Mesh(new THREE.PlaneGeometry(2 * span - 0.6, 0.9), std({ map: signTex('START  ·  FINISH', '#1a1a22', '#ffffff', 1024, 128), roughness: 0.6 }));
-      ban.position.set(p0.x - Math.cos(p0.h) * 0.27, top - 0.5, p0.z - Math.sin(p0.h) * 0.27); ban.rotation.y = Math.atan2(-Math.cos(p0.h), -Math.sin(p0.h)); group.add(ban);
+      ban.position.set(p0.x - Math.cos(p0.h) * 0.27, y0 + top - 0.5, p0.z - Math.sin(p0.h) * 0.27); ban.rotation.y = Math.atan2(-Math.cos(p0.h), -Math.sin(p0.h)); group.add(ban);
       for (var k = 0; k < 5; k++) { var lg = new THREE.SphereGeometry(0.13, 10, 6); lg.translate(-0.28, top + 0.27, -1.6 + k * 0.8); b.add('glow', lg, m, k < 3 ? col('#ff3a2a') : col('#3aff6a')); }
     })();
     // boost pads: a dark frame and a glowing chevron plate whose arrows run forward
@@ -1097,17 +1172,17 @@ var RB3DWorld = (function () {
       b.add('rampDeck', deck, new THREE.Matrix4(), WHITE, m.x, m.z);
       [-1, 1].forEach(function (sd) {
         var side = [], sidx = [], k = 0;
-        list.forEach(function (s, j) { var p = D.pointAt(g, s, sd * W2), y = (s - m.s) / m.len * m.h; side.push(p.x, -0.02, p.z, p.x, y, p.z); if (j) { sidx.push(k - 2, k - 1, k, k - 1, k + 1, k); } k += 2; });
+        list.forEach(function (s, j) { var p = D.pointAt(g, s, sd * W2), gy = GY(s), y = (s - m.s) / m.len * m.h + gy; side.push(p.x, gy - 0.3, p.z, p.x, y, p.z); if (j) { sidx.push(k - 2, k - 1, k, k - 1, k + 1, k); } k += 2; });
         var sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(side, 3));
         var suv = []; for (var q = 0; q < side.length / 3; q++) suv.push(q * 0.2, side[q * 3 + 1]); sg.setAttribute('uv', new THREE.Float32BufferAttribute(suv, 2));
         sg.setIndex(sidx); sg.computeVertexNormals(); b.add('plank', sg, new THREE.Matrix4(), col('#8a6038'), m.x, m.z);
       });
-      var lipL = D.pointAt(g, m.s + m.len, -W2), lipR = D.pointAt(g, m.s + m.len, W2), lip = new THREE.BufferGeometry();
-      lip.setAttribute('position', new THREE.Float32BufferAttribute([lipL.x, -drop, lipL.z, lipR.x, -drop, lipR.z, lipR.x, m.h, lipR.z, lipL.x, m.h, lipL.z], 3));
+      var lipL = D.pointAt(g, m.s + m.len, -W2), lipR = D.pointAt(g, m.s + m.len, W2), lip = new THREE.BufferGeometry(), ly = GY(m.s + m.len);
+      lip.setAttribute('position', new THREE.Float32BufferAttribute([lipL.x, ly - drop, lipL.z, lipR.x, ly - drop, lipR.z, lipR.x, ly + m.h, lipR.z, lipL.x, ly + m.h, lipL.z], 3));
       lip.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 2 * W2, 0, 2 * W2, m.h + drop, 0, m.h + drop], 2)); lip.setIndex([0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2]); lip.computeVertexNormals();
       b.add('plank', lip, new THREE.Matrix4(), col('#6a4a2c'), m.x, m.z);
       // arrow signs either side of the run-up
-      [-1, 1].forEach(function (sd) { var p = D.pointAt(g, m.s - 1.5, sd * (hw + 1.2)); var mm = mtx(p.x, 0, p.z, -p.h); b.add('metal', box(0.08, 1.0, 0.08), mm, col('#bbbbbb')); b.add('plain', box(0.06, 0.5, 0.8).translate(0, 1.0, 0), mm, col('#ffcc22')); });
+      [-1, 1].forEach(function (sd) { var p = D.pointAt(g, m.s - 1.5, sd * (hw + 1.2)); var mm = mtx(p.x, GY(m.s - 1.5), p.z, -p.h); b.add('metal', box(0.08, 1.0, 0.08), mm, col('#bbbbbb')); b.add('plain', box(0.06, 0.5, 0.8).translate(0, 1.0, 0), mm, col('#ffcc22')); });
     });
     // creeks: water lying level in each channel, and stepping stones / reeds along the banks
     F.creeks.forEach(function (c) {
@@ -1115,7 +1190,7 @@ var RB3DWorld = (function () {
       for (var k = 0; k <= n; k++) {
         var nn = e0 + (e1 - e0) * k / n, an = Math.abs(nn), wig = Math.sin(nn * 0.13 + F.creeks.indexOf(c)) * 1.6 * smooth(lim + 2, lim + 12, an), e = nn < 0 ? c.ext[0] : c.ext[1];
         var half = (c.half + (c.canyon ? 0.2 : 0.55)) * (an > e ? Math.sqrt(Math.max(0.01, 1 - Math.pow((an - e) / 4, 2))) : 1);
-        [-half, half].forEach(function (tt) { var x = c.x + c.nx * nn + c.tx * (tt + wig), z = c.z + c.nz * nn + c.tz * (tt + wig); pos.push(x, c.water, z); uv.push(x / 6, z / 6); });
+        [-half, half].forEach(function (tt) { var x = c.x + c.nx * nn + c.tx * (tt + wig), z = c.z + c.nz * nn + c.tz * (tt + wig); pos.push(x, c.y0 + c.water, z); uv.push(x / 6, z / 6); });
         if (k) { var a = (k - 1) * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
       }
       var wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); wg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); wg.setIndex(idx); wg.computeVertexNormals();
@@ -1148,15 +1223,15 @@ var RB3DWorld = (function () {
         if (desert) {
           // armco: a W-section beam on posts
           var ag = strip(g, run, 0, 0, 0, null, null, null, 1), P = [], I = [], U = [], k = 0;
-          run.forEach(function (s, j) { var p = D.pointAt(g, s, wd); [0.32, 0.47, 0.62].forEach(function (y, q) { var o = q === 1 ? -sd * 0.05 : 0; var pp = D.pointAt(g, s, wd + o); P.push(pp.x, y, pp.z); U.push(s, y); }); if (j) { var a0 = (j - 1) * 3; I.push(a0, a0 + 3, a0 + 1, a0 + 1, a0 + 3, a0 + 4, a0 + 1, a0 + 4, a0 + 2, a0 + 2, a0 + 4, a0 + 5); } });
+          run.forEach(function (s, j) { var p = D.pointAt(g, s, wd), gy = GY(s); [0.32, 0.47, 0.62].forEach(function (y, q) { var o = q === 1 ? -sd * 0.05 : 0; var pp = D.pointAt(g, s, wd + o); P.push(pp.x, y + gy, pp.z); U.push(s, y); }); if (j) { var a0 = (j - 1) * 3; I.push(a0, a0 + 3, a0 + 1, a0 + 1, a0 + 3, a0 + 4, a0 + 1, a0 + 4, a0 + 2, a0 + 2, a0 + 4, a0 + 5); } });
           var bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); bg.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); bg.setIndex(I); bg.computeVertexNormals();
           var p0 = D.pointAt(g, run[0], wd); b.add('metal', bg, new THREE.Matrix4(), col('#c4c8cc'), p0.x, p0.z);
-          for (var q = 0; q < run.length; q += 4) { var pp = D.pointAt(g, run[q], wd + sd * 0.12); b.add('metal', box(0.08, 0.7, 0.14), mtx(pp.x, 0, pp.z, -pp.h), col('#8a9098')); }
+          for (var q = 0; q < run.length; q += 4) { var pp = D.pointAt(g, run[q], wd + sd * 0.12); b.add('metal', box(0.08, 0.7, 0.14), mtx(pp.x, GY(run[q]) - 0.1, pp.z, -pp.h), col('#8a9098')); }
         } else {
-          for (var q2 = 0; q2 < run.length; q2 += 4) { var pq = D.pointAt(g, run[q2], wd); b.add('plank', box(0.12, 0.9, 0.12), mtx(pq.x, 0, pq.z, -pq.h + 0.0), col('#f2efe6')); }
+          for (var q2 = 0; q2 < run.length; q2 += 4) { var pq = D.pointAt(g, run[q2], wd); b.add('plank', box(0.12, 0.9, 0.12), mtx(pq.x, GY(run[q2]) - 0.1, pq.z, -pq.h + 0.0), col('#f2efe6')); }
           [0.42, 0.74].forEach(function (y) {
             var P = [], I = [], U = [];
-            run.forEach(function (s, j) { [y - 0.07, y + 0.07].forEach(function (yy) { var pp = D.pointAt(g, s, wd + sd * 0.07); P.push(pp.x, yy, pp.z); U.push(s * 0.5, yy * 2); }); if (j) { var a0 = (j - 1) * 2; I.push(a0, a0 + 2, a0 + 1, a0 + 1, a0 + 2, a0 + 3); } });
+            run.forEach(function (s, j) { var gy = GY(s); [y - 0.07, y + 0.07].forEach(function (yy) { var pp = D.pointAt(g, s, wd + sd * 0.07); P.push(pp.x, yy + gy, pp.z); U.push(s * 0.5, yy * 2); }); if (j) { var a0 = (j - 1) * 2; I.push(a0, a0 + 2, a0 + 1, a0 + 1, a0 + 2, a0 + 3); } });
             var rg2 = new THREE.BufferGeometry(); rg2.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); rg2.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); rg2.setIndex(I); rg2.computeVertexNormals();
             var p1 = D.pointAt(g, run[0], wd); b.add('plankDS', rg2, new THREE.Matrix4(), col('#f4f1ea'), p1.x, p1.z);
           });
@@ -1171,7 +1246,7 @@ var RB3DWorld = (function () {
       // tyre stacks on the outside of bends, in front of the wall
       for (s = 0; s < g.L; s += 0.72) {
         var p = D.pointAt(g, s, sd * (lim + 0.32));
-        if (p.k * sd < -0.045 && !wet(s)) { var stackN = Math.floor(s / 0.72); addProto(b, 'tyres', mtx(p.x, 0, p.z, r() * 6.3), stackN % 2 ? col('#e8e8e8') : col('#c8281e'), p.x, p.z); }
+        if (p.k * sd < -0.045 && !wet(s)) { var stackN = Math.floor(s / 0.72); addProto(b, 'tyres', mtx(p.x, GY(s), p.z, r() * 6.3), stackN % 2 ? col('#e8e8e8') : col('#c8281e'), p.x, p.z); }
       }
     });
 
@@ -1197,7 +1272,7 @@ var RB3DWorld = (function () {
     }
     anim.push(function (t) { mills.forEach(function (s, k) { s.rotation.z = t * 0.9 + k; }); });
     // the grandstand by the start, facing the road
-    var st = D.pointAt(g, -6, -(lim + 3.4)); grandstand(b, mtx(st.x, 0, st.z, -st.h), r); placed.push([st.x, st.z, 5]);
+    var st = D.pointAt(g, -6, -(lim + 3.4)); grandstand(b, mtx(st.x, F.height(st.x, st.z), st.z, -st.h), r); placed.push([st.x, st.z, 5]);
     // trees
     var species = desert ? [['cactus', 0.4], ['shrub', 0.65], ['redrock', 0.82], ['pillar', 1]] : [['oak', 0.32], ['elm', 0.5], ['pine', 0.74], ['birch', 0.84], ['bush', 0.95], ['rock', 1]];
     function pick(v) { for (var k = 0; k < species.length; k++) if (v < species[k][1]) return species[k][0]; return species[0][0]; }
@@ -1237,12 +1312,14 @@ var RB3DWorld = (function () {
     }
     var built = b.build(group);
     built.forEach(function (mm) { info.tris += mm.geometry.index.count / 3; });
+    // hazards: posed by the renderer each frame from the race time
+    var hazards = (g.hazards || []).map(function (hz) { var o = hazardObj(hz.kind); group.add(o); return o; });
     // grass tufts and flowers, instanced, thick in the runoff and along the fences
     info.tris += tufts(group, F, g, desert, r);
     info.build = Math.round(performance.now() - t0);
     group.traverse(function (o) { if (o.isMesh && o.name !== 'sky') o.matrixAutoUpdate = false, o.updateMatrix(); });
     return {
-      group: group, light: lt, look: L, field: F, info: info, heightAt: function (x, z) { return F.height(x, z); },
+      group: group, light: lt, look: L, field: F, info: info, hazards: hazards, heightAt: function (x, z) { return F.height(x, z); },
       update: function (t) { TIME.value = t; anim.forEach(function (f) { f(t); }); },
       dispose: function () { disposeGroup(group); }
     };
