@@ -420,48 +420,56 @@ var RB = (function () {
     },
 
     // world 5, Moon Base: low gravity (WORLDS grav), so crests launch easily and every jump floats; the gaps are
-    // chasms. Each track has a dome-base run (base: [u0, u1], drawn as a glass tunnel) and gets harder (ai)
-    // a chasm leap off the start straight, up the crater wall to the rim, a pad and a big floaty dive into a small
-    // crater, across its floor, a hop off the far rim, a rover crossing, the dome base S-bends, meteorites skipping
-    // across and the rim whoops
+    // chasms. Each track has a dome-base run (base: [u0, u1], drawn as a glass tunnel, on the ground and clear of
+    // the bridges), crosses over itself on a bridge high above the moon floor, and gets harder (ai)
+    // a figure 8: a chasm leap off the start straight, up the crater wall to the rim road (open on the left, a long
+    // fall into the crater), across the railed skybridge 10 up over the start straight, a pad off its end and a big
+    // floaty dive into a small crater, a hop off the far rim, meteorites skipping across, the rim whoops and the dome
+    // base on the sweep home
     rimhop: {
-      name: 'Rim Hopper', world: 4, laps: 3, hw: 4.2, scale: 1, ai: 1.03,
-      pts: [[30, 40], [100, 24], [180, 22], [250, 30], [296, 60], [290, 108], [250, 124], [200, 116], [160, 132], [150, 176], [110, 204], [60, 200], [30, 170], [40, 130], [18, 90]],
-      elev: [[0, 0], [0.1, 0], [0.16, 10], [0.17, 10], [0.19, 4], [0.25, 4], [0.27, 8], [0.28, 8], [0.295, 3], [0.33, 0], [0.71, 0], [0.722, 2.4], [0.734, 0.4], [0.746, 2.6], [0.758, 0.4], [0.77, 2.4], [0.782, 0]],
-      hazards: [{ u: 0.49, kind: 'rover' }, { u: 0.665, kind: 'meteor', n: 3 }],
-      pads: [{ u: 0.06, off: 0 }, { u: 0.167, off: 0 }, { u: 0.7, off: 0 }, { u: 0.9, off: -1.5 }],
-      ramps: [{ u: 0.07, gap: 7 }],
-      base: [0.53, 0.62],
-      boxes: [0.12, 0.56],
-      coins: [{ u: 0.04, off: 1.6, n: 6 }, { u: 0.22, off: -1.5, n: 6 }, { u: 0.4, off: 0, n: 6 }, { u: 0.6, off: 1.4, n: 5 }, { u: 0.8, off: -1.4, n: 6 }, { u: 0.95, off: 0, n: 5 }]
+      name: 'Rim Hopper', world: 4, laps: 3, hw: 4.2, scale: 0.8, ai: 1.055,
+      pts: [[40, 100], [110, 100], [180, 100], [240, 104], [280, 130], [288, 175], [255, 205], [200, 212], [155, 195], [128, 160], [114, 110], [106, 60], [100, 15], [85, -20], [50, -35], [10, -30], [-26, -6], [-42, 32], [-36, 70], [-10, 96]],
+      elev: [[0, 0], [0.21, 0], [0.39, 10], [0.62, 10], [0.645, 2], [0.675, 2], [0.69, 6], [0.695, 6], [0.705, 2], [0.73, 0], [0.79, 0], [0.8, 2.4], [0.81, 0.4], [0.82, 2.6], [0.83, 0.4], [0.84, 2.4], [0.85, 0]],
+      bridges: [[0.5, 0.615, 'rail']], drops: [[0.4, 0.47, -1]],
+      hazards: [{ u: 0.255, kind: 'rover' }, { u: 0.77, kind: 'meteor', n: 3 }],
+      pads: [{ u: 0.1, off: 0 }, { u: 0.19, off: 1.4 }, { u: 0.36, off: 0 }, { u: 0.45, off: 0 }, { u: 0.613, off: 0 }, { u: 0.78, off: 0 }, { u: 0.9, off: -1.4 }],
+      ramps: [{ u: 0.11, gap: 7 }],
+      base: [0.865, 0.94],
+      boxes: [0.3, 0.67],
+      coins: [{ u: 0.07, off: 1.6, n: 6 }, { u: 0.25, off: -1.5, n: 6 }, { u: 0.44, off: 0, n: 6 }, { u: 0.55, off: 1.4, n: 5 }, { u: 0.88, off: 1.4, n: 6 }, { u: 0.97, off: 0, n: 5 }]
     },
-    // the climb to the highland, a rim crest into the head of the rille, the winding valley down with moon rocks
-    // bouncing across, the dome base on the valley floor, a chasm leap over the rille, the hairpin climb out and a
-    // hop off the last crest
+    // the climb to the highland, an open skybridge (no rails) 10 up across the rille valley, a pad and a rim crest
+    // into the head of the rille, the valley winding down along an open ledge (left), moon rocks bouncing across
+    // just before the road runs under the skybridge, the dome base on the valley floor, a chasm leap over the rille,
+    // the hairpin climb out and a hop off the last crest
     rille: {
-      name: 'Rille Run', world: 4, laps: 3, hw: 4.2, scale: 0.9, ai: 1.01,
-      pts: [[30, 50], [100, 26], [170, 30], [230, 20], [290, 40], [300, 90], [260, 110], [270, 150], [230, 176], [240, 220], [190, 240], [140, 220], [100, 240], [50, 222], [40, 180], [70, 140], [30, 110]],
-      elev: [[0, 0], [0.03, 0], [0.15, 12], [0.235, 12], [0.25, 8.5], [0.33, 7], [0.55, 2], [0.8, 2], [0.88, 9], [0.94, 9], [0.955, 5], [0.995, 0]],
-      hazards: [{ u: 0.19, kind: 'dish' }, { u: 0.42, kind: 'moonrock', n: 2 }, { u: 0.64, kind: 'rover' }],
-      pads: [{ u: 0.17, off: 1.5 }, { u: 0.225, off: 0 }, { u: 0.5, off: -1.4 }, { u: 0.715, off: 0 }, { u: 0.93, off: 0 }],
-      ramps: [{ u: 0.725, gap: 8 }],
-      base: [0.6, 0.7],
-      boxes: [0.1, 0.58],
-      coins: [{ u: 0.07, off: -1.5, n: 6 }, { u: 0.2, off: 0, n: 6 }, { u: 0.36, off: 1.4, n: 5 }, { u: 0.52, off: 0, n: 5 }, { u: 0.78, off: -1.4, n: 6 }, { u: 0.9, off: 1.4, n: 5 }]
+      name: 'Rille Run', world: 4, laps: 3, hw: 4.2, scale: 0.78, ai: 1.02,
+      pts: [[100, 262], [170, 260], [225, 245], [265, 210], [270, 160], [245, 122], [200, 106], [150, 104], [100, 102], [60, 94], [35, 70], [32, 38], [60, 16], [110, 12], [152, 24], [170, 60], [152, 110], [132, 155], [100, 182], [62, 186], [36, 198], [24, 228], [48, 256]],
+      elev: [[0, 0], [0.11, 0], [0.28, 12], [0.445, 12], [0.46, 7], [0.48, 7], [0.69, 2], [0.87, 2], [0.93, 9], [0.94, 9], [0.955, 4], [0.99, 0]],
+      bridges: [[0.33, 0.4]], drops: [[0.555, 0.615, -1]],
+      hazards: [{ u: 0.19, kind: 'dish' }, { u: 0.525, kind: 'rover' }, { u: 0.695, kind: 'moonrock', n: 2 }],
+      pads: [{ u: 0.08, off: 0 }, { u: 0.25, off: 1.5 }, { u: 0.43, off: 0 }, { u: 0.5, off: -1.4 }, { u: 0.67, off: 1.4 }, { u: 0.806, off: 0 }, { u: 0.925, off: 0 }],
+      ramps: [{ u: 0.818, gap: 8 }],
+      base: [0.762, 0.805],
+      boxes: [0.1, 0.52],
+      coins: [{ u: 0.04, off: -1.5, n: 6 }, { u: 0.2, off: 0, n: 6 }, { u: 0.36, off: 0, n: 5 }, { u: 0.5, off: 1.4, n: 5 }, { u: 0.78, off: -1.4, n: 6 }, { u: 0.9, off: 1.4, n: 5 }]
     },
-    // the finale: the long climb up the outer crater wall to the rim, a pad and a huge dive into the bowl, a chasm
-    // leap on the bowl floor, meteorites and a satellite-dish rover, the climb out and a hop off the rim, a second
-    // chasm on the plain, the rim whoops, bouncing moon rocks, the dome base and a ramp to the line
+    // the finale, three loops on one long straight that it crosses twice: a chasm leap off the start straight, the
+    // dome base, the long climb up the outer crater wall to the rim road (open on the left), the open skybridge 16 up
+    // over the start straight and a huge dive off its end into the bowl, a chasm leap on the bowl floor, a dish robot,
+    // the climb out onto the railed bridge 13 up back over the straight and a hop off its end, the rim whoops,
+    // bouncing moon rocks, meteorites skipping across and a ramp to the line
     starfall: {
-      name: 'Starfall Crater', world: 4, laps: 2, hw: 4.2, scale: 0.9, ai: 1.06,
-      pts: [[30, 60], [120, 28], [220, 24], [320, 34], [390, 70], [396, 140], [350, 170], [300, 160], [250, 180], [240, 230], [290, 260], [330, 300], [290, 340], [200, 340], [140, 310], [90, 330], [40, 300], [30, 240], [70, 190], [40, 140]],
-      elev: [[0, 0], [0.02, 0], [0.13, 16], [0.14, 16], [0.165, 4], [0.44, 4], [0.5, 13], [0.505, 13], [0.518, 9.5], [0.6, 0], [0.655, 0], [0.665, 2.6], [0.675, 0.4], [0.685, 2.8], [0.695, 0]],
-      hazards: [{ u: 0.3, kind: 'meteor', n: 3 }, { u: 0.42, kind: 'dish' }, { u: 0.71, kind: 'rover' }, { u: 0.8, kind: 'moonrock', n: 2 }],
-      pads: [{ u: 0.02, off: 0 }, { u: 0.1, off: -1.5 }, { u: 0.135, off: 0 }, { u: 0.198, off: 0 }, { u: 0.36, off: 1.4 }, { u: 0.495, off: 0 }, { u: 0.618, off: 0 }, { u: 0.78, off: -1.4 }, { u: 0.955, off: 0 }],
-      ramps: [{ u: 0.205, gap: 8.5 }, { u: 0.625, gap: 8.5 }, { u: 0.965, gap: 0 }],
-      base: [0.84, 0.93],
-      boxes: [0.07, 0.32, 0.74],
-      coins: [{ u: 0.05, off: 1.5, n: 6 }, { u: 0.18, off: 0, n: 6 }, { u: 0.27, off: -1.5, n: 6 }, { u: 0.4, off: 1.4, n: 5 }, { u: 0.56, off: 0, n: 6 }, { u: 0.73, off: 1.5, n: 6 }, { u: 0.88, off: 0, n: 6 }]
+      name: 'Starfall Crater', world: 4, laps: 2, hw: 4.2, scale: 0.74, ai: 1.04,
+      pts: [[200, 200], [250, 200], [330, 200], [410, 204], [455, 240], [460, 300], [420, 342], [350, 355], [305, 325], [296, 265], [300, 200], [302, 150], [300, 100], [285, 50], [240, 22], [180, 20], [130, 35], [105, 80], [112, 140], [120, 200], [118, 260], [95, 305], [50, 320], [12, 290], [5, 235], [40, 202], [120, 200]],
+      elev: [[0, 0], [0.21, 0], [0.29, 16], [0.445, 16], [0.462, 4], [0.6, 4], [0.68, 13], [0.735, 13], [0.75, 6], [0.78, 0], [0.8, 0], [0.81, 2.6], [0.82, 0.4], [0.83, 2.8], [0.84, 0]],
+      bridges: [[0.325, 0.445], [0.68, 0.735, 'rail']], drops: [[0.29, 0.315, -1]],
+      hazards: [{ u: 0.25, kind: 'rover' }, { u: 0.61, kind: 'dish' }, { u: 0.86, kind: 'moonrock', n: 2 }, { u: 0.9, kind: 'meteor', n: 3 }],
+      pads: [{ u: 0.02, off: 0 }, { u: 0.12, off: -1.4 }, { u: 0.28, off: 0 }, { u: 0.43, off: 0 }, { u: 0.525, off: 0 }, { u: 0.66, off: 1.4 }, { u: 0.795, off: 0 }, { u: 0.965, off: 0 }],
+      ramps: [{ u: 0.085, gap: 8.5 }, { u: 0.535, gap: 8.5 }, { u: 0.975, gap: 0 }],
+      base: [0.145, 0.205],
+      boxes: [0.045, 0.32, 0.64],
+      coins: [{ u: 0.03, off: 1.5, n: 6 }, { u: 0.18, off: 0, n: 6 }, { u: 0.4, off: 0, n: 6 }, { u: 0.56, off: 1.4, n: 5 }, { u: 0.71, off: 0, n: 6 }, { u: 0.85, off: 1.5, n: 6 }, { u: 0.93, off: 0, n: 6 }]
     }
   };
   // aiSpeed is the rivals' top speed in cells/s before PACE; pay multiplies the place money. Optional environment
