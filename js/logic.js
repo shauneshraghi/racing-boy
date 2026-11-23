@@ -246,29 +246,33 @@ var RB = (function () {
       boxes: [0.22, 0.71],
       coins: [{ u: 0.1, off: 1.6, n: 6 }, { u: 0.33, off: -1.6, n: 6 }, { u: 0.59, off: 0, n: 5 }, { u: 0.87, off: -1.2, n: 6 }, { u: 0.93, off: 1.4, n: 5 }]
     },
-    // downhill to the creek jump, a climbing hairpin up to the farm, hay bales rolling across the farm lane, down
-    // through the chicane and a pad into the whoops
+    // a balloon loop: the creek jump on the start straight, a pad into the loop that climbs right round and back over
+    // the start straight on a railed bridge, up the farm lane with hay bales rolling across it, along the hilltop with an
+    // open edge on the right, round the far end to a pad and a hop off the crest, down over the whoops and home
     creek: {
-      name: 'Creek Jump', world: 0, laps: 3, hw: 3.5, scale: 1,
-      pts: [[30, 40], [70, 24], [115, 22], [160, 30], [196, 24], [220, 42], [204, 62], [182, 58], [162, 70], [166, 98], [140, 118], [108, 110], [86, 126], [58, 120], [44, 96], [22, 76]],
-      elev: [[0, 2], [0.06, 2], [0.19, 0], [0.33, 0], [0.48, 3.5], [0.62, 3.5], [0.72, 1], [0.79, 1], [0.8, 2], [0.81, 1], [0.82, 2], [0.83, 1], [0.84, 2], [0.85, 1], [0.95, 2]],
-      hazards: [{ u: 0.54, kind: 'bale', n: 2 }],
-      pads: [{ u: 0.1, off: 0 }, { u: 0.36, off: 1.4 }, { u: 0.58, off: -1.4 }, { u: 0.775, off: 0 }],
-      ramps: [{ u: 0.235, gap: 4 }],
-      boxes: [0.15, 0.66],
-      coins: [{ u: 0.05, off: -1.5, n: 6 }, { u: 0.3, off: 0, n: 5 }, { u: 0.45, off: 1.5, n: 6 }, { u: 0.7, off: 0, n: 5 }, { u: 0.9, off: 1.5, n: 6 }]
+      name: 'Creek Jump', world: 0, laps: 3, hw: 3.5, scale: 0.85,
+      pts: [[70, 180], [110, 180], [150, 182], [185, 192], [205, 215], [200, 240], [178, 252], [155, 240], [152, 220], [160, 190], [166, 150], [166, 105], [163, 72], [148, 58], [120, 55], [70, 56], [36, 62], [22, 88], [20, 115], [25, 150], [42, 176]],
+      elev: [[0, 0], [0.17, 0], [0.38, 6], [0.7, 6], [0.8, 5.5], [0.826, 5.5], [0.832, 3], [0.86, 1.5], [0.87, 1.5], [0.88, 2.5], [0.89, 1.5], [0.9, 2.5], [0.91, 1.5], [0.97, 0]],
+      bridges: [[0.385, 0.465, 'rail']], drops: [[0.645, 0.71, 1]],
+      hazards: [{ u: 0.56, kind: 'bale', n: 2 }],
+      pads: [{ u: 0.02, off: 0 }, { u: 0.2, off: 1.4 }, { u: 0.5, off: -1.4 }, { u: 0.815, off: 0 }, { u: 0.95, off: 0 }],
+      ramps: [{ u: 0.08, gap: 4 }],
+      boxes: [0.3, 0.6],
+      coins: [{ u: 0.12, off: 0, n: 5 }, { u: 0.25, off: -1.5, n: 6 }, { u: 0.42, off: 0, n: 5 }, { u: 0.53, off: 1.5, n: 6 }, { u: 0.68, off: -1.2, n: 5 }, { u: 0.9, off: 1.5, n: 6 }, { u: 0.97, off: 0, n: 5 }]
     },
-    // up Windmill Hill to a ramp off the summit, down past the flock, the creek jump in the valley, the switchback
-    // climb with bales rolling down it and a hop off the last crest
+    // the creek jump in the valley, up past the flock and round Windmill Hill (an open edge on the right of the climb),
+    // a ramp off the summit, round the top and over the climb's foot on a railed bridge, a hop off its end, down to a
+    // pad into the whoops and round the far hairpin to the valley
     windmill: {
-      name: 'Windmill Hills', world: 0, laps: 2, hw: 3.6, scale: 1,
-      pts: [[30, 40], [80, 24], [140, 22], [196, 30], [226, 56], [210, 82], [176, 80], [160, 100], [188, 122], [214, 146], [196, 178], [150, 186], [118, 166], [96, 190], [60, 196], [30, 176], [40, 148], [64, 130], [46, 104], [18, 78]],
-      elev: [[0, 0], [0.1, 0], [0.26, 5], [0.33, 5], [0.45, 1.5], [0.6, 0], [0.72, 0], [0.85, 3], [0.9, 3], [0.9125, 1], [0.98, 0]],
-      hazards: [{ u: 0.53, kind: 'sheep', n: 4 }, { u: 0.79, kind: 'bale', period: 6 }],
-      pads: [{ u: 0.05, off: 0 }, { u: 0.2, off: -1.5 }, { u: 0.3, off: 0 }, { u: 0.57, off: 0 }, { u: 0.7, off: -1.5 }, { u: 0.88, off: 0 }],
-      ramps: [{ u: 0.315, gap: 0 }, { u: 0.65, gap: 4.25 }],
-      boxes: [0.14, 0.56],
-      coins: [{ u: 0.08, off: 1.5, n: 6 }, { u: 0.24, off: 0, n: 6 }, { u: 0.4, off: -1.5, n: 6 }, { u: 0.53, off: 1.4, n: 5 }, { u: 0.75, off: 0, n: 6 }, { u: 0.86, off: -1.5, n: 6 }, { u: 0.95, off: 0, n: 5 }]
+      name: 'Windmill Hills', world: 0, laps: 2, hw: 3.6, scale: 0.95,
+      pts: [[150, 248], [110, 248], [70, 248], [38, 246], [24, 228], [26, 196], [40, 170], [66, 156], [100, 150], [140, 152], [178, 140], [198, 110], [192, 75], [165, 52], [125, 44], [98, 44], [82, 54], [78, 76], [79, 98], [82, 122], [88, 155], [100, 185], [130, 200], [180, 200], [212, 210], [222, 232], [205, 248], [180, 250]],
+      elev: [[0, 0], [0.13, 0], [0.22, 1], [0.3, 1], [0.5, 6], [0.738, 6], [0.745, 3.5], [0.79, 0], [0.8, 0], [0.806, 1], [0.812, 0], [0.818, 1], [0.824, 0], [0.83, 1], [0.836, 0]],
+      bridges: [[0.665, 0.735, 'rail']], drops: [[0.43, 0.48, 1]],
+      hazards: [{ u: 0.36, kind: 'sheep', n: 4 }],
+      pads: [{ u: 0.02, off: 0 }, { u: 0.19, off: -1.5 }, { u: 0.32, off: 1.5 }, { u: 0.505, off: 0 }, { u: 0.79, off: 0 }, { u: 0.95, off: 0 }],
+      ramps: [{ u: 0.06, gap: 4.25 }, { u: 0.525, gap: 0 }],
+      boxes: [0.15, 0.62],
+      coins: [{ u: 0.03, off: 1.5, n: 6 }, { u: 0.25, off: 0, n: 6 }, { u: 0.39, off: -1.5, n: 6 }, { u: 0.57, off: 0, n: 5 }, { u: 0.7, off: 0, n: 5 }, { u: 0.87, off: 0, n: 6 }, { u: 0.97, off: 1.4, n: 5 }]
     },
     // world 2, Sunbaked Canyon: a ramp's gap is a canyon on mesa and a water creek on oasis
     // dune hopping along the top, a ramp at the bend, tumbleweeds, up the big dune and off its lip
