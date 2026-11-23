@@ -52,6 +52,15 @@ var RB = (function () {
   var BOT_REACT = 7;
   var WHEEL_RATE = 18, WHEEL_COUNTER = 0.5; // front wheels follow the steering at this rate per second; a drift counter-steers them
   var SLOW_MUL = 0.55;
+  // hazards cross the road and back (amplitude hw + HAZ_OVER, a sine of period s); r is the hit radius, h the height a
+  // car must clear, gap the spacing of a flock (n of them), bounce how high it hops; a hit slows a little (HAZ_SLOW s)
+  var HAZ = {
+    sheep: { r: 0.65, h: 1.0, period: 9, gap: 2.6 },
+    bale: { r: 0.85, h: 1.3, period: 5, gap: 4 },
+    tumble: { r: 0.6, h: 0.9, period: 4, gap: 5, bounce: 0.9 },
+    boulder: { r: 1.0, h: 1.6, period: 7, gap: 5 }
+  };
+  var HAZ_OVER = 1.2, HAZ_SLOW = 0.8, HAZ_COOL = 1;
   var BEE_SPEED = 21, BEE_TURN = 6, BEE_LIFE = 6;
   var GOO_LIFE = 25;
   var COUNTDOWN = 3;
@@ -306,6 +315,12 @@ var RB = (function () {
     g.query = function (x, z) { return query(g, x, z); };
     // features
     g.pads = T.pads.map(function (p) { return { s: p.u * L, off: p.off }; });
+    g.hazards = [];
+    (T.hazards || []).forEach(function (hz, k) {
+      var K = HAZ[hz.kind], n = hz.n || 1;
+      for (var m = 0; m < n; m++) g.hazards.push({ s: wrapS({ L: L }, hz.u * L + m * K.gap), kind: hz.kind, r: K.r, h: K.h, bounce: K.bounce || 0,
+        period: hz.period || K.period, phase: (hz.phase !== undefined ? hz.phase : k * 0.37) + m * 0.11, amp: T.hw + HAZ_OVER });
+    });
     g.ramps = T.ramps.map(function (m) { return { s: m.u * L, len: RAMP_LEN, gap: m.gap, h: RAMP_H }; });
     g.boxes = [];
     T.boxes.forEach(function (u) { [-0.55, 0, 0.55].forEach(function (f) { g.boxes.push(feature(g, u * L, f * T.hw)); }); });
@@ -445,13 +460,14 @@ var RB = (function () {
   function surfaceSpeed(r, car, d) { return Math.abs(d) <= r.g.hw ? 1 : car.stats.grass; }
   function ev(r, type, car, extra) { var e = { type: type, car: car ? car.i : -1 }; if (extra) for (var k in extra) e[k] = extra[k]; r.events.push(e); if (r.events.length > 200) r.events.shift(); }
 
-  function hit(r, car, kind) {
+  function hit(r, car, kind, extra) {
     if (car.shieldT > 0) { car.shieldT = 0; ev(r, 'blocked', car); return false; }
-    var base = kind === 'bee' ? 1.6 : 1.2;
+    var base = kind === 'bee' ? 1.6 : kind === 'hazard' ? HAZ_SLOW : 1.2;
     car.slowT = Math.max(car.slowT, base * car.stats.armor);
-    car.v *= kind === 'bee' ? 0.55 : 0.7;
+    car.v *= kind === 'bee' ? 0.55 : kind === 'hazard' ? 0.75 : 0.7;
     car.drift = 0; car.driftDir = 0; car.boostT = 0;
-    ev(r, 'hit', car, { kind: kind });
+    var e = { kind: kind }; if (extra) for (var k in extra) e[k] = extra[k];
+    ev(r, 'hit', car, e);
     return true;
   }
   function useItem(r, car) {
@@ -470,13 +486,34 @@ var RB = (function () {
     ev(r, 'item', car, { item: it });
   }
 
+  // where hazard i is at the race time: x, z, arc s, offset d, the heading it walks or rolls, its hop y and roll angle
+  function hazardAt(r, i, t) {
+    var hz = r.g.hazards[i], ph = TAU * ((t === undefined ? r.t : t) / hz.period + hz.phase), d = hz.amp * Math.sin(ph), p = pointAt(r.g, hz.s, d);
+    var dir = Math.cos(ph) >= 0 ? 1 : -1;
+    return { x: p.x, z: p.z, s: hz.s, d: d, h: p.h + dir * Math.PI / 2, y: hz.bounce * Math.abs(Math.sin(ph * 3)), roll: d / hz.r, kind: hz.kind, r: hz.r };
+  }
+  // the lane a car should take past hazards it will reach in the next few cells, or lane if none is in the way
+  function dodge(r, car, lane) {
+    var g = r.g;
+    for (var i = 0; i < g.hazards.length; i++) {
+      var ahead = dS(g, g.hazards[i].s, car.s);
+      if (ahead < 0.5 || ahead > 12) continue;
+      if (car.ai && (car.i * 7 + i * 3 + car.lap) % 4 === 0) continue; // rivals miss one now and then
+      var hz = hazardAt(r, i, r.t + ahead / Math.max(4, car.v)), room = hz.r + CAR_R + 0.9;
+      if (Math.abs(hz.d - lane) < room) {
+        var side = Math.abs(hz.d) > g.hw - room ? -Math.sign(hz.d) : lane >= hz.d ? 1 : -1;
+        lane = clamp(hz.d + side * room, -g.hw + 0.6, g.hw - 0.6);
+      }
+    }
+    return lane;
+  }
   // the AI and the test bots steer toward a point ahead on their lane; returns an input
   function aimAhead(r, car, look, lane) {
     var p = pointAt(r.g, car.s + look, lane);
     return Math.atan2(p.z - car.z, p.x - car.x);
   }
   function aiInput(r, car) {
-    var inp = { aim: aimAhead(r, car, 3 + car.v * 0.35, car.lane) };
+    var inp = { aim: aimAhead(r, car, 3 + car.v * 0.35, dodge(r, car, car.lane)) };
     if (car.item && car.rollT <= 0) {
       car.itemDelay -= DT;
       if (car.itemDelay <= 0) {
@@ -508,7 +545,7 @@ var RB = (function () {
     } else {
       var lane = 0;
       for (var i = 0; i < g.pads.length; i++) { var d = dS(g, g.pads[i].s, car.s); if (d > 0 && d < 14) lane = g.pads[i].off; }
-      inp.aim = aimAhead(r, car, 3 + car.v * 0.35, lane);
+      inp.aim = aimAhead(r, car, 3 + car.v * 0.35, dodge(r, car, lane));
     }
     if (car.item && car.rollT <= 0) inp.item = !car.prevItem;
     return inp;
@@ -722,6 +759,20 @@ var RB = (function () {
       b.h += clamp(angDiff(want, b.h), -BEE_TURN * DT, BEE_TURN * DT);
       b.x += Math.cos(b.h) * BEE_SPEED * DT; b.z += Math.sin(b.h) * BEE_SPEED * DT;
       if (tgt && (tgt.x - b.x) * (tgt.x - b.x) + (tgt.z - b.z) * (tgt.z - b.z) < 1) { hit(r, tgt, 'bee'); r.bees.splice(i, 1); }
+    }
+    // hazards: a car low enough to touch one is hit, then gets HAZ_COOL s to get clear
+    for (i = 0; i < g.hazards.length; i++) {
+      var hz = null;
+      for (j = 0; j < r.cars.length; j++) {
+        var hc = r.cars[j];
+        if (hc.fallT > 0 || (hc.hazT || 0) > r.t) continue;
+        if (Math.abs(dS(g, hc.s, g.hazards[i].s)) > 3) continue;
+        hz = hz || hazardAt(r, i);
+        var rr = hz.r + CAR_R;
+        if (hc.y > hz.h - hz.y || (hc.x - hz.x) * (hc.x - hz.x) + (hc.z - hz.z) * (hc.z - hz.z) > rr * rr) continue;
+        hc.hazT = r.t + HAZ_COOL;
+        hit(r, hc, 'hazard', { hazard: hz.kind });
+      }
     }
     // cars bump each other apart, the lighter one moving more
     for (i = 0; i < r.cars.length; i++) for (j = i + 1; j < r.cars.length; j++) {
@@ -993,7 +1044,7 @@ var RB = (function () {
     PLACE_PAY: PLACE_PAY, PART_PAY: PART_PAY, PARTS: PARTS, ITEMS: ITEMS, ITEM_KEYS: ITEM_KEYS, UPGRADES: UPGRADES, UP_KEYS: UP_KEYS,
     PERKS: PERKS, CARS: CARS, LOOKS: LOOKS, LOOK_KEYS: LOOK_KEYS, TRACKS: TRACKS, WORLDS: WORLDS, HUB: HUB,
     rng: rng, angDiff: angDiff, clamp: clamp, track: track, pointAt: pointAt, groundAt: groundAt, slopeAt: slopeAt, headingAt: headingAt, lookOpt: lookOpt,
-    rollItem: rollItem, carStats: carStats, statsFor: statsFor, startRace: startRace, input: input, stepRace: stepRace,
+    rollItem: rollItem, hazardAt: hazardAt, HAZ: HAZ, carStats: carStats, statsFor: statsFor, startRace: startRace, input: input, stepRace: stepRace,
     surfaceSpeed: surfaceSpeed, hit: hit, botInput: botInput, finishRace: finishRace, trackUnlocked: trackUnlocked,
     worldUnlocked: worldUnlocked, canAfford: canAfford, upgradeCost: upgradeCost, buyUpgrade: buyUpgrade, buyCar: buyCar,
     selectCar: selectCar, carUnlocked: carUnlocked, carLockReason: carLockReason, buyLook: buyLook, equip: equip, newState: newState, serialize: serialize, deserialize: deserialize,
