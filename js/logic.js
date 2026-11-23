@@ -288,7 +288,7 @@ var RB = (function () {
     // cone (a magma boulder rolls across it) to the crater rim at 14.5 and a plunge off the rim with big air
     cinder: {
       name: 'Cinder Cone', world: 3, laps: 3, hw: 3.7, scale: 1, ai: 0.96,
-      pts: [[186, 59], [124, 70], [84, 119], [84, 181], [113, 222], [143, 225], [159, 211], [122, 178], [124, 133], [156, 111], [188, 119], [198, 145], [187, 168], [186, 194], [195, 220], [238, 214], [262, 158], [240, 91]],
+      pts: [[186, 59], [124, 70], [84, 119], [84, 181], [113, 222], [143, 225], [159, 211], [122, 178], [124, 133], [156, 111], [188, 119], [198, 145], [187, 168], [186, 194], [203, 223], [242, 212], [262, 158], [240, 91]],
       elev: [[0, 0], [0.06, 0], [0.07, 1.3], [0.08, 0.2], [0.09, 1.3], [0.1, 0.2], [0.11, 1.3], [0.12, 0], [0.36, 0], [0.42, 4], [0.45, 5],
         [0.51, 10], [0.54, 11], [0.595, 14.5], [0.635, 14.5], [0.655, 5], [0.71, 0]],
       hazards: [{ u: 0.28, kind: 'bomb', n: 2 }, { u: 0.48, kind: 'magma' }],
@@ -297,16 +297,16 @@ var RB = (function () {
       boxes: [0.25, 0.75],
       coins: [{ u: 0.05, off: 1.5, n: 6 }, { u: 0.14, off: 0, n: 5 }, { u: 0.38, off: -1.5, n: 6 }, { u: 0.56, off: 0, n: 5 }, { u: 0.8, off: 1.5, n: 6 }, { u: 0.93, off: 0, n: 5 }]
     },
-    // steam vents in a basalt-column gorge, a lava river jump out of it, a switchback climb (a magma boulder on the
-    // middle leg) to a plateau at 12.5, a hop off its edge and whoops down the cooled flow
+    // a lava river jump on the start straight, steam vents in a basalt-column gorge, a switchback climb (a magma
+    // boulder on the middle leg) to a plateau at 12.5, a hop off its edge and whoops down the cooled flow
     basalt: {
       name: 'Basalt Gorge', world: 3, laps: 3, hw: 3.6, scale: 0.82, ai: 0.98,
       pts: [[70, 224], [130, 226], [180, 220], [214, 200], [232, 170], [262, 160], [284, 134], [288, 100], [268, 74], [220, 74], [176, 78], [150, 64], [160, 44], [204, 42], [246, 34], [262, 14], [236, -2], [180, -6], [120, 0], [84, 24], [62, 66], [56, 110], [50, 150], [40, 192]],
       elev: [[0, 0], [0.32, 0], [0.44, 4.5], [0.47, 5], [0.57, 9], [0.62, 9.5], [0.7, 12.5], [0.765, 12.5], [0.78, 6], [0.83, 3], [0.84, 2.6], [0.85, 3.8], [0.86, 1.8],
         [0.87, 3], [0.88, 1], [0.89, 2.2], [0.9, 0.4], [0.95, 0]],
       hazards: [{ u: 0.2, kind: 'vent', n: 3 }, { u: 0.52, kind: 'magma' }],
-      pads: [{ u: 0.04, off: 0 }, { u: 0.27, off: 0 }, { u: 0.4, off: 1.4 }, { u: 0.66, off: -1.4 }, { u: 0.755, off: 0 }, { u: 0.97, off: 1.4 }],
-      ramps: [{ u: 0.295, gap: 4.2 }],
+      pads: [{ u: 0.03, off: 0 }, { u: 0.07, off: 0 }, { u: 0.25, off: 0 }, { u: 0.4, off: 1.4 }, { u: 0.66, off: -1.4 }, { u: 0.755, off: 0 }, { u: 0.97, off: 1.4 }],
+      ramps: [{ u: 0.085, gap: 4.2 }],
       boxes: [0.12, 0.6],
       coins: [{ u: 0.07, off: -1.5, n: 6 }, { u: 0.24, off: 1.5, n: 5 }, { u: 0.36, off: 0, n: 6 }, { u: 0.5, off: -1.4, n: 6 }, { u: 0.72, off: 0, n: 6 }, { u: 0.92, off: 0, n: 5 }]
     },
