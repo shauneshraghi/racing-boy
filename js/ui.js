@@ -94,6 +94,25 @@
   function previewCanvas(id, look, h, scale) {
     var c = SP.carPreview(id, look, h, scale || 4); c.className = 'preview'; return c;
   }
+  // parts swap: each next-door pair of tiers, up to one past the best tier the player holds or an upgrade asks for
+  function partsSwap(body) {
+    var top = 1;
+    for (var i = 0; i < D.PARTS.length; i++) if (S.parts[i] > 0) top = Math.max(top, i + 1);
+    D.UP_KEYS.forEach(function (k) { var c = D.upgradeCost(S, S.car, k); if (c) c.parts.forEach(function (n, j) { if (n) top = Math.max(top, j); }); });
+    top = Math.min(top, D.PARTS.length - 1);
+    body.insertAdjacentHTML('beforeend', '<h3 class="swapHead">🔁 Parts swap</h3><p class="note">Trade ' + D.PART_UP + ' parts for 1 of the next kind, or break 1 into ' + D.PART_DOWN + ' of the kind before it.</p>');
+    var grid = document.createElement('div'); grid.className = 'grid swap';
+    function btn(from, to) {
+      var P = D.PARTS, give = to > from ? D.PART_UP : 1, get = to > from ? 1 : D.PART_DOWN;
+      var b = document.createElement('button'); b.className = 'opt';
+      b.innerHTML = give + ' ' + P[from].icon + ' → ' + get + ' ' + P[to].icon + '<small class="' + (S.parts[from] < give ? 'short' : '') + '">' + P[from].name + ': ' + fmt(S.parts[from]) + '</small>';
+      b.disabled = S.parts[from] < give;
+      b.onclick = function () { if (D.tradeParts(S, from, to)) { var y = body.scrollTop; A.sfx('buy'); save(); renderPanel(); body.scrollTop = y; } else A.sfx('no'); };
+      grid.appendChild(b);
+    }
+    for (var t = 0; t < top; t++) { btn(t, t + 1); btn(t + 1, t); }
+    body.appendChild(grid);
+  }
   function renderPanel() {
     var body = $('pBody'), tabs = $('pTabs');
     $('pTitle').textContent = TITLES[station] || '';
@@ -101,7 +120,7 @@
     var car = S.car, C = D.CARS[car];
     if (station === 'garage') {
       body.appendChild(previewCanvas(car, S.cars[car].look, 0.6));
-      body.insertAdjacentHTML('beforeend', '<p class="note">Upgrading <b>' + C.name + '</b>. Each car keeps its own upgrades. Higher levels need ⚙️ gears, won by finishing 1st. Win races to open faster cars at the car lot.</p>');
+      body.insertAdjacentHTML('beforeend', '<p class="note">Upgrading <b>' + C.name + '</b>. Each car keeps its own upgrades. Higher levels need better parts: swap the parts you have at the bottom. Win races to open faster cars at the car lot.</p>');
       D.UP_KEYS.forEach(function (k) {
         var U = D.UPGRADES[k], lvl = S.cars[car].up[k], cap = C.caps[k], cost = D.upgradeCost(S, car, k);
         var pips = ''; for (var i = 0; i < cap; i++) pips += i < lvl ? '■' : '<i>■</i>';
@@ -112,6 +131,7 @@
         b.onclick = function () { if (D.buyUpgrade(S, car, k)) { A.sfx('buy'); toast(U.icon + ' ' + U.name + ' level ' + S.cars[car].up[k] + '!'); save(); renderPanel(); } else A.sfx('no'); };
         row.appendChild(b); body.appendChild(row);
       });
+      partsSwap(body);
     } else if (station === 'lot') {
       body.insertAdjacentHTML('beforeend', '<p class="note">Pick the car you race with. Every car has its own perk.</p>');
       Object.keys(D.CARS).forEach(function (id) {
@@ -329,8 +349,10 @@
   // (as in Dig), and in a race the mouse uses the buttons and keys.
   var cvEl = $('cv'), down = null, stickId = null, driftIds = {};
   // race stick: no steering within STICK_DEAD px of where the thumb landed, full lock at STICK_FULL px, and a
-  // curve (power STICK_CURVE) on top of the logic's own steering curve (STEER_LIN), so small movements turn gently
-  var STICK_DEAD = 10, STICK_FULL = 80, STICK_CURVE = 1;
+  // curve (power STICK_CURVE) on top of the logic's own steering curve (STEER_LIN), so small movements turn gently.
+  // A thumb pushed past full lock drags the stick's centre along, so easing back off starts unwinding at once
+  // instead of only after the thumb has travelled back over the overshoot
+  var STICK_DEAD = 12, STICK_FULL = 110, STICK_CURVE = 1.4;
   function stickSteer(dx) { var a = Math.min(1, Math.max(0, (Math.abs(dx) - STICK_DEAD) / (STICK_FULL - STICK_DEAD))); return (dx < 0 ? -1 : 1) * Math.pow(a, STICK_CURVE); }
   function driftHeld() { for (var k in driftIds) return true; return false; }
   function showDrift() { $('bDrift').classList.toggle('held', held.drift || driftHeld()); }
@@ -364,7 +386,10 @@
     var dx = e.clientX - down.x, dy = e.clientY - down.y;
     if (!down.moved && Math.hypot(dx, dy) > 12) { down.moved = true; var st = $('stick'); st.style.left = down.x + 'px'; st.style.top = down.y + 'px'; st.classList.add('show'); }
     if (down.moved) {
-      if (mode === 'race') { var kx = Math.max(-STICK_FULL, Math.min(STICK_FULL, dx)) * 50 / STICK_FULL; $('knob').style.transform = 'translate(' + kx + 'px,0)'; stick = Math.abs(dx) > STICK_DEAD ? { dx: dx, dy: 0 } : null; return; }
+      if (mode === 'race') {
+        if (Math.abs(dx) > STICK_FULL) { var over = dx - (dx < 0 ? -STICK_FULL : STICK_FULL); down.x += over; dx -= over; $('stick').style.left = down.x + 'px'; }
+        $('knob').style.transform = 'translate(' + (dx * 50 / STICK_FULL) + 'px,0)'; stick = Math.abs(dx) > STICK_DEAD ? { dx: dx, dy: 0 } : null; return;
+      }
       var l = Math.hypot(dx, dy), m = Math.min(l, 50), kx2 = l ? dx / l * m : 0, ky = l ? dy / l * m : 0;
       $('knob').style.transform = 'translate(' + kx2 + 'px,' + ky + 'px)';
       stick = l > 14 ? { dx: dx, dy: dy } : null;
