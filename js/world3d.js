@@ -762,6 +762,8 @@ var RB3DWorld = (function () {
   }
 
   // ---------- per-world look ----------
+  // LOOK_DOC (bridges): deck 'plank' builds bridge decks of timber on timber trestle legs (else concrete on piers), deckC
+  // the deck colour, cliffDepth how far the land drops beside an open edge (9)
   // LOOK_DOC: each world's entry gives the sky and light, then the land: hills (a HILLS shape), tex/texN/normalScale/tile
   // (terrain texture, normal map and its repeat in cells), dryPatch (hills' dry grass rising with height) or patch (a
   // colour blotched over the ground), roughMix (how strongly the runoff takes L.rough), cliff (steep slopes),
@@ -786,7 +788,7 @@ var RB3DWorld = (function () {
       species: [['oak', 0.32], ['elm', 0.5], ['pine', 0.74], ['birch', 0.84], ['bush', 0.95], ['rock', 1]],
       band: ['oak', 'bush', 'elm', 'bush', 'pine', 'birch'], maxTrees: 520, treeDens: 1, treeScale: [0.85, 0.75],
       roadside: 'hay', palms: false, far: null, tuftN: 4500, tuftC: '#e8ffd0', flowers: true, canyons: [] },
-    desert: { sunAz: -2.0, sunEl: 0.5, sun: '#ffdcaa', sunI: 2.8, hemiSky: '#b8c8f0', hemiGround: '#b06a3a', hemiI: 0.7,
+    desert: { deck: 'plank', deckC: '#c89a68', sunAz: -2.0, sunEl: 0.5, sun: '#ffdcaa', sunI: 2.8, hemiSky: '#b8c8f0', hemiGround: '#b06a3a', hemiI: 0.7,
       zenith: '#3a62b8', horizon: '#f2cfa2', fog: '#efcfa4', fogD: 0.0030, cloudA: '#fff2e0', cloudB: '#d8a890', cover: 0.62, exposure: 1.0,
       grass: ['#d8a868', '#e8c088', '#c48a52'], rough: '#b86a40', dry: '#e0b880', shoulder: '#a86a44', bank: '#8a5a3a', water: '#2a7a80',
       mtn: ['#b8705a', '#d8a888'], hill: 4.5, ground: 'sand',
@@ -857,6 +859,18 @@ var RB3DWorld = (function () {
     var land = g.queryLand && g.nearLand ? g.queryLand : g.query, decks = !!g.nearLand, drops = g.drops && g.drops.length;
     var deckY = decks ? new Float32Array(W * H) : null, ddist = decks ? new Float32Array(W * H) : null, cliff = drops ? new Float32Array(W * H) : null;
     var CD = L.cliffDepth || 9, lip = g.hw + (D.EDGE || 0.8);
+    // each bridge's base: the lowest ground road within 40 cells of its deck (the road it crosses), or 8 under the deck;
+    // the land near a deck is carved down toward it (carve: weight, carveY: level) so a high bridge stands in open air
+    var carve = decks ? new Float32Array(W * H) : null, carveY = decks ? new Float32Array(W * H) : null, baseOf = {};
+    if (decks) (g.bridges || []).forEach(function (br, bi) {
+      var lo = 1e9, dmin = 1e9;
+      for (var i = 0; i < g.n; i += 4) if (g.deck[i] && ((S[i].s - br.s0 + g.L) % g.L) <= ((br.s1 - br.s0 + g.L) % g.L)) {
+        dmin = Math.min(dmin, S[i].y); baseOf[i] = bi;
+        for (var j = 0; j < g.n; j += 4) if (!g.deck[j] && (S[j].x - S[i].x) * (S[j].x - S[i].x) + (S[j].z - S[i].z) * (S[j].z - S[i].z) < 1600) lo = Math.min(lo, S[j].y);
+      }
+      br.base = lo < 1e8 ? lo : dmin - 8;
+    });
+    function bridgeBase(i) { for (var o = 0; o < 4; o++) { var k = i - o; if (baseOf[k] !== undefined) return g.bridges[baseOf[k]].base; } var best = null; g.bridges.forEach(function (br) { if (best === null) best = br.base; }); return best; }
     function openAt(i, sd) { var a = sd > 0 ? g.limR : g.limL; return a && a[i] > 1e8 && !g.deck[i]; }
     for (var z = 0; z < H; z++) for (var x = 0; x < W; x++) {
       var wx = this.x0 + x, wz = this.z0 + z, dd, k0 = z * W + x;
@@ -865,16 +879,20 @@ var RB3DWorld = (function () {
         if (decks) {
           var aq = g.query(wx, wz); ddist[k0] = aq.dist;
           deckY[k0] = g.deck[aq.i] && aq.dist < g.hw + 4 ? D.groundAt(g, aq.s) - 1.2 : 1e9;
+          if (g.deck[aq.i] && aq.dist < g.hw + 18) {
+            carve[k0] = (1 - smooth(g.hw + 4, g.hw + 18, aq.dist)) * smooth(this.lim + 1, this.lim + 6, lq.dist);
+            carveY[k0] = bridgeBase(aq.i);
+          }
         }
         if (drops && dd > g.hw && openAt(lq.i, lq.d)) {
           // the cliff tapers in over a few cells at the ends of the open stretch
           var f = 0; for (var o = -8; o <= 8; o += 2) if (openAt(((lq.i + o) % g.n + g.n) % g.n, lq.d)) f++;
-          cliff[k0] = CD * smooth(lip - 0.3, lip + 2.5, dd) * (1 - smooth(this.lim + 22, this.lim + 55, dd)) * smooth(0.3, 1, f / 9);
+          cliff[k0] = CD * smooth(lip - 0.3, lip + 2.5, dd) * (1 - smooth(this.lim + 40, this.lim + 110, dd)) * smooth(0.3, 1, f / 9);
         }
       } else { dd = 1e9; for (var j = 0; j < g.n; j += 3) { var e = (S[j].x - wx) * (S[j].x - wx) + (S[j].z - wz) * (S[j].z - wz); if (e < dd) dd = e; } dd = Math.sqrt(dd); if (decks) { ddist[k0] = dd; deckY[k0] = 1e9; } }
       dist[k0] = dd;
     }
-    this.dist = dist; this.W = W; this.H = H; this.deckY = deckY; this.ddist = ddist; this.cliff = cliff;
+    this.dist = dist; this.W = W; this.H = H; this.deckY = deckY; this.ddist = ddist; this.cliff = cliff; this.carve = carve; this.carveY = carveY;
     // the road's height carried out over the land (hills): exactly the ground under the road out past the walls,
     // then a smooth blend of the nearby stretches (inverse distance on a coarse grid), fading back to the plain
     // land far out, so a climb sits on a hillside and a summit on a hill
@@ -966,6 +984,7 @@ var RB3DWorld = (function () {
     y += base - 0.06 * (1 - smooth(this.g.hw, this.g.hw + 1, d));
     if (ck) y = lerp(y, ck.c.y0 - ck.c.depth, ck.p);
     if (this.cliff) y -= this.grid(this.cliff, x, z, 0);
+    if (this.carve) { var cw = this.grid(this.carve, x, z, 0); if (cw > 0.001) { var cy = this.grid(this.carveY, x, z, y); if (y > cy) y -= (y - cy) * cw; } }
     if (this.deckY) y = Math.min(y, this.grid(this.deckY, x, z, 1e9));
     return y;
   };
@@ -2002,7 +2021,7 @@ var RB3DWorld = (function () {
     splitBy(list, onDeck).forEach(function (sub) {
       // slab: the deck top past the road, its sides and underside
       var geo = sweep(g, sub, [[hw - 0.02, 0.005, W, 0.005], [W, 0.005, W, -TH], [W, -TH, -W, -TH], [-W, -TH, -W, 0.005], [-W, 0.005, -hw + 0.02, 0.005]], GY);
-      var p0 = D.pointAt(g, sub[0], 0); b.add('deck', geo, new THREE.Matrix4(), deckC, p0.x, p0.z); tris += sub.length * 10;
+      var p0 = D.pointAt(g, sub[0], 0); b.add(L.deck === 'plank' ? 'plankDS' : 'deck', geo, new THREE.Matrix4(), deckC, p0.x, p0.z); tris += sub.length * 10;
       // a darker band along the slab's sides
       b.add('deck', sweep(g, sub, [[W + 0.01, -0.05, W + 0.01, -0.3], [-W - 0.01, -0.3, -W - 0.01, -0.05]], GY), new THREE.Matrix4(), col('#8f877a'), p0.x, p0.z);
       // piers every 8 cells, down to the land, skipped where another road runs below
@@ -2011,6 +2030,7 @@ var RB3DWorld = (function () {
         if (below && below.dist < lim + 1.2) continue;
         var ground = F.height(p.x, p.z) - 0.3, hgt = top - ground;
         if (hgt < 0.4) continue;
+        if (L.deck === 'plank') { [-1, 1].forEach(function (sd) { var pp = D.pointAt(g, s, sd * (hw - 0.4)), gr = F.height(pp.x, pp.z) - 0.3; b.add('plank', box(0.45, top - gr, 0.45), mtx(pp.x, gr, pp.z, -pp.h), col('#7a5a3a'), pp.x, pp.z); }); b.add('plank', box(0.35, 0.35, 2 * hw), mtx(p.x, top - 0.35, p.z, -p.h), col('#6a4a2e'), p.x, p.z); tris += 48; continue; }
         b.add('deck', box(1.1, hgt, 1.9), mtx(p.x, ground, p.z, -p.h), deckC, p.x, p.z);
         b.add('deck', box(1.6, 0.35, 2.4), mtx(p.x, top - 0.35, p.z, -p.h), deckC, p.x, p.z);
         tris += 24;
