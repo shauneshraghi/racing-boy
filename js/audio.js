@@ -335,6 +335,76 @@ var RBAudio = (function () {
           bass: 'r.r.o.r.r.r.o.f.', gtr: 'X.x.x.x.X.x.x.x.', pad: true, arp: 'xxxxxxxxxxxxxxxx', drum: 'rolling', fill: 8 }
       ]
     },
+
+    // world 4, Lava Lane: heavier and more driving
+    // Cinder Cone: E Phrygian, galloping and dark, slap bass in 16ths, a bII grind, then a soaring bVI - bVII climb
+    cinder: {
+      bpm: 192, key: 52, scale: PHRY, lead: 12, leadType: 'brass', bassType: 'slap', echo: 0.117, loopFrom: 1,
+      mix: { lead: 0.03, bass: 0.024, gtr: 0.015, arp: 0.011, drum: 1 },
+      motifs: {
+        x3: '1-1-2-1-.1-2-3-.', x4: '5---3---2---1---',
+        a1: '1-.1-.3-5-3-1-g-', a2: '1-------2-3-2-1-', a3: '2-.2-.4-6-4-2-1-', a4: '2---------3-2-1-',
+        a5: '5-.5-.6-5-3-1-3-', a6: '4---3---2---1---', a7: '6-.6-.5-4-3-2-3-', a8: '2-------........',
+        b1: 'A-.A-.B-C-B-A-6-', b2: '5---------6-5-3-', b3: 'B-.B-.C-D-C-B-A-', b4: 'B---------......',
+        b5: 'C-.C-.D-E-D-C-B-', b6: 'A---B---C---D---', b7: 'E-.D-.C-.B-A-6-.', b8: '7---------......'
+      },
+      secs: [
+        { bars: 4, ch: 'i i bII i', mel: [null, null, 'x3', 'x4'], bass: 'r.rr.rr.r.rr.rf.', gtr: 'X.xX.xX.x.xX.x.x', drum: 'pulse', fill: 4 },
+        { bars: 16, ch: 'i i bII bII i i bVII bII i i bVI bVII iv iv bII bII',
+          mel: ['a1', 'a2', 'a3', 'a4', 'a1', 'a2', 'a5', 'a6', 'a1', 'a2', 'a7', 'a8', 'a5', 'a6', 'a3', 'a4'],
+          bass: 'rrorrrorrrorrfro', gtr: 'X.xxX.xxX.xxX.xx', drum: 'gallop', fill: 4 },
+        { bars: 16, ch: 'bVI bVI bVII bVII i i bII bII bVI bVI bVII bVII iv iv V V',
+          mel: ['b1', 'b2', 'b3', 'b4', 'b1', 'b2', 'b5', 'b6', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8'],
+          bass: 'rrorrforrrorrtro', gtr: 'X.xxX.xxX.xxX.x.', arp: 'x.x.x.x.x.x.x.x.', drum: 'drive', fill: 8 }
+      ]
+    },
+    // Basalt Gorge: C# harmonic minor, a stomping half-time breakdown between two driving runs
+    basalt: {
+      bpm: 184, key: 49, scale: HARM, lead: 12, leadType: 'brass', bassType: 'pick', echo: 0.13, loopFrom: 1,
+      mix: { lead: 0.03, bass: 0.034, gtr: 0.015, arp: 0.011, pad: 0.008, drum: 1 },
+      motifs: {
+        bi3: '....1-2-3-5-6-7-', bi4: 'A-------7-------',
+        g1: '1-.3-.5-.6-5-3-1', g2: '7-------........', g3: '4-.6-.A-.6-4-3-2', g4: '3-------2-1-7-1-',
+        g5: '5-.5-.6-.7-A-7-6', g6: '5---3---2---1---', g7: '6-.6-.5-.4-3-2-1', g8: '7---------......',
+        h1: 'C-----A-----6---', h2: '5-----6-----A---', h3: 'D-----C-----B---', h4: 'A---------------',
+        h5: 'E-----D-----C---', h6: 'B---A---B---C---', h7: 'D-----C-----B---', h8: '7-1-2-3-4-5-6-7-'
+      },
+      secs: [
+        { bars: 4, ch: 'i i V i', mel: [null, null, 'bi3', 'bi4'], bass: 'r.....r.r.....r.', gtr: 'X.....X.X.....x.', drum: 'half', fill: 4 },
+        { bars: 16, ch: 'i i iv iv i i V V bVI bVI iv iv i V i i',
+          mel: ['g1', 'g2', 'g3', 'g4', 'g1', 'g2', 'g5', 'g6', 'g7', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8'],
+          bass: 'r.r.o.r.r.r.o.f.', gtr: 'X.x.x.x.X.x.x.x.', drum: 'rock', fill: 4 },
+        { bars: 8, ch: 'bVI bVI bVII bVII i i V V', mel: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8'],
+          pad: true, bass: 'r...o...r...o.f.', gtr: 'X.......X...X...', drum: 'half', fill: 8 },
+        { bars: 16, ch: 'i i bVI bVI iv iv V V i i bVI bVI iv V i i',
+          mel: ['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8', 'g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8'],
+          bass: 'rrorrrorfrorrrot', gtr: 'X.xxX.xxX.xxX.x.', arp: 'xxxxxxxxxxxxxxxx', drum: 'drive', fill: 4 }
+      ]
+    },
+    // Caldera Ridge: F# minor, the fastest theme, an epic climb that lifts a whole step for its last run
+    caldera: {
+      bpm: 196, key: 54, scale: AEO, lead: 12, leadType: 'brass', bassType: 'slap', echo: 0.115, loopFrom: 1,
+      mix: { lead: 0.029, bass: 0.023, gtr: 0.015, arp: 0.012, pad: 0.007, drum: 1 },
+      motifs: {
+        ki3: '1-2-3-4-5-6-7-A-', ki4: 'B-------A-------',
+        k1: 'A-.A-.7-A-B-A-7-', k2: '5-------3-4-5-6-', k3: '6-.6-.5-6-A-6-5-', k4: '4-------........',
+        k5: '7-.7-.6-7-B-7-6-', k6: '5---4---3---2---', k7: '1-.3-.5-.A-.5-3-', k8: '1-------------..',
+        k9: '4-.4-.6-A-6-4-3-', k10: '7---6---5---7---',
+        m1: 'C-.C-.D-E-D-C-B-', m2: 'D---------C-B-A-', m3: 'A-.B-.C-.E-D-C-B', m4: 'A---------------',
+        m5: 'C-.D-.E-.F-E-D-C', m6: 'D---C---B---A---', m7: 'B-.C-.D-.E-.F-E-', m8: 'E---------------'
+      },
+      secs: [
+        { bars: 4, ch: 'i bVI bVII i', mel: [null, null, 'ki3', 'ki4'], bass: 'rrorrrorrrorrrot', drum: 'pulse', fill: 4 },
+        { bars: 16, ch: 'i i bVI bVI bVII bVII i i i i bVI bVI iv iv bVII bVII',
+          mel: ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k1', 'k2', 'k3', 'k4', 'k9', 'k6', 'k5', 'k10'],
+          bass: 'r.r.o.r.r.r.o.f.', gtr: 'X.x.x.x.X.x.x.X.', drum: 'rock', fill: 4 },
+        { bars: 16, ch: 'bVI bVII i i bVI bVII i i iv iv bVI bVI bVII bVII i i',
+          mel: ['m1', 'm2', 'm3', 'm4', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm5', 'm6', 'm7', 'm8', 'm7', 'm8'],
+          bass: 'rrorrfrorrorrtro', gtr: 'X.xxX.xxX.xxX.x.', arp: 'x.x.x.x.x.x.x.x.', pad: true, drum: 'gallop', fill: 8 },
+        { bars: 8, tr: 2, ch: 'i i bVI bVI bVII bVII i bVII', mel: ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k10'],
+          bass: 'rrorrrorfrorrrot', gtr: 'X.xxX.xxX.xxX.x.', arp: 'xxxxxxxxxxxxxxxx', drum: 'drive', fill: 4 }
+      ]
+    },
     // Victory (results after a win): C major fanfare, brass over a rock beat
     win: {
       bpm: 138, key: 48, scale: ION, lead: 12, leadType: 'brass', bassType: 'pick', echo: 0.2, loopFrom: 0,

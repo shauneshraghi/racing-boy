@@ -876,7 +876,7 @@ var RB3DWorld = (function () {
         var fx = x / GC, fz = z / GC, ix = Math.min(CW - 2, Math.floor(fx)), iz = Math.min(CHh - 2, Math.floor(fz)), tx = fx - ix, tz = fz - iz;
         var idw = (coarse[iz * CW + ix] * (1 - tx) + coarse[iz * CW + ix + 1] * tx) * (1 - tz) + (coarse[(iz + 1) * CW + ix] * (1 - tx) + coarse[(iz + 1) * CW + ix + 1] * tx) * tz;
         var d0 = dist[z * W + x], wx2 = this.x0 + x, wz2 = this.z0 + z, near = d0 < lim + 12 ? D.groundAt(g, g.query(wx2, wz2).s) : idw;
-        ry[z * W + x] = lerp(near, idw, smooth(lim + 1, lim + 11, d0)) * (1 - smooth(lim + 40, lim + 110, d0));
+        ry[z * W + x] = lerp(near, idw, smooth(lim + 1, lim + 11, d0)) * (1 - smooth(lim + 40, lim + 110, d0)) * (1 - (L.slump || 0) * smooth(lim + 3, lim + 24, d0));
       }
       this.ry = ry;
     }
@@ -943,7 +943,7 @@ var RB3DWorld = (function () {
     return y;
   };
   // walkable/clear test for placing scenery: away from the road, creeks and water
-  Field.prototype.clear = function (x, z, m) { if (this.distAt(x, z) < this.lim + m) return false; var ck = this.creekAt(x, z); return !ck || ck.p < 0.01; };
+  Field.prototype.clear = function (x, z, m) { if (this.distAt(x, z) < this.lim + m) return false; var ck = this.creekAt(x, z); if (this.L.sea !== undefined && this.height(x, z) < this.L.sea + 0.4) return false; return !ck || ck.p < 0.01; };
 
   function terrainMat(L) {
     var key = 'terrain_' + L.tex + '_' + (L.texN || '');
@@ -1367,6 +1367,279 @@ var RB3DWorld = (function () {
     roadside: 'snowman', palms: false, far: 'peaks', tuftN: 900, tuftC: '#d8dcc0', flowers: false, canyons: ['glacier'],
     canyonC: '#3a8ed0', canyonWall: '#6ab2e6', canyonBank: 'icerock', dust: '#f2f7ff' };
   // ---------- end of world 3 ----------
+  // ---------- world 4, Lava Lane ----------
+  // dark basalt and ash under an orange haze; lava fills the low land (a sea of it at LOOK.sea) and the jump gaps;
+  // basalt-column gorges, charred trees, obsidian, a forge and an observatory, basalt walls, smoking cones far off
+  // and lava hazards. Materials: basalt (columns, walls, rocks), obsidian (glassy black), magma (glowing cracks).
+  MAKE.ash = function () {
+    var N = 512, hf = new Float32Array(N * N);
+    var c = pix(N, N, function (x, y, o) {
+      var n = fbm(x / N * 6, y / N * 6, 4, 701, 6, 6), m = fbm(x / N * 28, y / N * 28, 2, 703, 28, 28), gr = hash(x, y, 17);
+      var grain = gr > 0.94 ? 0.55 : gr < 0.025 ? 1.3 : 1; // dark cinders and pale pumice grains
+      hf[y * N + x] = n * 0.6 + m * 0.4 + (gr > 0.94 ? 0.25 : 0);
+      var v = (0.6 + 0.24 * n + 0.14 * m) * grain;
+      o[0] = 214 * v; o[1] = 204 * v; o[2] = 196 * v;
+    });
+    TX.ashN = toTex(normalCanvas(hf, N, N, 3));
+    return toTex(c, true);
+  };
+  MAKE.ashN = function () { T('ash'); return TX.ashN; };
+  // basalt faces: dark vesicular rock with horizontal joints, for the columns, walls and rocks
+  MAKE.basalt = function () {
+    var N = 256, hf = new Float32Array(N * N);
+    var c = pix(N, N, function (x, y, o) {
+      var n = fbm(x / N * 8, y / N * 8, 4, 711, 8, 8), joint = Math.pow(Math.abs(Math.sin((y / N * 4 + n * 0.35) * Math.PI)), 24), ves = hash(x, y, 9) > 0.965 ? 0.55 : 1;
+      hf[y * N + x] = n - joint * 0.8 - (ves < 1 ? 0.3 : 0);
+      var v = (0.52 + 0.32 * n) * (1 - 0.55 * joint) * ves;
+      o[0] = 205 * v; o[1] = 200 * v; o[2] = 204 * v;
+    });
+    TX.basaltN = toTex(normalCanvas(hf, N, N, 4));
+    return toTex(c, true);
+  };
+  MAKE.basaltN = function () { T('basalt'); return TX.basaltN; };
+  // molten rock: dark crust plates split by glowing veins (used as colour and emissive map)
+  MAKE.lava = function () {
+    var N = 256;
+    return toTex(pix(N, N, function (x, y, o) {
+      var n = fbm(x / N * 6, y / N * 6, 4, 723, 6, 6), vein = Math.pow(1 - Math.abs(n * 2 - 1), 7), pool = smooth(0.6, 0.78, fbm(x / N * 3, y / N * 3, 3, 725, 3, 3));
+      var hot = clamp(vein * 1.5 + pool * 0.9, 0, 1);
+      o[0] = 34 + 221 * hot; o[1] = 14 + 160 * hot * hot; o[2] = 8 + 50 * hot * hot * hot;
+    }), true);
+  };
+  // a soft puff of smoke or steam (alpha)
+  MAKE.smoke = function () {
+    var N = 128, c = pix(N, N, function (x, y, o) {
+      var dx = x / N * 2 - 1, dy = y / N * 2 - 1, d = Math.sqrt(dx * dx + dy * dy), n = fbm(x / N * 5, y / N * 5, 4, 731);
+      var a = clamp((1 - d) * 1.7 * (0.5 + 0.7 * n), 0, 1); o[0] = o[1] = o[2] = 255 * (0.7 + 0.3 * n); o[3] = 255 * a * a;
+    });
+    var t = toTex(c, true); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; return t;
+  };
+  function lavaMats() {
+    if (MATS.basalt) return;
+    var m = std({ map: T('basalt'), normalMap: T('basaltN'), vertexColors: true, roughness: 0.86 }); m.name = 'basalt'; addHooks(m, [nearFade]); MATS.basalt = m;
+    m = std({ vertexColors: true, roughness: 0.1, metalness: 0.25, envMapIntensity: 1.4 }); m.name = 'obsidian'; addHooks(m, [nearFade]); MATS.obsidian = m;
+    m = std({ map: T('lava'), emissiveMap: T('lava'), emissive: col('#ffffff'), emissiveIntensity: 2.6, vertexColors: true, roughness: 0.7 }); m.name = 'magma'; MATS.magma = m;
+    SHADOW.basalt = 1; SHADOW.obsidian = 1;
+  }
+  // wrap a round geometry's uvs around it (k repeats round, half that up)
+  function roundUV(g, k) {
+    var p = g.attributes.position, uv = new Float32Array(p.count * 2);
+    for (var i = 0; i < p.count; i++) { var x = p.getX(i), y = p.getY(i), z = p.getZ(i), l = Math.hypot(x, y, z) || 1; uv[i * 2] = (Math.atan2(z, x) / (2 * Math.PI) + 0.5) * k; uv[i * 2 + 1] = (y / l * 0.5 + 0.5) * k * 0.5; }
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); return g;
+  }
+  PROTOS.charred = function () {
+    var p = []; trunk(p, 2.8, 0.22, 0.09, col('#3a302c'), 4, 31);
+    var r = prng(33);
+    for (var i = 0; i < 5; i++) { var tw = barkCyl(0.02, 0.05, 0.7 + r() * 0.5, 4); tw.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(0, r() * 6.3, 0.5 + r() * 0.6, 'YXZ'))); tw.translate(0, 2.0 + r() * 0.8, 0); paint(tw, col('#2a2220')); p.push({ mat: 'foliage', g: tw }); }
+    return p;
+  };
+  // a cluster of hexagonal basalt columns, flat tops at stepped heights
+  PROTOS.basaltcol = function () {
+    lavaMats();
+    var p = [], r = prng(41), R0 = 0.3, k = 0;
+    for (var q = -2; q <= 2; q++) for (var w = -2; w <= 2; w++) {
+      var x = (q + w * 0.5) * R0 * 1.75, z = w * R0 * 1.52, d = Math.hypot(x, z);
+      if (d > 1.1 + r() * 0.3) continue;
+      var h = (3.6 - d * 1.6) * (0.75 + r() * 0.4) + (k++ % 3 === 0 ? -0.5 : 0), g = new THREE.CylinderGeometry(R0 * 0.97, R0, Math.max(0.4, h), 6, 1);
+      g.rotateY(Math.PI / 6); g.translate(x, h / 2, z); scaleUV(g, 0.8, h / 2.6); g = g.toNonIndexed(); g.computeVertexNormals();
+      paint(g, function (px, py) { return mixC(col('#26222a'), col('#4e4a50'), clamp(py / h, 0, 1)).multiplyScalar(0.85 + 0.3 * hash(q + 3, w + 3, 5)); }); p.push({ mat: 'basalt', g: g });
+    }
+    return p;
+  };
+  PROTOS.obsidian = function () {
+    lavaMats();
+    var g = rockGeo(0.7, 7, 0.9).toNonIndexed(); g.computeVertexNormals();
+    paint(g, function (x, y) { return mixC(col('#0e0c12'), col('#2a2632'), clamp(y / 0.7 + 0.3, 0, 1)); });
+    return [{ mat: 'obsidian', g: g }];
+  };
+  PROTOS.ashshrub = function () { var p = []; canopy(p, [[0, 0.3, 0, 0.4], [0.32, 0.24, 0.14, 0.3], [-0.28, 0.26, -0.1, 0.32]], 43, col('#7a7458'), 2); return p; };
+  UNTINTED.obsidian = UNTINTED.basaltcol = 1; LOW.obsidian = LOW.ashshrub = 1; SMALL.ashshrub = 1;
+  // the land: rolling ash with lava basins dropping below LOOK.sea, and jagged ridges
+  HILLS.lava = function (x, z, amp) {
+    var n = fbm(x * 0.016, z * 0.016, 4, 741), ridge = 1 - Math.abs(fbm(x * 0.03, z * 0.03, 3, 743) * 2 - 1);
+    return amp * ((n - 0.5) * 3.2 + Math.pow(ridge, 3) * 0.6 - 0.25);
+  };
+  // the far ring: sharp, broken volcanic peaks
+  MTN.jag = function (a, f, n, seed) { var ridge = 1 - Math.abs(fbm(Math.cos(a) * 7 + seed, Math.sin(a) * 7 + f * 3, 4, 751) * 2 - 1); return 30 + 175 * n * Math.pow(ridge, 2.2); };
+  // smoke rising from (x, y, z): n puffs of the given size cycling up, drifting downwind (+x)
+  function plume(group, anim, x, y, z, size, n, colr, op, far) {
+    var base = new THREE.SpriteMaterial({ map: T('smoke'), color: col(colr), transparent: true, depthWrite: false, opacity: op || 0.7, fog: !far }), sp = [];
+    for (var i = 0; i < n; i++) { var s = new THREE.Sprite(base.clone()); s.renderOrder = 3; group.add(s); sp.push(s); }
+    anim.push(function (t) {
+      sp.forEach(function (s, i) {
+        var f = (t * 0.035 + i / n) % 1, sc = size * (0.7 + f * 2.6);
+        s.position.set(x + f * f * size * 5 + Math.sin(i * 2.3) * size * 0.4, y + f * size * 7, z + Math.cos(i * 1.7) * size * 0.5 * f);
+        s.scale.set(sc, sc, 1); s.material.rotation = i * 1.3 + t * 0.05; s.material.opacity = (op || 0.7) * Math.sin(Math.PI * Math.min(1, f * 1.15)) * (1 - f * 0.4);
+      });
+    });
+  }
+  // a volcanic cone: concave flanks with gullies up to a crater rim, the crater floor at 0.86 h
+  function coneGeo(R, H, seed) {
+    var A = 64, J = 22, pos = [], uv = [], idx = [], cl = [], lo = col('#24201f'), hi = col('#6a625e'), ash = col('#8a8480');
+    for (var j = 0; j <= J; j++) for (var i = 0; i <= A; i++) {
+      var a = i / A * Math.PI * 2, t = j / J, rr, y;
+      if (t < 0.82) { var q = t / 0.82; rr = R * (1 - q) * (1 - q * 0.15) + R * 0.13 * q; y = H * (1 - Math.pow(1 - q, 1.7)); }
+      else { var q2 = (t - 0.82) / 0.18; rr = R * 0.13 * (1 - q2 * 0.7); y = H * (1 - 0.14 * Math.sin(q2 * Math.PI / 2)); }
+      var gully = 1 + 0.07 * Math.sin(a * 17 + seed) * (1 - t) + 0.05 * (fbm(Math.cos(a) * 3 + seed, t * 4, 3, 761) - 0.5) * 2;
+      pos.push(Math.cos(a) * rr * gully, y, Math.sin(a) * rr * gully); uv.push(a * R / 12, y / 6);
+      var c = mixC(lo, hi, clamp(y / H, 0, 1)); if (t > 0.6 && t < 0.83) c.lerp(ash, 0.4); cl.push(c.r, c.g, c.b);
+      if (i < A && j < J) { var k = j * (A + 1) + i; idx.push(k, k + A + 1, k + 1, k + 1, k + A + 1, k + A + 2); }
+    }
+    var g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3)); g.setIndex(idx); g.computeVertexNormals();
+    return g;
+  }
+  // a lava flow down a cone's flank: a ribbon from the rim (angle a) down to the given fraction of its height
+  function flowGeo(R, H, a, to, w) {
+    var pos = [], uv = [], idx = [], n = 24;
+    for (var k = 0; k <= n; k++) {
+      var t = 0.81 - k / n * (0.81 - to), q = t / 0.82, rr = R * (1 - q) * (1 - q * 0.15) + R * 0.13 * q + 0.4, y = H * (1 - Math.pow(1 - q, 1.7)) + 0.15;
+      var aa = a + Math.sin(k * 0.7) * 0.02, ww = w * (0.6 + k / n * 0.8) / Math.max(rr, 1);
+      [-1, 1].forEach(function (sd) { pos.push(Math.cos(aa + sd * ww) * rr, y, Math.sin(aa + sd * ww) * rr); uv.push(sd * 0.5 + 0.5, k * 0.6); });
+      if (k) { var o = (k - 1) * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); }
+    }
+    var g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+    if (g.attributes.normal.getY(0) < 0) { for (var q3 = 0; q3 < idx.length; q3 += 3) { var tq = idx[q3 + 1]; idx[q3 + 1] = idx[q3 + 2]; idx[q3 + 2] = tq; } g.setIndex(idx); g.computeVertexNormals(); }
+    return g;
+  }
+  // a foundry of dark stone with a glowing furnace mouth and a smoking chimney
+  BUILD.forge = function (b, m, r, group, anim) {
+    lavaMats();
+    function put(mat, g, c) { b.add(mat, g, m, c); }
+    var W = 4.2, Dp = 3.2, H = 2.5;
+    put('basalt', box(W + 0.25, 0.3, Dp + 0.25), col('#3a3638'));
+    put('basalt', box(W, H, Dp).translate(0, 0.3, 0), col('#6a6264'));
+    put('basalt', gableEnds(W, Dp, 1.05).translate(0, H + 0.3, 0), col('#6a6264'));
+    put('corrugated', gable(W, Dp, 1.1, 0.25).translate(0, H + 0.25, 0), col('#7a4a34'));
+    put('brick', cyl(0.42, 0.6, 6.4, 10, 1).translate(-W * 0.3, 0, -Dp * 0.22), col('#6a3a30'));
+    put('magma', new THREE.CylinderGeometry(0.38, 0.38, 0.06, 10).translate(-W * 0.3, 6.42, -Dp * 0.22), col('#ffffff'));
+    put('magma', box(1.2, 1.0, 0.06).translate(0.7, 0.3, Dp / 2 + 0.01), col('#ffffff'));
+    put('metal', box(1.6, 0.2, 0.22).translate(0.7, 1.4, Dp / 2), col('#2a2a30'));
+    [-1, 1].forEach(function (sd) { put('metal', box(0.2, 1.3, 0.22).translate(0.7 + sd * 0.7, 0.2, Dp / 2), col('#2a2a30')); });
+    put('glass', box(0.6, 0.5, 0.06).translate(-1.3, 1.3, Dp / 2), col('#ff9a4a'));
+    // a crucible of glowing metal and an anvil out front
+    put('metal', cyl(0.4, 0.3, 0.55, 12, 1).translate(-1.0, 0, Dp / 2 + 1.1), col('#3a3a40'));
+    var melt = new THREE.CircleGeometry(0.36, 12); melt.rotateX(-Math.PI / 2); melt.translate(-1.0, 0.53, Dp / 2 + 1.1); put('magma', melt, col('#ffffff'));
+    put('metal', box(0.7, 0.25, 0.3).translate(1.6, 0.45, Dp / 2 + 1.0), col('#4a4a52')); put('metal', box(0.3, 0.45, 0.25).translate(1.6, 0, Dp / 2 + 1.0), col('#4a4a52'));
+    var top = new THREE.Vector3(-W * 0.3, 6.6, -Dp * 0.22).applyMatrix4(m);
+    plume(group, anim, top.x, top.y, top.z, 0.9, 8, '#4a4446', 0.55);
+  };
+  // a volcano observatory: a white drum and dome on a basalt plinth, a radio mast with a red light
+  BUILD.observatory = function (b, m) {
+    lavaMats();
+    function put(mat, g, c) { b.add(mat, g, m, c); }
+    put('basalt', cyl(2.1, 2.3, 0.5, 16, 1), col('#3a3638'));
+    put('stucco', cyl(1.6, 1.6, 2.3, 18, 1).translate(0, 0.5, 0), col('#ece8e0'));
+    var dome = new THREE.SphereGeometry(1.68, 22, 10, 0, Math.PI * 2, 0, Math.PI / 2); dome.translate(0, 2.8, 0); scaleUV(dome, 6, 2); put('metal', dome, col('#dfe3e8'));
+    var slit = box(0.5, 1.5, 0.2); slit.translate(0, -0.2, 0); slit.rotateX(-0.75); slit.translate(0, 3.9, 0.95); put('plain', slit, col('#1a1e26'));
+    put('plank', box(0.6, 1.1, 0.06).translate(0, 0.5, 1.6), col('#3a4a5a'));
+    [-0.9, 0.9].forEach(function (a) { put('glass', box(0.4, 0.35, 0.06).translate(0, 1.6, 0).applyMatrix4(new THREE.Matrix4().makeRotationY(a)).translate(Math.sin(a) * 1.6, 0, Math.cos(a) * 1.6), col('#2a3a4a')); });
+    put('metal', cyl(0.05, 0.08, 5.2, 6).translate(2.0, 0.4, -1.2), col('#c8ccd2'));
+    var lamp = new THREE.SphereGeometry(0.14, 8, 6); lamp.translate(2.0, 5.7, -1.2); put('glow', lamp, col('#ff3a2a'));
+    put('metal', box(1.4, 0.06, 0.9).translate(-2.4, 0.9, 0.4).rotateZ(0), col('#2a3a6a'));
+    put('metal', box(0.08, 0.9, 0.08).translate(-2.4, 0, 0.4), col('#8a9098'));
+  };
+  // basalt block walls with amber reflectors, following the ground
+  WALLS.basalt = function (b, g, run, wd, sd, GY) {
+    lavaMats();
+    var P = [], U = [], I = [], TH = 0.42, H = 0.78;
+    run.forEach(function (s, j) {
+      var gy = GY(s), a = D.pointAt(g, s, wd - sd * TH / 2), c = D.pointAt(g, s, wd + sd * TH / 2);
+      P.push(a.x, gy - 0.3, a.z, a.x, gy + H, a.z, c.x, gy + H, c.z, c.x, gy - 0.3, c.z);
+      U.push(s * 0.5, 0, s * 0.5, (H + 0.3) * 0.5, s * 0.5, (H + 0.3 + TH) * 0.5, s * 0.5, (2 * H + 0.6 + TH) * 0.5);
+      if (j) { var o = (j - 1) * 4; for (var q = 0; q < 3; q++) I.push(o + q, o + 4 + q, o + q + 1, o + q + 1, o + 4 + q, o + 5 + q); }
+    });
+    var wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); wg.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); wg.setIndex(I); wg.computeVertexNormals();
+    // the inner face must face the road
+    var p0 = D.pointAt(g, run[0], 0), n0 = wg.attributes.normal;
+    if ((n0.getX(0) * -p0.tz + n0.getZ(0) * p0.tx) * sd > 0) { for (var q2 = 0; q2 < I.length; q2 += 3) { var tq = I[q2 + 1]; I[q2 + 1] = I[q2 + 2]; I[q2 + 2] = tq; } wg.setIndex(I); wg.computeVertexNormals(); }
+    var pa = D.pointAt(g, run[0], wd); b.add('basalt', wg, new THREE.Matrix4(), col('#5a5456'), pa.x, pa.z);
+    for (var k = 2; k < run.length; k += 8) { var pr = D.pointAt(g, run[k], wd - sd * (TH / 2 + 0.01)); b.add('glow', box(0.16, 0.1, 0.03), mtx(pr.x, GY(run[k]) + H - 0.25, pr.z, -pr.h + Math.PI / 2), col('#ffae3a')); }
+  };
+  // far off: the lava sea in the low land, smoking cones with glowing flows, basalt gorges along the road
+  // (LOOK.gorges[track] = [[u0, u1], ...]) and steam rising from fumaroles
+  FAR.volcano = function (b, F, r, group, anim) {
+    lavaMats();
+    var L = F.L, g = F.g, cx = F.x0 + F.w / 2, cz = F.z0 + F.h / 2, diag = Math.hypot(F.w, F.h), k, s;
+    if (L.sea !== undefined) {
+      var lt = T('lava').clone(); lt.needsUpdate = true;
+      var size = diag + 1500; lt.repeat.set(size / 16, size / 16);
+      var sm = MATS.lavaSea || (MATS.lavaSea = std({ color: col('#ffffff'), map: lt, emissive: col('#ffffff'), emissiveMap: lt, emissiveIntensity: 1.9, roughness: 0.6 }));
+      var sg = new THREE.PlaneGeometry(size, size); sg.rotateX(-Math.PI / 2);
+      var sea = new THREE.Mesh(sg, sm); sea.position.set(cx, L.sea, cz); sea.receiveShadow = true; sea.name = 'lavaSea'; group.add(sea);
+      anim.push(function (t) { sm.map.offset.set(t * 0.003, t * 0.002); });
+    }
+    // smoking cones, unfogged with the haze baked in like the mountain ring, so they stand out against the sky
+    var a0 = r() * 6.3, hz = col(L.fog), tmp = new THREE.Color();
+    var coneMat = MATS.farCone || (MATS.farCone = new THREE.MeshLambertMaterial({ vertexColors: true, fog: false }));
+    var glowMat = MATS.farLava || (MATS.farLava = new THREE.MeshBasicMaterial({ map: T('lava'), color: new THREE.Color(1.7, 1.7, 1.7), fog: false }));
+    [[a0, 1], [a0 + 2.3 + r(), 0.6], [a0 + 4.1 + r() * 0.6, 0.75]].forEach(function (cn, i) {
+      var R = 110 * cn[1], H = 118 * cn[1], dist = diag * 0.5 + R + 70 + 50 * i, x = cx + Math.cos(cn[0]) * dist, z = cz + Math.sin(cn[0]) * dist;
+      var cg = coneGeo(R, H, i * 3.7), cc = cg.attributes.color;
+      for (k = 0; k < cc.count; k++) { tmp.setRGB(cc.getX(k), cc.getY(k), cc.getZ(k)).lerp(hz, 0.3 + 0.12 * i); cc.setXYZ(k, tmp.r, tmp.g, tmp.b); }
+      var cm = new THREE.Mesh(cg, coneMat); cm.position.set(x, -4, z); cm.rotation.y = r() * 6.3; cm.name = 'cone'; group.add(cm);
+      var pool = new THREE.CircleGeometry(R * 0.1, 24); pool.rotateX(-Math.PI / 2); pool.translate(0, H * 0.87, 0); cm.add(new THREE.Mesh(pool, glowMat));
+      for (k = 0; k < 2 + i % 2; k++) cm.add(new THREE.Mesh(flowGeo(R, H, r() * 6.3, 0.2 + r() * 0.35, 2.2 * cn[1] + 1), glowMat));
+      if (i < 2) plume(group, anim, x, H - 6, z, R * 0.1, 14, i ? '#8a6e66' : '#5a4440', 0.8, true);
+    });
+    // basalt columns lining the gorges
+    ((L.gorges || {})[g.id] || []).forEach(function (rg) {
+      for (s = rg[0] * g.L; s < rg[1] * g.L; s += 1.3) [-1, 1].forEach(function (sd) {
+        var p = D.pointAt(g, s + r(), sd * (F.lim + 1.4 + r() * 4));
+        if (!F.clear(p.x, p.z, 0.8)) return;
+        addProto(b, 'basaltcol', mtx(p.x, F.height(p.x, p.z) - 0.3, p.z, r() * 6.3, 1 + r() * 0.5, 1.6 + r() * 1.8, 1 + r() * 0.5), WHITE, p.x, p.z);
+      });
+    });
+    // fumaroles: steam out in the land
+    for (k = 0, s = 0; k < 60 && s < 5; k++) {
+      var fx = F.x0 + r() * F.w, fz = F.z0 + r() * F.h;
+      if (F.distAt(fx, fz) < F.lim + 10 || !F.clear(fx, fz, 2)) continue;
+      plume(group, anim, fx, F.height(fx, fz), fz, 0.8, 7, '#e8e2dc', 0.4); s++;
+    }
+  };
+  // hazards: a bouncing lava bomb, a rolling magma boulder, a steam vent that puffs (hz.puff)
+  HAZOBJ.bomb = function (grp, inner) {
+    lavaMats();
+    var g = roundUV(blob(0.72, 2, 13, 0.92, 0.3), 2); paint(g, WHITE);
+    var mesh = new THREE.Mesh(g, MATS.magma); mesh.castShadow = true; inner.add(mesh); inner.position.y = 0.66;
+    return function (hz, t) { inner.rotation.z = -hz.roll; inner.rotation.x = t * 2.5; var sq = hz.y < 0.3 ? 0.78 + hz.y * 0.7 : 1; inner.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq)); };
+  };
+  HAZOBJ.magma = function (grp, inner) {
+    lavaMats();
+    var g = roundUV(rockGeo(1.15, 11, 0.95), 3); paint(g, col('#b0a8a4'));
+    var mesh = new THREE.Mesh(g, MATS.magma); mesh.castShadow = true; inner.add(mesh); inner.position.y = 1.0;
+    return null;
+  };
+  HAZOBJ.vent = function (grp, inner) {
+    lavaMats();
+    var b = new Batch(0), I = new THREE.Matrix4();
+    for (var k = 0; k < 9; k++) { var a = k / 9 * 6.3, rk = rockGeo(0.26 + (k % 3) * 0.06, k + 3, 0.7); paint(rk, col('#3a3436')); b.add('basalt', rk, mtx(Math.cos(a) * 0.82, 0, Math.sin(a) * 0.82, a), WHITE, 0, 0); }
+    var hole = new THREE.CircleGeometry(0.62, 16); hole.rotateX(-Math.PI / 2); hole.translate(0, 0.03, 0); b.add('magma', hole, I, col('#c8c0bc'), 0, 0);
+    b.build(inner, { cast: true });
+    var sm = MATS.steam || (MATS.steam = std({ color: col('#f2eeec'), roughness: 1, transparent: true, opacity: 0.62, depthWrite: false })), puffs = [];
+    for (k = 0; k < 8; k++) { var pg = new THREE.Group(), pm = new THREE.Mesh(blob(0.55, 1, k * 3 + 1, 1, 0.35), sm); pm.renderOrder = 3; pg.add(pm); grp.add(pg); puffs.push(pg); }
+    return function (hz, t) {
+      var p = hz.puff || 0;
+      puffs.forEach(function (pg, i) {
+        var f = (t * 1.1 + i / puffs.length) % 1;
+        pg.position.set(Math.sin(i * 2.1) * 0.25 * f, 0.2 + f * 3.8 * (0.15 + 0.85 * p), Math.cos(i * 1.3) * 0.25 * f);
+        pg.scale.setScalar((0.3 + f * 1.1) * (0.18 + 0.82 * p));
+      });
+    };
+  };
+  // Lava Lane's look. New keys: sea (the lava sea's level; nothing is placed below it), slump (how far the land past
+  // the walls falls from the road's height, 0..1, so raised road stands on ridges and the cone has a crater), gorges
+  LOOK.volcano = { sunAz: -2.0, sunEl: 0.42, sun: '#ffc08a', sunI: 2.5, hemiSky: '#c89a88', hemiGround: '#5a2a18', hemiI: 0.6,
+    zenith: '#3a2c34', horizon: '#e0905a', fog: '#9a6a56', fogD: 0.0042, cloudA: '#d0a08a', cloudB: '#4a3436', cover: 0.38, exposure: 1.0,
+    grass: ['#2e2a2a', '#45403c', '#211d1d'], rough: '#55504c', dry: '#6a5a50', shoulder: '#4a4038', bank: '#2a2020', water: '#ff6a1a',
+    mtn: ['#1e1a1c', '#4a3c3a'], hill: 7, ground: 'ash',
+    hills: 'lava', tex: 'ash', texN: 'ashN', normalScale: 0.8, tile: 5, dryPatch: false, patch: '#5a3a2e', roughMix: 0.7, cliff: '#262022',
+    mtnStyle: 'jag', mtnTint: '#5a2a1e', mtnHaze: 0.42, roadTint: '#d8d0cc', shoulderC: '#7a6e64', wall: 'basalt', bank: 'obsidian',
+    kinds: ['forge', 'observatory', 'forge'], trackKinds: {}, farmHay: false,
+    species: [['charred', 0.45], ['basaltcol', 0.53], ['obsidian', 0.75], ['ashshrub', 1]],
+    band: ['charred', 'obsidian', 'basaltcol', 'charred', 'ashshrub'], maxTrees: 340, treeDens: 0.7, treeScale: [0.8, 0.6],
+    roadside: 'obsidian', palms: false, far: 'volcano', tuftN: 1400, tuftC: '#b8a888', flowers: false, canyons: [], waterGlow: '#ff4a0a',
+    sea: -1.3, slump: 0.85, gorges: { basalt: [[0.13, 0.28]], cinder: [[0.6, 0.64]], caldera: [[0.74, 0.84]] } };
 
   // ---------- race ----------
   function race(trackId, g, worldId) {
