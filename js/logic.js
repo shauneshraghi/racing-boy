@@ -19,6 +19,9 @@ var RB = (function () {
   var GRASS = 0.58;             // speed factor on rough grass (Tires raise it)
   var G = 26;                   // gravity in the air, cells/s²
   var RAMP_LEN = 2.5, RAMP_H = 0.9;
+  // hills: a track's elev keys ([u, height in cells]) are joined by smooth S-curves; climbing slows the car by
+  // SLOPE_K × the slope, and where the road drops away faster than gravity (a crest at speed) the car flies
+  var SLOPE_K = 0.6;
   var PAD_LEN = 2.4, PAD_W = 2.4;
   var BOX_RESPAWN = 10, BOX_R = 1.1, ROLL_T = 0.9;
   var COIN_R = 0.9, MAGNET_R = 5, COIN_RESPAWN = 8;
@@ -282,7 +285,9 @@ var RB = (function () {
       var A = samples[(i - 2 + ns) % ns], B = samples[(i + 2) % ns];
       samples[i].k = angDiff(Math.atan2(B.tz, B.tx), Math.atan2(A.tz, A.tx)) / (4 * SAMPLE);
     }
-    samples.push({ x: samples[0].x, z: samples[0].z, s: L, hw: T.hw, tx: samples[0].tx, tz: samples[0].tz, k: samples[0].k }); // closing copy
+    for (i = 0; i < ns; i++) samples[i].y = elevAt(T.elev, i / ns);
+    for (i = 0; i < ns; i++) samples[i].gy = (samples[(i + 1) % ns].y - samples[(i - 1 + ns) % ns].y) / (2 * SAMPLE);
+    samples.push({ x: samples[0].x, z: samples[0].z, s: L, hw: T.hw, tx: samples[0].tx, tz: samples[0].tz, k: samples[0].k, y: samples[0].y, gy: samples[0].gy }); // closing copy
     var g = { id: id, def: T, L: L, hw: T.hw, samples: samples, n: ns };
     // nearest-sample lookup grid
     var minX = 1e9, minZ = 1e9, maxX = -1e9, maxZ = -1e9, pad = T.hw + RUNOFF + 14;
@@ -310,6 +315,27 @@ var RB = (function () {
     g.ramps.forEach(function (m) { var f = feature(g, m.s, 0); m.x = f.x; m.z = f.z; m.dir = f.h; });
     CACHE[id] = g;
     return g;
+  }
+  // the height of the elev keys at lap fraction u (0 with no keys): smoothstep between neighbouring keys, wrapping
+  function elevAt(keys, u) {
+    if (!keys || !keys.length) return 0;
+    var n = keys.length, i = n - 1;
+    for (var j = 0; j < n; j++) if (keys[j][0] <= u) i = j;
+    var a = keys[i], b = keys[(i + 1) % n], ua = a[0], ub = b[0];
+    if (ub <= ua) ub += 1;
+    var uu = u < ua ? u + 1 : u, t = clamp((uu - ua) / Math.max(1e-9, ub - ua), 0, 1);
+    return a[1] + (b[1] - a[1]) * t * t * (3 - 2 * t);
+  }
+  // the ground height at arc length s, and its slope along the lap
+  function groundAt(g, s) {
+    s = wrapS(g, s);
+    var f = s / SAMPLE, i = Math.floor(f), t = f - i, a = g.samples[i], b = g.samples[i + 1];
+    return a.y + (b.y - a.y) * t;
+  }
+  function slopeAt(g, s) {
+    s = wrapS(g, s);
+    var f = s / SAMPLE, i = Math.floor(f), t = f - i, a = g.samples[i], b = g.samples[i + 1];
+    return a.gy + (b.gy - a.gy) * t;
   }
   function feature(g, s, off) { var p = pointAt(g, s, off); return { s: wrapS(g, s), off: off, x: p.x, z: p.z, h: p.h }; }
   // the centreline point at arc length s, moved off cells to the right, and the road heading there
@@ -383,7 +409,7 @@ var RB = (function () {
       if (ai) { look = JSON.parse(JSON.stringify(look)); look.paint = paints[Math.floor(R() * paints.length)]; }
       var car = { i: c, ai: ai, name: ai ? names[c - 1] : 'You', carId: id, look: look,
         stats: ai ? statsFor(id) : carStats(s, id), skill: ai ? W.skill[c - 1] : 1, lane: ai ? (R() * 2 - 1) * 1.6 : 0,
-        x: 0, z: 0, h: 0, v: 0, y: 0, vy: 0, air: false, s: 0, prog: 0, lap: 1, place: c + 1, done: false, finishT: 0,
+        x: 0, z: 0, h: 0, v: 0, y: 0, vy: 0, gy: 0, gvy: 0, air: false, s: 0, prog: 0, lap: 1, place: c + 1, done: false, finishT: 0,
         boostT: 0, slowT: 0, shieldT: 0, magnetT: 0, drift: 0, driftDir: 0, driftReady: false, slip: 0, slipDir: 0, hopT: 0, hopY: 0, trick: false, trickT: 0, fallT: 0, onRamp: -1,
         item: null, rollT: 0, itemDelay: 0, coins: 0, inp: {}, prevDrift: false, prevItem: false, pad: -1, bumpT: 0, steerOut: 0, botSteer: 0,
         vh: 0, yawV: 0, roll: 0, rollV: 0, pitch: 0, pitchV: 0, dip: 0, dipV: 0, wheel: 0 };
@@ -399,7 +425,7 @@ var RB = (function () {
   function place(r, car, s, off) {
     var p = pointAt(r.g, s, off);
     car.x = p.x; car.z = p.z; car.h = p.h; car.vh = p.h; car.yawV = 0; car.s = wrapS(r.g, s); car.prog = car.s;
-    car.air = false; car.y = 0; car.vy = 0; car.onRamp = -1; car.fallT = 0; car.drift = 0; car.driftDir = 0; car.hopT = 0; car.hopY = 0;
+    car.air = false; car.y = 0; car.vy = 0; car.gy = groundAt(r.g, car.s); car.gvy = 0; car.gvyOk = false; car.onRamp = -1; car.fallT = 0; car.drift = 0; car.driftDir = 0; car.hopT = 0; car.hopY = 0;
   }
   // the body's springs (roll, pitch, dip) and the front wheels' steer angle, for the renderer
   function body(car, steer, accel) {
@@ -547,6 +573,7 @@ var RB = (function () {
     // speed
     var top = car.ai ? aiTop(r, car) : st.speed, v0 = car.v;
     var vmax = top * surf * (car.slowT > 0 ? SLOW_MUL : 1) * (car.boostT > 0 ? st.boostMul : 1) * (car.air && st.glide ? 1 + 0.04 * st.glide : 1);
+    if (!car.air) { var slope = slopeAt(g, q.s) * (Math.cos(car.vh) * q.tx + Math.sin(car.vh) * q.tz); vmax *= clamp(1 - SLOPE_K * slope, 0.7, 1.3); }
     if (r.phase !== 'race' && !car.done) vmax = 0;
     var acc = st.accel * (car.boostT > 0 ? BOOST_ACC : 1);
     if (car.v < vmax) car.v = Math.min(vmax, car.v + acc * DT * (1 - 0.4 * car.v / Math.max(1, vmax)));
@@ -575,21 +602,10 @@ var RB = (function () {
       for (var i = 0; i < g.ramps.length; i++) { var mm = g.ramps[i], into = dS(g, q.s, mm.s); if (into >= 0 && into <= mm.len && Math.abs(q.d) <= g.hw + 0.3) { on = i; car.y = into / mm.len * mm.h; } }
       if (on < 0 && car.onRamp >= 0) {
         var lip = g.ramps[car.onRamp];
-        if (dS(g, q.s, lip.s) > lip.len - 0.01) { car.air = true; car.trick = false; car.y = lip.h; car.vy = (2 + 0.38 * car.v) * (st.perk === 'air' ? 1.2 : 1); ev(r, 'jump', car); }
+        if (dS(g, q.s, lip.s) > lip.len - 0.01) { car.air = true; car.trick = false; car.y = lip.h; car.vy = car.gvy + (2 + 0.38 * car.v) * (st.perk === 'air' ? 1.2 : 1); ev(r, 'jump', car); }
         else car.y = 0;
       }
       car.onRamp = on;
-    }
-    if (car.air) {
-      // the glider opens on the way down and slows the fall
-      car.vy -= G * DT * (car.vy < 0 && st.glide ? Math.max(0.25, 1 - 0.22 * st.glide) : 1); car.y += car.vy * DT;
-      if (car.y <= 0) {
-        car.dipV += DIP_K * Math.max(0, -car.vy);
-        car.y = 0; car.air = false; car.vy = 0;
-        if (car.trick) { car.boostT = Math.max(car.boostT, 0.9 * st.boostDur * (st.perk === 'air' ? 1.6 : 1)); ev(r, 'boost', car, { from: 'trick' }); }
-        else if (st.glide) { car.boostT = Math.max(car.boostT, 0.15 * st.glide * st.boostDur); ev(r, 'boost', car, { from: 'glide' }); } // the wings fold into a little boost
-        car.trick = false; ev(r, 'land', car);
-      }
     }
     // jump gaps: landing short drops the car in
     if (!car.air && car.onRamp < 0) {
@@ -612,6 +628,28 @@ var RB = (function () {
       q = g.query(car.x, car.z); ds = dS(g, q.s, car.s);
     }
     car.s = q.s; car.prog += ds; car.d = q.d;
+    // height: car.y is above the ground under the car (car.gy); vy is the true vertical speed. On the ground the car
+    // rides the hills (gvy); where the ground falls away faster than gravity pulls, it flies off the crest
+    var gNew = groundAt(g, q.s), gvyNew = (gNew - car.gy) / DT;
+    if (!car.air && car.onRamp < 0) {
+      if (car.gvyOk && car.v > DRIFT_MIN_V && car.gvy - gvyNew > G * DT * 1.05) {
+        car.air = true; car.trick = false; car.vy = car.gvy; car.y = car.gy + car.gvy * DT - gNew; ev(r, 'jump', car, { crest: true });
+      }
+      car.gvyOk = true;
+    }
+    if (car.air) {
+      // the glider opens on the way down and slows the fall
+      car.vy -= G * DT * (car.vy < 0 && st.glide ? Math.max(0.25, 1 - 0.22 * st.glide) : 1);
+      car.y += car.gy - gNew + car.vy * DT;
+      if (car.y <= 0) {
+        car.dipV += DIP_K * Math.max(0, gvyNew - car.vy);
+        car.y = 0; car.air = false; car.vy = 0;
+        if (car.trick) { car.boostT = Math.max(car.boostT, 0.9 * st.boostDur * (st.perk === 'air' ? 1.6 : 1)); ev(r, 'boost', car, { from: 'trick' }); }
+        else if (st.glide) { car.boostT = Math.max(car.boostT, 0.15 * st.glide * st.boostDur); ev(r, 'boost', car, { from: 'glide' }); } // the wings fold into a little boost
+        car.trick = false; ev(r, 'land', car);
+      }
+    }
+    car.gvy = gvyNew; car.gy = gNew;
     body(car, steer, accel);
     // boost pads
     if (!car.air) {
@@ -954,7 +992,7 @@ var RB = (function () {
     DT: DT, PACE: PACE, DRIFT_TIERS: DRIFT_TIERS, RUNOFF: RUNOFF, RAMP_LEN: RAMP_LEN, PAD_LEN: PAD_LEN, PAD_W: PAD_W, MAGNET_R: MAGNET_R, ROLL_T: ROLL_T, START_CAR: START_CAR,
     PLACE_PAY: PLACE_PAY, PART_PAY: PART_PAY, PARTS: PARTS, ITEMS: ITEMS, ITEM_KEYS: ITEM_KEYS, UPGRADES: UPGRADES, UP_KEYS: UP_KEYS,
     PERKS: PERKS, CARS: CARS, LOOKS: LOOKS, LOOK_KEYS: LOOK_KEYS, TRACKS: TRACKS, WORLDS: WORLDS, HUB: HUB,
-    rng: rng, angDiff: angDiff, clamp: clamp, track: track, pointAt: pointAt, headingAt: headingAt, lookOpt: lookOpt,
+    rng: rng, angDiff: angDiff, clamp: clamp, track: track, pointAt: pointAt, groundAt: groundAt, slopeAt: slopeAt, headingAt: headingAt, lookOpt: lookOpt,
     rollItem: rollItem, carStats: carStats, statsFor: statsFor, startRace: startRace, input: input, stepRace: stepRace,
     surfaceSpeed: surfaceSpeed, hit: hit, botInput: botInput, finishRace: finishRace, trackUnlocked: trackUnlocked,
     worldUnlocked: worldUnlocked, canAfford: canAfford, upgradeCost: upgradeCost, buyUpgrade: buyUpgrade, buyCar: buyCar,
