@@ -43,13 +43,16 @@ test('every track is a closed loop with sane geometry', () => {
   }
 });
 
-test('separate parts of every track are at least 16 cells apart, and query snaps to the right stretch out to the walls', () => {
+test('separate parts of every track are at least 16 cells apart except at bridge crossovers, and query snaps to the right stretch out to the walls', () => {
   for (const id of Object.keys(R.TRACKS)) {
     const g = R.track(id), S = g.samples.slice(0, g.n), lim = g.hw + R.RUNOFF;
     // stretches 40+ cells apart along the loop (more than a hairpin's turn) must be 16+ cells apart on the ground
     for (let i = 0; i < S.length; i += 2) for (let j = i + 2; j < S.length; j += 2) {
       const along = Math.min(Math.abs(S[i].s - S[j].s), g.L - Math.abs(S[i].s - S[j].s));
-      if (along >= 40) assert.ok(Math.hypot(S[i].x - S[j].x, S[i].z - S[j].z) >= 16, `${id}: s ${S[i].s} and ${S[j].s} too close`);
+      if (along < 40) continue;
+      // closer is allowed only at a crossover: the higher stretch on a bridge deck, well clear of the road under it
+      const xz = Math.hypot(S[i].x - S[j].x, S[i].z - S[j].z), hi = S[i].y > S[j].y ? S[i] : S[j], dy = Math.abs(S[i].y - S[j].y);
+      if (xz < 16) assert.ok(R.onBridge(g, hi.s) && dy >= (xz < 2 * lim + 1 ? R.BRIDGE_CLEAR : 2), `${id}: s ${S[i].s} and ${S[j].s} too close (${xz.toFixed(1)} apart, ${dy.toFixed(1)} up)`);
     }
     // a point across the road and the runoff maps back to its own s and offset; on the inside of a bend tighter
     // than the wall the offsets overlap, so only out to 80% of the bend radius there
@@ -58,7 +61,7 @@ test('separate parts of every track are at least 16 cells apart, and query snaps
       for (let a = -6; a <= 6; a++) { const k = R.pointAt(g, m.s + a, 0).k; kR = Math.max(kR, k); kL = Math.max(kL, -k); }
       const reach = { 1: Math.min(lim, 0.8 / kR), '-1': Math.min(lim, 0.8 / kL) };
       for (const f of [-1, -0.5, 0.5, 1]) {
-        const off = f * reach[Math.sign(f)], x = m.x - m.tz * off, z = m.z + m.tx * off, q = g.query(x, z);
+        const off = f * reach[Math.sign(f)], x = m.x - m.tz * off, z = m.z + m.tx * off, q = g.query(x, z, m.s);
         const ds = Math.min(Math.abs(q.s - m.s), g.L - Math.abs(q.s - m.s));
         assert.ok(ds < 1.5 && Math.abs(q.d - off) < 0.6, `${id}: s ${m.s} off ${off.toFixed(1)} snapped to s ${q.s.toFixed(1)} d ${q.d.toFixed(1)}`);
       }
@@ -78,8 +81,8 @@ test('the car accelerates on its own and grass is slower than road', () => {
 
 test('steer turns the car and aim turns it toward a heading', () => {
   const { r } = freshRace(W1[0]);
-  r.phase = 'race';
-  const p = r.cars[0]; p.v = 8; const h0 = p.h;
+  r.phase = 'race'; r.cars.length = 1;
+  const p = r.cars[0]; R._place(r, p, 0.08 * r.g.L, 0); p.v = 8; const h0 = p.h; // mid start straight, clear of the walls
   for (let i = 0; i < 30; i++) { R.input(r, { steer: 1 }); R.stepRace(r, 1 / 60); }
   assert.ok(p.h > h0 + 0.3, 'steer right raises heading');
   const target = p.h - 1.2;

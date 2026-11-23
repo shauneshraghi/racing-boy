@@ -124,7 +124,7 @@ test('separate stretches of each moon track are far enough apart that query neve
   for (const id of W5.tracks) {
     const g = R.track(id), lim = g.hw + R.RUNOFF;
     for (let i = 0; i < g.n; i += 2) for (const d of [-lim, -lim / 2, 0, lim / 2, lim]) {
-      const s = g.samples[i].s, p = R.pointAt(g, s, d), q = g.query(p.x, p.z);
+      const s = g.samples[i].s, p = R.pointAt(g, s, d), q = g.query(p.x, p.z, s);
       const ds = Math.abs(((q.s - s) % g.L + g.L * 1.5) % g.L - g.L / 2);
       assert.ok(ds < 8, `${id} at u ${(s / g.L).toFixed(3)} offset ${d.toFixed(1)} snapped ${ds.toFixed(1)} cells`); // the inside of a hairpin moves a few cells
     }

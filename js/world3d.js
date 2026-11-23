@@ -394,13 +394,14 @@ var RB3DWorld = (function () {
       case 'plankDS': m = std({ map: T('plank'), vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }); break;
       case 'rampDeck': m = std({ map: T('ramp'), vertexColors: true, roughness: 0.55, metalness: 0.3 }); fade = false; break;
       case 'kerb': m = polyMat(std({ vertexColors: true, roughness: 0.6 }), -3); fade = false; break;
+      case 'deck': m = std({ map: T('stone'), vertexColors: true, roughness: 0.9, side: THREE.DoubleSide }); break;
       default: m = std({ vertexColors: true });
     }
     m.name = name;
     if (fade) addHooks(m, [nearFade]);
     MATS[name] = m; return m;
   }
-  var SHADOW = { plankDS: 1, rampDeck: 1, foliage: 1, bark: 1, plank: 1, brick: 1, stucco: 1, roof: 1, strata: 1, stone: 1, straw: 1, tyre: 1, corrugated: 1, cactus: 1, plain: 1, shiny: 1, metal: 1, cloth: 1 };
+  var SHADOW = { deck: 1, plankDS: 1, rampDeck: 1, foliage: 1, bark: 1, plank: 1, brick: 1, stucco: 1, roof: 1, strata: 1, stone: 1, straw: 1, tyre: 1, corrugated: 1, cactus: 1, plain: 1, shiny: 1, metal: 1, cloth: 1 };
 
   // ---------- geometry helpers ----------
   var _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _s = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
@@ -851,13 +852,29 @@ var RB3DWorld = (function () {
     this.lim = lim; this.L = L; this.g = g;
     this.x0 = g.x0 - M; this.z0 = g.z0 - M; this.w = g.w + 2 * M; this.h = g.h + 2 * M;
     var W = this.w + 1, H = this.h + 1, dist = new Float32Array(W * H), S = g.samples;
+    // the land follows the road on the ground only (g.queryLand leaves bridge decks out); under a deck it stays at least
+    // DECK_GAP below it (deckY), and beside an open edge (drops) it falls away as a cliff (cliff, cells down)
+    var land = g.queryLand && g.nearLand ? g.queryLand : g.query, decks = !!g.nearLand, drops = g.drops && g.drops.length;
+    var deckY = decks ? new Float32Array(W * H) : null, ddist = decks ? new Float32Array(W * H) : null, cliff = drops ? new Float32Array(W * H) : null;
+    var CD = L.cliffDepth || 9, lip = g.hw + (D.EDGE || 0.8);
+    function openAt(i, sd) { var a = sd > 0 ? g.limR : g.limL; return a && a[i] > 1e8 && !g.deck[i]; }
     for (var z = 0; z < H; z++) for (var x = 0; x < W; x++) {
-      var wx = this.x0 + x, wz = this.z0 + z, dd;
-      if (wx >= g.x0 && wz >= g.z0 && wx < g.x0 + g.w && wz < g.z0 + g.h) dd = g.query(wx, wz).dist;
-      else { dd = 1e9; for (var j = 0; j < g.n; j += 3) { var e = (S[j].x - wx) * (S[j].x - wx) + (S[j].z - wz) * (S[j].z - wz); if (e < dd) dd = e; } dd = Math.sqrt(dd); }
-      dist[z * W + x] = dd;
+      var wx = this.x0 + x, wz = this.z0 + z, dd, k0 = z * W + x;
+      if (wx >= g.x0 && wz >= g.z0 && wx < g.x0 + g.w && wz < g.z0 + g.h) {
+        var lq = land(wx, wz); dd = lq.dist;
+        if (decks) {
+          var aq = g.query(wx, wz); ddist[k0] = aq.dist;
+          deckY[k0] = g.deck[aq.i] && aq.dist < g.hw + 4 ? D.groundAt(g, aq.s) - 1.2 : 1e9;
+        }
+        if (drops && dd > g.hw && openAt(lq.i, lq.d)) {
+          // the cliff tapers in over a few cells at the ends of the open stretch
+          var f = 0; for (var o = -8; o <= 8; o += 2) if (openAt(((lq.i + o) % g.n + g.n) % g.n, lq.d)) f++;
+          cliff[k0] = CD * smooth(lip - 0.3, lip + 2.5, dd) * (1 - smooth(this.lim + 22, this.lim + 55, dd)) * smooth(0.3, 1, f / 9);
+        }
+      } else { dd = 1e9; for (var j = 0; j < g.n; j += 3) { var e = (S[j].x - wx) * (S[j].x - wx) + (S[j].z - wz) * (S[j].z - wz); if (e < dd) dd = e; } dd = Math.sqrt(dd); if (decks) { ddist[k0] = dd; deckY[k0] = 1e9; } }
+      dist[k0] = dd;
     }
-    this.dist = dist; this.W = W; this.H = H;
+    this.dist = dist; this.W = W; this.H = H; this.deckY = deckY; this.ddist = ddist; this.cliff = cliff;
     // the road's height carried out over the land (hills): exactly the ground under the road out past the walls,
     // then a smooth blend of the nearby stretches (inverse distance on a coarse grid), fading back to the plain
     // land far out, so a climb sits on a hillside and a summit on a hill
@@ -865,7 +882,7 @@ var RB3DWorld = (function () {
     this.ry = null;
     if (hilly) {
       var GC = 4, CW = Math.ceil(W / GC) + 1, CHh = Math.ceil(H / GC) + 1, coarse = new Float32Array(CW * CHh), pts = [];
-      for (var j2 = 0; j2 < g.n; j2 += 4) pts.push(S[j2]);
+      for (var j2 = 0; j2 < g.n; j2 += 4) if (!g.deck || !g.deck[j2]) pts.push(S[j2]);
       for (var cz = 0; cz < CHh; cz++) for (var cx = 0; cx < CW; cx++) {
         var px = this.x0 + cx * GC, pz = this.z0 + cz * GC, sw = 0, sy = 0;
         for (var k = 0; k < pts.length; k++) { var e2 = (pts[k].x - px) * (pts[k].x - px) + (pts[k].z - pz) * (pts[k].z - pz), w = 1 / ((e2 + 9) * (e2 + 9)); sw += w; sy += w * pts[k].y; }
@@ -875,7 +892,7 @@ var RB3DWorld = (function () {
       for (z = 0; z < H; z++) for (x = 0; x < W; x++) {
         var fx = x / GC, fz = z / GC, ix = Math.min(CW - 2, Math.floor(fx)), iz = Math.min(CHh - 2, Math.floor(fz)), tx = fx - ix, tz = fz - iz;
         var idw = (coarse[iz * CW + ix] * (1 - tx) + coarse[iz * CW + ix + 1] * tx) * (1 - tz) + (coarse[(iz + 1) * CW + ix] * (1 - tx) + coarse[(iz + 1) * CW + ix + 1] * tx) * tz;
-        var d0 = dist[z * W + x], wx2 = this.x0 + x, wz2 = this.z0 + z, near = d0 < lim + 12 ? D.groundAt(g, g.query(wx2, wz2).s) : idw;
+        var d0 = dist[z * W + x], wx2 = this.x0 + x, wz2 = this.z0 + z, near = d0 < lim + 12 ? D.groundAt(g, land(wx2, wz2).s) : idw;
         ry[z * W + x] = lerp(near, idw, smooth(lim + 1, lim + 11, d0)) * (1 - smooth(lim + 40, lim + 110, d0)) * (1 - (L.slump || 0) * smooth(lim + 3, lim + 24, d0));
       }
       this.ry = ry;
@@ -890,7 +907,7 @@ var RB3DWorld = (function () {
         for (; e < 60; e += 1) {
           var px = mid.x + nx * sd * e, pz = mid.z + nz * sd * e;
           if (px < self.x0 + 3 || pz < self.z0 + 3 || px > self.x0 + self.w - 3 || pz > self.z0 + self.h - 3) break;
-          var q = g.query(px, pz); if (q.dist < lim + 6 && Math.abs(((q.s - (a + b) / 2) % g.L + g.L * 1.5) % g.L - g.L / 2) > m.gap + 8) break;
+          var q = land(px, pz); if (q.dist < lim + 6 && Math.abs(((q.s - (a + b) / 2) % g.L + g.L * 1.5) % g.L - g.L / 2) > m.gap + 8) break;
         }
         ext[k] = e - 4;
       });
@@ -910,6 +927,14 @@ var RB3DWorld = (function () {
     if (fx < 0 || fz < 0 || fx >= this.W - 1 || fz >= this.H - 1) return 999;
     var ix = Math.floor(fx), iz = Math.floor(fz), tx = fx - ix, tz = fz - iz, W = this.W, d = this.dist, k = iz * W + ix;
     return (d[k] * (1 - tx) + d[k + 1] * tx) * (1 - tz) + (d[k + W] * (1 - tx) + d[k + W + 1] * tx) * tz;
+  };
+  Field.prototype.grid = function (a, x, z, out) {
+    if (!a) return out;
+    var fx = x - this.x0, fz = z - this.z0;
+    if (fx < 0 || fz < 0 || fx >= this.W - 1 || fz >= this.H - 1) return out;
+    var ix = Math.floor(fx), iz = Math.floor(fz), tx = fx - ix, tz = fz - iz, W = this.W, k = iz * W + ix;
+    if (a === this.deckY) return Math.min(a[k], a[k + 1], a[k + W], a[k + W + 1]);
+    return (a[k] * (1 - tx) + a[k + 1] * tx) * (1 - tz) + (a[k + W] * (1 - tx) + a[k + W + 1] * tx) * tz;
   };
   Field.prototype.roadY = function (x, z) {
     if (!this.ry) return 0;
@@ -940,10 +965,12 @@ var RB3DWorld = (function () {
     // tuck the land a little under the road so it never pokes through on a crest
     y += base - 0.06 * (1 - smooth(this.g.hw, this.g.hw + 1, d));
     if (ck) y = lerp(y, ck.c.y0 - ck.c.depth, ck.p);
+    if (this.cliff) y -= this.grid(this.cliff, x, z, 0);
+    if (this.deckY) y = Math.min(y, this.grid(this.deckY, x, z, 1e9));
     return y;
   };
   // walkable/clear test for placing scenery: away from the road, creeks and water
-  Field.prototype.clear = function (x, z, m) { if (this.distAt(x, z) < this.lim + m) return false; var ck = this.creekAt(x, z); if (this.L.sea !== undefined && this.height(x, z) < this.L.sea + 0.4) return false; return !ck || ck.p < 0.01; };
+  Field.prototype.clear = function (x, z, m) { if (this.distAt(x, z) < this.lim + m || (this.ddist && this.grid(this.ddist, x, z, 999) < this.lim + m)) return false; var ck = this.creekAt(x, z); if (this.L.sea !== undefined && this.height(x, z) < this.L.sea + 0.4) return false; return !ck || ck.p < 0.01; };
 
   function terrainMat(L) {
     var key = 'terrain_' + L.tex + '_' + (L.texN || '');
@@ -985,7 +1012,7 @@ var RB3DWorld = (function () {
       if (bx <= ax || bz <= az) continue;
       // resolution: fine where the road or a creek is near
       var near = 1e9, wet = false; for (var sz = az; sz <= bz; sz += 2) for (var sx = ax; sx <= bx; sx += 2) { near = Math.min(near, F.distAt(sx, sz)); if (!wet) { var ckk = F.creekAt(sx, sz); wet = !!(ckk && ckk.p > 0); } }
-      var res = wet || (F.ry && near < F.lim + 6) ? 1 : near < F.lim + 30 ? 2 : 4, nx = Math.ceil((bx - ax) / res), nz = Math.ceil((bz - az) / res);
+      var res = wet || ((F.ry || F.cliff) && near < F.lim + 6) ? 1 : near < F.lim + 30 ? 2 : 4, nx = Math.ceil((bx - ax) / res), nz = Math.ceil((bz - az) / res);
       var nv = (nx + 1) * (nz + 1), skirtN = 2 * (nx + nz), pos = new Float32Array((nv + skirtN * 2) * 3), nor = new Float32Array(pos.length), clr = new Float32Array(pos.length), uv = new Float32Array((nv + skirtN * 2) * 2), idx = [];
       var hts = new Float32Array((nx + 3) * (nz + 3));
       for (var j = -1; j <= nz + 1; j++) for (var i = -1; i <= nx + 1; i++) hts[(j + 1) * (nx + 3) + i + 1] = F.height(ax + Math.min(i * res, bx - ax + res), az + Math.min(j * res, bz - az + res));
@@ -1952,6 +1979,63 @@ var RB3DWorld = (function () {
     canyons: ['rimhop', 'rille', 'starfall'], canyonC: '#060709', canyonDepth: 7, canyonBank: 'mrock', dust: '#b4b2ac' };
 
   // ---------- race ----------
+  // ---------- bridges and open edges ----------
+  // a ribbon swept along the road: segs are [d0, y0, d1, y1] faces across it (y above the road at s)
+  function sweep(g, list, segs, GY) {
+    var P = [], U = [], I = [], n = 0;
+    segs.forEach(function (sg) {
+      var base = n;
+      list.forEach(function (s, j) {
+        var a = D.pointAt(g, s, sg[0]), c = D.pointAt(g, s, sg[2]), y = GY(s);
+        P.push(a.x, y + sg[1], a.z, c.x, y + sg[3], c.z); U.push(s * 0.5, 0, s * 0.5, Math.hypot(sg[2] - sg[0], sg[3] - sg[1]) * 0.5); n += 2;
+        if (j) { var k = base + (j - 1) * 2; I.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); }
+      });
+    });
+    var geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); geo.setIndex(I); geo.computeVertexNormals();
+    return geo;
+  }
+  // each bridge: a concrete deck slab under the road with piers down to the land (never onto a road below), a red
+  // and white lip along an open edge, or a steel rail on a railed bridge; a lip too along every open cliff edge
+  function bridges(b, g, F, GY, L, sideAt, onDeck, splitBy) {
+    var hw = g.hw, W = hw + 0.65, TH = 0.75, tris = 0, red = col('#d8342a'), wht = col('#f2f0ea'), deckC = col(L.deckC || '#c9c2b4'), railC = col('#c4c8cc');
+    var lim = g.hw + D.RUNOFF, list = sRange(0, g.L, 0.5);
+    splitBy(list, onDeck).forEach(function (sub) {
+      // slab: the deck top past the road, its sides and underside
+      var geo = sweep(g, sub, [[hw - 0.02, 0.005, W, 0.005], [W, 0.005, W, -TH], [W, -TH, -W, -TH], [-W, -TH, -W, 0.005], [-W, 0.005, -hw + 0.02, 0.005]], GY);
+      var p0 = D.pointAt(g, sub[0], 0); b.add('deck', geo, new THREE.Matrix4(), deckC, p0.x, p0.z); tris += sub.length * 10;
+      // a darker band along the slab's sides
+      b.add('deck', sweep(g, sub, [[W + 0.01, -0.05, W + 0.01, -0.3], [-W - 0.01, -0.3, -W - 0.01, -0.05]], GY), new THREE.Matrix4(), col('#8f877a'), p0.x, p0.z);
+      // piers every 8 cells, down to the land, skipped where another road runs below
+      for (var j = 4; j < sub.length - 4; j += 16) {
+        var s = sub[j], p = D.pointAt(g, s, 0), top = GY(s) - TH, below = g.queryLand ? g.queryLand(p.x, p.z) : null;
+        if (below && below.dist < lim + 1.2) continue;
+        var ground = F.height(p.x, p.z) - 0.3, hgt = top - ground;
+        if (hgt < 0.4) continue;
+        b.add('deck', box(1.1, hgt, 1.9), mtx(p.x, ground, p.z, -p.h), deckC, p.x, p.z);
+        b.add('deck', box(1.6, 0.35, 2.4), mtx(p.x, top - 0.35, p.z, -p.h), deckC, p.x, p.z);
+        tris += 24;
+      }
+    });
+    // lips on open edges, rails on railed ones
+    [-1, 1].forEach(function (sd) {
+      splitBy(list, function (s) { return sideAt(s, sd) === 'open'; }).forEach(function (sub) {
+        for (var k = 0; k < sub.length - 1; k += 2) {
+          var seg = sub.slice(k, k + 3), cc = Math.floor(sub[k]) % 2 ? wht : red;
+          var kg = strip(g, seg, sd * (hw - 0.12), sd * (hw + 0.6), function (ss, d, f) { return 0.02 + Math.sin(f * Math.PI) * 0.07; }, null, null, function () { return cc; }, 3);
+          b.add('kerb', kg, new THREE.Matrix4(), WHITE, kg.attributes.position.getX(0), kg.attributes.position.getZ(0)); tris += 12;
+        }
+      });
+      splitBy(list, function (s) { return sideAt(s, sd) === 'rail'; }).forEach(function (sub) {
+        var d = sd * (hw + 0.5), p0 = D.pointAt(g, sub[0], d);
+        b.add('metal', sweep(g, sub, [[d, 0.38, d, 0.62]], GY), new THREE.Matrix4(), railC, p0.x, p0.z);
+        b.add('metal', sweep(g, sub, [[d, 0.82, d, 0.92]], GY), new THREE.Matrix4(), col('#f0c030'), p0.x, p0.z);
+        for (var q = 0; q < sub.length; q += 3) { var pp = D.pointAt(g, sub[q], d + sd * 0.06); b.add('metal', box(0.08, 0.95, 0.08), mtx(pp.x, GY(sub[q]), pp.z, -pp.h), col('#8a9098'), pp.x, pp.z); }
+        tris += sub.length * 8;
+      });
+    });
+    return tris;
+  }
+
   function race(trackId, g, worldId) {
     g = g || D.track(trackId);
     var t0 = performance.now(), L = lookOf(worldId), group = new THREE.Group(), r = prng(g.n * 13 + 7), lim = g.hw + D.RUNOFF;
@@ -1970,11 +2054,22 @@ var RB3DWorld = (function () {
     var shoulderMat = MATS[shKey] || (MATS[shKey] = polyMat(std({ map: T(L.shoulderTex || 'dirt'), vertexColors: true, roughness: 1 }), -1));
     var b0 = new Batch(0);
     roadMat.name = roadKey; shoulderMat.name = shKey;
+    // the wall side of s: 'wall' (the usual wall past the runoff), 'open' (an edge to fall off) or 'rail' (a bridge rail)
+    function sideAt(s, sd) {
+      var i = Math.min(g.n, Math.round((((s % g.L) + g.L) % g.L) / 0.5)), v = (sd > 0 ? g.limR : g.limL);
+      if (!v) return 'wall';
+      return v[i] > 1e8 ? 'open' : v[i] < lim - 0.01 ? 'rail' : 'wall';
+    }
+    function onDeck(s) { return D.onBridge ? D.onBridge(g, s) : false; }
+    // a list of s split into the runs where keep(s) holds
+    function splitBy(list, keep) { var out = [], cur = []; list.forEach(function (s) { if (keep(s)) cur.push(s); else { if (cur.length > 1) out.push(cur); cur = []; } }); if (cur.length > 1) out.push(cur); return out; }
     dryRuns(g).forEach(function (run) {
       var list = sRange(run[0], run[1], 0.5);
       b0.add(roadKey, strip(g, list, -hw, hw, 0.012, null, function (s) { return s * vk; }), new THREE.Matrix4());
       [-1, 1].forEach(function (sd) {
-        b0.add(shKey, strip(g, list, sd * (hw - 0.05), sd * (hw + 0.55), 0.008, function (d) { return d * 0.5; }, function (s) { return s * 0.5; }, function () { return col(L.shoulderC || '#c8b8a0'); }), new THREE.Matrix4());
+        splitBy(list, function (s) { return !onDeck(s); }).forEach(function (sub) {
+          b0.add(shKey, strip(g, sub, sd * (hw - 0.05), sd * (hw + 0.55), 0.008, function (d) { return d * 0.5; }, function (s) { return s * 0.5; }, function () { return col(L.shoulderC || '#c8b8a0'); }), new THREE.Matrix4());
+        });
       });
       info.tris += (list.length - 1) * 6;
     });
@@ -1987,6 +2082,7 @@ var RB3DWorld = (function () {
       [-1, 1].forEach(function (sd) {
         for (var s = s0; s < s1; s += 1) {
           if (g.ramps.some(function (m) { if (!m.gap) return false; var u = ((s - m.s - m.len) % g.L + g.L) % g.L; return u < m.gap || u > g.L - 1; })) continue;
+          if (onDeck(s) || sideAt(s, sd) !== 'wall') continue;
           var list = sRange(s, Math.min(s1, s + 1), 0.5), cc = Math.round(s) % 2 ? wht : red;
           var kg = strip(g, list, sd * (hw - 0.15), sd * (hw + 0.6), function (ss, d, f) { return 0.015 + Math.sin(f * Math.PI) * 0.05; }, null, null, function () { return cc; }, 3);
           b.add(kerbMat, kg, new THREE.Matrix4(), WHITE, kg.attributes.position.getX(0), kg.attributes.position.getZ(0));
@@ -2096,17 +2192,20 @@ var RB3DWorld = (function () {
         }
         run = [];
       }
+      function noWall(s) { return wet(s) || sideAt(s, sd) !== 'wall'; }
       for (var s = 0; s <= g.L; s += 0.5) {
-        if (wet(s) || run.length > 60) { if (run.length) { var last = run[run.length - 1]; flush(); if (!wet(s)) run.push(last); } if (wet(s)) continue; }
+        if (noWall(s) || run.length > 60) { if (run.length) { var last = run[run.length - 1]; flush(); if (!noWall(s)) run.push(last); } if (noWall(s)) continue; }
         run.push(Math.min(s, g.L));
       }
       flush();
       // tyre stacks on the outside of bends, in front of the wall
       for (s = 0; s < g.L; s += 0.72) {
         var p = D.pointAt(g, s, sd * (lim + 0.32));
-        if (p.k * sd < -0.045 && !wet(s)) { var stackN = Math.floor(s / 0.72); addProto(b, 'tyres', mtx(p.x, GY(s), p.z, r() * 6.3), stackN % 2 ? col('#e8e8e8') : col('#c8281e'), p.x, p.z); }
+        if (p.k * sd < -0.045 && !noWall(s)) { var stackN = Math.floor(s / 0.72); addProto(b, 'tyres', mtx(p.x, GY(s), p.z, r() * 6.3), stackN % 2 ? col('#e8e8e8') : col('#c8281e'), p.x, p.z); }
       }
     });
+
+    info.tris += bridges(b, g, F, GY, L, sideAt, onDeck, splitBy);
 
     // scenery: buildings set well back, woods in clumps, a band of trees past the fences, rocks, hay
     var placed = [];

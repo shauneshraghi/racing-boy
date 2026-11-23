@@ -124,6 +124,7 @@ var RBAudio = (function () {
     land: function (air) { var k = Math.max(0.35, Math.min(1.6, air == null ? 0.7 : air)); noise(0.1 + 0.12 * k, 0.12 + 0.12 * k, 600, 'lowpass', 0.4); tone(110, 0.1 + 0.08 * k, 'sine', 0.08 + 0.1 * k, 0, 0.5); },
     trick: function () { seq([784, 988, 1175], 0.05, 'triangle', 0.1); },
     splash: function () { noise(0.6, 0.3, 1400, 'bandpass'); tone(500, 0.4, 'sine', 0.1, 0, 0.3); },
+    fall: function () { var t = AC.currentTime; tone(880, 0.7, 'triangle', 0.09, t, 0.25); noise(0.5, 0.05, 900, 'bandpass', 0.3, t + 0.1); },
     putback: function () { var t = AC.currentTime; noise(0.3, 0.08, 600, 'lowpass', 4, t); tone(392, 0.12, 'triangle', 0.08, t + 0.05); tone(523, 0.18, 'triangle', 0.08, t + 0.12); },
     pass: function () { var t = AC.currentTime; noise(0.3, 0.12, 500, 'bandpass', 6, t); tone(520, 0.25, 'triangle', 0.09, t, 2.2); tone(880, 0.15, 'sine', 0.07, t + 0.14); },
     lostPlace: function () { var t = AC.currentTime; tone(494, 0.18, 'triangle', 0.08, t); tone(370, 0.3, 'triangle', 0.08, t + 0.1, 0.8); },

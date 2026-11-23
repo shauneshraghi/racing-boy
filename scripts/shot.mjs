@@ -8,6 +8,10 @@
 // --size   viewport, default 1280x720 (use 390x844 for an upright phone)
 // --wait   seconds to let the page run before the shot, default 2
 // --step   seconds of game time to advance with window.__game.step first
+// --at     u[,off]: put the player's car at lap fraction u (offset off) and start racing there, before --step
+// --look   u,side,dist,height: a fixed camera beside the road at u, dist cells out on side (1 right, -1 left),
+//          height cells above the road, looking at the road at u (shows bridges, cliffs and crossovers from outside)
+// --cam    x,y,z,tx,ty,tz: a fixed camera at x,y,z looking at tx,ty,tz
 //
 // Prints page errors and console errors; exits 1 if the page threw.
 import { mkdirSync, existsSync } from 'node:fs';
@@ -57,7 +61,11 @@ try {
   page.on('pageerror', (e) => { threw = true; console.error('pageerror:', e.message); });
   page.on('console', (m) => { if (m.type() === 'error') console.error('console:', m.text()); });
   await page.goto(`http://127.0.0.1:${port}/?${query}`, { waitUntil: 'load' });
+  const at = opt('--at', ''), look = opt('--look', ''), cam = opt('--cam', '');
+  if (at) await page.evaluate((a) => { const G = window.__game, r = G.race, [u, off] = a.split(',').map(Number); G.D._place(r, r.cars[0], u * r.g.L, off || 0); r.phase = 'race'; r.cd = 0; }, at);
   if (step > 0) await page.evaluate((s) => window.__game && window.__game.step(s), step);
+  if (look) await page.evaluate((l) => { const G = window.__game, D = G.D, g = G.race.g, [u, sd, d, h] = l.split(',').map(Number), p = D.pointAt(g, u * g.L, sd * d), c = D.pointAt(g, u * g.L, 0), y = D.groundAt(g, u * g.L); window.__rbCam = { x: p.x, y: y + h, z: p.z, tx: c.x, ty: y, tz: c.z }; }, look);
+  if (cam) await page.evaluate((c) => { const [x, y, z, tx, ty, tz] = c.split(',').map(Number); window.__rbCam = { x, y, z, tx, ty, tz }; }, cam);
   await page.waitForTimeout(wait * 1000);
   mkdirSync(dirname(out), { recursive: true });
   await page.screenshot({ path: out });

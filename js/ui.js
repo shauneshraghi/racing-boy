@@ -258,6 +258,7 @@
       else if (e.type === 'trick') A.sfx('trick');
       else if (e.type === 'hop') A.sfx('hop');
       else if (e.type === 'splash') { A.sfx('splash'); banner('Splash!'); }
+      else if (e.type === 'fall') { A.sfx('fall'); banner('Whoops!'); }
       else if (e.type === 'drift') A.sfx('drift');
       else if (e.type === 'lap') { if (e.lap === r.laps) { banner('Final lap!'); A.sfx('finalLap'); A.setIntensity(1); } else { banner('Lap ' + e.lap); A.sfx('lap'); } }
       else if (e.type === 'raceOver') { banner(e.place === 1 ? '🏆 You win!' : 'Finished ' + ord(e.place)); A.sfx(e.place === 1 ? 'win' : 'finish'); raceEnd = 2.6; }

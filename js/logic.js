@@ -19,6 +19,12 @@ var RB = (function () {
   var GRASS = 0.58;             // speed factor on rough grass (Tires raise it)
   var G = 26;                   // gravity in the air, cells/s²
   var RAMP_LEN = 2.5, RAMP_H = 0.9;
+  // crossovers: a track may pass over itself on a bridge (bridges: [[u0, u1], or [u0, u1, 'rail']]) at least
+  // BRIDGE_CLEAR cells above the road below. A bridge has no runoff: its edges are open (a car past hw + EDGE falls off)
+  // unless it has a rail (a wall at hw + RAIL). drops: [[u0, u1, side]] open the wall on one side (1 right, -1 left,
+  // 0 both) over a cliff. A fall puts the car back on the road a little behind where it went over, after FALL_T
+  var BRIDGE_CLEAR = 4.5, EDGE = 0.8, RAIL = 0.5, OPEN = 1e9;
+  var HINT_N = 40;              // a query with a hint (the car's last s) searches this many samples either side of it
   // hills: a track's elev keys ([u, height in cells]) are joined by smooth S-curves; climbing slows the car by
   // SLOPE_K × the slope, and where the road drops away faster than gravity (a crest at speed) the car flies
   var SLOPE_K = 0.6;
@@ -226,17 +232,19 @@ var RB = (function () {
   // after a rise is a crest the car flies off, a run of short humps is a set of whoops (a pad before them means big
   // air). Jump gaps sit on level ground. hazards: { u, kind (HAZ), n (a flock), period, phase }.
   var TRACKS = {
-    // the intro: a long start straight, a climb up Sheep Hill (a flock wanders across the top) and a hop off its
-    // crest, a ramp in the S-bends and home along the woods
+    // the intro, a figure 8: the start straight runs under the bridge, round the sweeping south loop climbing Sheep
+    // Hill (a flock on top, an open edge on the left on the way up), over the railed bridge above the start straight,
+    // a hop off the far end, down round the north loop over a ramp and home
     meadow: {
-      name: 'Meadow Loop', world: 0, laps: 3, hw: 3.6, scale: 1.1,
-      pts: [[30, 30], [80, 22], [130, 26], [162, 46], [166, 80], [146, 104], [112, 108], [92, 128], [66, 140], [38, 128], [44, 100], [22, 78], [14, 52]],
-      elev: [[0, 0], [0.2, 0], [0.33, 3], [0.42, 3], [0.4325, 1], [0.55, 0]],
-      hazards: [{ u: 0.345, kind: 'sheep', n: 3 }],
-      pads: [{ u: 0.05, off: 0 }, { u: 0.4, off: 0 }, { u: 0.6, off: 1.5 }, { u: 0.86, off: 0 }],
-      ramps: [{ u: 0.64, gap: 0 }],
-      boxes: [0.25, 0.72],
-      coins: [{ u: 0.12, off: 1.6, n: 6 }, { u: 0.29, off: -1.6, n: 6 }, { u: 0.47, off: 0, n: 5 }, { u: 0.78, off: -1.2, n: 6 }, { u: 0.93, off: 1.4, n: 5 }]
+      name: 'Meadow Loop', world: 0, laps: 3, hw: 3.6, scale: 0.85,
+      pts: [[40, 90], [70, 90], [100, 90], [140, 90], [175, 100], [190, 130], [175, 160], [140, 170], [110, 160], [100, 135], [100, 90], [100, 50], [90, 20], [60, 8], [30, 15], [10, 40], [8, 68], [18, 86]],
+      elev: [[0, 0], [0.17, 0], [0.39, 4], [0.47, 4], [0.533, 6], [0.643, 6], [0.658, 6], [0.665, 3.6], [0.77, 0]],
+      bridges: [[0.543, 0.633, 'rail']], drops: [[0.493, 0.54, -1]],
+      hazards: [{ u: 0.42, kind: 'sheep', n: 3 }],
+      pads: [{ u: 0.05, off: 0 }, { u: 0.27, off: 1.5 }, { u: 0.57, off: 0 }, { u: 0.83, off: 0 }],
+      ramps: [{ u: 0.775, gap: 0 }],
+      boxes: [0.22, 0.71],
+      coins: [{ u: 0.1, off: 1.6, n: 6 }, { u: 0.33, off: -1.6, n: 6 }, { u: 0.59, off: 0, n: 5 }, { u: 0.87, off: -1.2, n: 6 }, { u: 0.93, off: 1.4, n: 5 }]
     },
     // downhill to the creek jump, a climbing hairpin up to the farm, hay bales rolling across the farm lane, down
     // through the chicane and a pad into the whoops
@@ -475,21 +483,39 @@ var RB = (function () {
     for (i = 0; i < ns; i++) samples[i].gy = (samples[(i + 1) % ns].y - samples[(i - 1 + ns) % ns].y) / (2 * SAMPLE);
     samples.push({ x: samples[0].x, z: samples[0].z, s: L, hw: T.hw, tx: samples[0].tx, tz: samples[0].tz, k: samples[0].k, y: samples[0].y, gy: samples[0].gy }); // closing copy
     var g = { id: id, def: T, L: L, hw: T.hw, samples: samples, n: ns };
+    // bridges and open edges: per sample, the wall offset on the right and the left (OPEN: none, fall off past hw + EDGE)
+    g.bridges = (T.bridges || []).map(function (b) { return { s0: b[0] * L, s1: b[1] * L, rail: b[2] === 'rail' }; });
+    g.drops = (T.drops || []).map(function (b) { return { s0: b[0] * L, s1: b[1] * L, side: b[2] || 0 }; });
+    g.limR = new Float32Array(ns + 1); g.limL = new Float32Array(ns + 1); g.deck = new Uint8Array(ns + 1);
+    function inSpan(sp, sv) { return dS(g, sv, sp.s0) >= 0 && dS(g, sp.s1, sv) >= 0; }
+    for (i = 0; i <= ns; i++) {
+      var sv = samples[i].s, lr = T.hw + RUNOFF, ll = lr;
+      g.bridges.forEach(function (b) { if (inSpan(b, sv)) { g.deck[i] = 1; lr = ll = b.rail ? T.hw + RAIL : OPEN; } });
+      g.drops.forEach(function (b) { if (inSpan(b, sv)) { if (b.side >= 0) lr = OPEN; if (b.side <= 0) ll = OPEN; } });
+      g.limR[i] = lr; g.limL[i] = ll;
+    }
     // nearest-sample lookup grid
     var minX = 1e9, minZ = 1e9, maxX = -1e9, maxZ = -1e9, pad = T.hw + RUNOFF + 14;
     for (i = 0; i < ns; i++) { minX = Math.min(minX, samples[i].x); maxX = Math.max(maxX, samples[i].x); minZ = Math.min(minZ, samples[i].z); maxZ = Math.max(maxZ, samples[i].z); }
     g.x0 = Math.floor(minX - pad); g.z0 = Math.floor(minZ - pad);
     g.w = Math.ceil(maxX + pad) - g.x0; g.h = Math.ceil(maxZ + pad) - g.z0;
     g.near = new Int32Array(g.w * g.h);
-    var coarse = [];
-    for (i = 0; i < ns; i += 4) coarse.push(i);
-    for (var cz = 0; cz < g.h; cz++) for (var cx = 0; cx < g.w; cx++) {
-      var wx = g.x0 + cx + 0.5, wz = g.z0 + cz + 0.5, best = 1e18, bi = 0;
-      for (j = 0; j < coarse.length; j++) { var sm = samples[coarse[j]], dd = (sm.x - wx) * (sm.x - wx) + (sm.z - wz) * (sm.z - wz); if (dd < best) { best = dd; bi = coarse[j]; } }
-      for (j = bi - 4; j <= bi + 4; j++) { var si = (j + ns) % ns, sm2 = samples[si], d2 = (sm2.x - wx) * (sm2.x - wx) + (sm2.z - wz) * (sm2.z - wz); if (d2 < best) { best = d2; bi = si; } }
-      g.near[cz * g.w + cx] = bi;
-    }
-    g.query = function (x, z) { return query(g, x, z); };
+    // the land grid (g.nearLand, only on tracks with bridges) leaves the bridge decks out: the nearest road on the ground
+    var hasDeck = g.bridges.length > 0;
+    if (hasDeck) g.nearLand = new Int32Array(g.w * g.h);
+    [false, true].forEach(function (land) {
+      if (land && !hasDeck) return;
+      var coarse = [], grid = land ? g.nearLand : g.near;
+      for (i = 0; i < ns; i += 4) if (!land || !g.deck[i]) coarse.push(i);
+      for (var cz = 0; cz < g.h; cz++) for (var cx = 0; cx < g.w; cx++) {
+        var wx = g.x0 + cx + 0.5, wz = g.z0 + cz + 0.5, best = 1e18, bi = 0;
+        for (j = 0; j < coarse.length; j++) { var sm = samples[coarse[j]], dd = (sm.x - wx) * (sm.x - wx) + (sm.z - wz) * (sm.z - wz); if (dd < best) { best = dd; bi = coarse[j]; } }
+        for (j = bi - 4; j <= bi + 4; j++) { var si = (j + ns) % ns, sm2 = samples[si], d2 = (sm2.x - wx) * (sm2.x - wx) + (sm2.z - wz) * (sm2.z - wz); if (d2 < best && (!land || !g.deck[si])) { best = d2; bi = si; } }
+        grid[cz * g.w + cx] = bi;
+      }
+    });
+    g.query = function (x, z, hint) { return query(g, x, z, hint); };
+    g.queryLand = function (x, z) { return query(g, x, z, null, true); };
     // features
     g.pads = T.pads.map(function (p) { return { s: p.u * L, off: p.off }; });
     g.hazards = [];
@@ -542,12 +568,22 @@ var RB = (function () {
   }
   function headingAt(g, s) { return pointAt(g, s, 0).h; }
   // nearest point on the centreline: arc length s, signed offset d (+ right), road half-width hw
-  function query(g, x, z) {
-    var cx = Math.floor(x - g.x0), cz = Math.floor(z - g.z0), bi, j, ns = g.n, S = g.samples;
-    if (cx >= 0 && cz >= 0 && cx < g.w && cz < g.h) bi = g.near[cz * g.w + cx];
-    else { var best = 1e18; for (j = 0; j < ns; j += 2) { var dd = (S[j].x - x) * (S[j].x - x) + (S[j].z - z) * (S[j].z - z); if (dd < best) { best = dd; bi = j; } } }
+  // With a hint (the arc length the asker was at a moment ago) it searches only the road near the hint, so at a
+  // crossover a car stays on its own level; far from the hint it falls back to the grid. land: the ground road only
+  function query(g, x, z, hint, land) {
+    var cx = Math.floor(x - g.x0), cz = Math.floor(z - g.z0), bi, j, ns = g.n, S = g.samples, grid = land && g.nearLand ? g.nearLand : g.near;
+    if (hint !== undefined && hint !== null && hint === hint) {
+      var c0 = Math.round(wrapS(g, hint) / SAMPLE), hb = 1e18, hi = 0;
+      for (j = c0 - HINT_N; j <= c0 + HINT_N; j += 2) { var sh = S[(j % ns + ns) % ns], dh = (sh.x - x) * (sh.x - x) + (sh.z - z) * (sh.z - z); if (dh < hb) { hb = dh; hi = (j % ns + ns) % ns; } }
+      var far = g.hw + RUNOFF + 8;
+      if (hb < far * far) bi = hi;
+    }
+    if (bi === undefined) {
+      if (cx >= 0 && cz >= 0 && cx < g.w && cz < g.h) bi = grid[cz * g.w + cx];
+      else { var best = 1e18; for (j = 0; j < ns; j += 2) { if (land && g.deck[j]) continue; var dd = (S[j].x - x) * (S[j].x - x) + (S[j].z - z) * (S[j].z - z); if (dd < best) { best = dd; bi = j; } } }
+    }
     var bd = 1e18, bj = bi;
-    for (j = bi - 6; j <= bi + 6; j++) { var si = (j + ns) % ns, d2 = (S[si].x - x) * (S[si].x - x) + (S[si].z - z) * (S[si].z - z); if (d2 < bd) { bd = d2; bj = si; } }
+    for (j = bi - 6; j <= bi + 6; j++) { var si = (j + ns) % ns, d2 = (S[si].x - x) * (S[si].x - x) + (S[si].z - z) * (S[si].z - z); if (d2 < bd && (!land || !g.deck[si] || g.deck[bi])) { bd = d2; bj = si; } }
     // project onto the segment ahead or behind, whichever is nearer
     var best2 = null;
     [bj, (bj - 1 + ns) % ns].forEach(function (i0) {
@@ -559,8 +595,12 @@ var RB = (function () {
       }
     });
     best2.hw = g.hw;
+    best2.i = Math.min(ns, Math.round(best2.s / SAMPLE));
+    best2.limR = g.limR[best2.i]; best2.limL = g.limL[best2.i];
     return best2;
   }
+  // is arc length s on a bridge deck
+  function onBridge(g, s) { return !!g.deck[Math.min(g.n, Math.round(wrapS(g, s) / SAMPLE))]; }
 
   // ---------- car stats ----------
   function newCar(id) {
@@ -657,11 +697,11 @@ var RB = (function () {
     if (it === 'turbo') car.boostT = Math.max(car.boostT, 1.6 * car.stats.boostDur);
     else if (it === 'shield') car.shieldT = 10;
     else if (it === 'magnet') car.magnetT = 8;
-    else if (it === 'goo') r.goos.push({ x: car.x - fx * 1.6, z: car.z - fz * 1.6, t: GOO_LIFE, owner: car.i, safe: 0.6 });
+    else if (it === 'goo') r.goos.push({ x: car.x - fx * 1.6, z: car.z - fz * 1.6, s: wrapS(r.g, car.s - 1.6), y: groundAt(r.g, car.s - 1.6), t: GOO_LIFE, owner: car.i, safe: 0.6 });
     else if (it === 'bee') {
       var ahead = null;
       r.cars.forEach(function (o) { if (o.place === car.place - 1) ahead = o; });
-      r.bees.push({ x: car.x + fx, z: car.z + fz, h: car.h, t: BEE_LIFE, owner: car.i, target: ahead ? ahead.i : -1 });
+      r.bees.push({ x: car.x + fx, z: car.z + fz, s: car.s, y: car.gy + car.y + 1, h: car.h, t: BEE_LIFE, owner: car.i, target: ahead ? ahead.i : -1 });
     }
     ev(r, 'item', car, { item: it });
   }
@@ -750,10 +790,17 @@ var RB = (function () {
     car.boostT = Math.max(0, car.boostT - DT); car.slowT = Math.max(0, car.slowT - DT); car.shieldT = Math.max(0, car.shieldT - DT);
     car.magnetT = Math.max(0, car.magnetT - DT); car.rollT = Math.max(0, car.rollT - DT); car.trickT = Math.max(0, car.trickT - DT); car.bumpT = Math.max(0, car.bumpT - DT);
     if (car.fallT > 0) {
-      car.fallT -= DT; car.y -= 3 * DT;
+      car.fallT -= DT;
+      if (car.fellAt >= 0) car.y -= 3 * DT;
+      else { // off an edge: carry on outward and drop
+        car.x += car.fvx * DT; car.z += car.fvz * DT; car.fvx *= 1 - 1.5 * DT; car.fvz *= 1 - 1.5 * DT;
+        car.vy -= G * DT; car.y += car.vy * DT;
+      }
       if (car.fallT <= 0) {
-        var m = g.ramps[car.fellAt], back = m.s + m.len + m.gap + 2.5 + (car.i % 3) * 1.2;
-        var oldProg = car.prog; place(r, car, back, ((car.i % 3) - 1) * 1.6);
+        var back, lane = car.ai ? ((car.i % 3) - 1) * 1.6 : 0;
+        if (car.fellAt >= 0) { var m = g.ramps[car.fellAt]; back = m.s + m.len + m.gap + 2.5 + (car.i % 3) * 1.2; lane = ((car.i % 3) - 1) * 1.6; }
+        else back = car.fellS - 3 - (car.i % 3);
+        var oldProg = car.prog; place(r, car, back, lane);
         car.prog = oldProg + dS(g, car.s, wrapS(g, oldProg)); car.v = st.speed * 0.45;
         ev(r, 'putback', car);
       }
@@ -770,7 +817,7 @@ var RB = (function () {
     }
     steer = clamp(steer, -1, 1);
     car.steerOut = steer;
-    var q = g.query(car.x, car.z);
+    var q = g.query(car.x, car.z, car.s);
     var surf = car.air ? 1 : surfaceSpeed(r, car, q.d);
     // drifting: a press on the ground hops at once, and the drift starts on landing if steering (drift held through a
     // ramp landing drifts too). A drift keeps the direction it starts in until drift is let go; steering into it
@@ -818,7 +865,7 @@ var RB = (function () {
     car.x += Math.cos(car.vh) * car.v * DT; car.z += Math.sin(car.vh) * car.v * DT;
     // a drift slides the car toward the outside of the turn (the left of a right-hand drift)
     if (car.slip > 0) { var sl = car.slipDir * DRIFT_SLIDE * car.slip * car.v * DT; car.x += Math.sin(car.h) * sl; car.z -= Math.cos(car.h) * sl; }
-    q = g.query(car.x, car.z);
+    q = g.query(car.x, car.z, car.s);
     var ds = dS(g, q.s, car.s);
     // ramps: ride up, then launch off the lip
     if (!car.air) {
@@ -836,12 +883,22 @@ var RB = (function () {
       for (var gi = 0; gi < g.ramps.length; gi++) {
         var gm = g.ramps[gi]; if (!gm.gap) continue;
         var past = dS(g, q.s, gm.s) - gm.len;
-        if (past > 0 && past < gm.gap) { car.fallT = FALL_T; car.fellAt = gi; car.v = 0; car.boostT = 0; car.drift = 0; car.driftDir = 0; ev(r, 'splash', car); break; }
+        if (past > 0 && past < gm.gap) { car.fallT = FALL_T; car.fellAt = gi; car.vy = 0; car.v = 0; car.boostT = 0; car.drift = 0; car.driftDir = 0; ev(r, 'splash', car); break; }
       }
     }
     // walls: a gentle bounce back toward the road
-    var lim = g.hw + RUNOFF;
-    if (Math.abs(q.d) > lim) {
+    var lim = q.d > 0 ? q.limR : q.limL;
+    if (lim >= OPEN) {
+      // an open edge (a bridge or a cliff): past the lip, and not flying high over it, the car falls off
+      if (Math.abs(q.d) > g.hw + EDGE && (!car.air || car.y < 0.6) && car.fallT <= 0) {
+        car.fallT = FALL_T; car.fellAt = -1; car.fellS = q.s; car.fvx = Math.cos(car.vh) * car.v; car.fvz = Math.sin(car.vh) * car.v;
+        if (!car.air) car.vy = Math.min(0, car.gvy || 0);
+        car.air = false; car.v = 0; car.boostT = 0; car.drift = 0; car.driftDir = 0; car.hopT = 0;
+        car.s = q.s; car.d = q.d; car.prog += ds;
+        ev(r, 'fall', car);
+        return;
+      }
+    } else if (Math.abs(q.d) > lim) {
       var sg = q.d > 0 ? 1 : -1, nx = -q.tz * sg, nz = q.tx * sg;
       car.x = q.px + nx * lim; car.z = q.pz + nz * lim;
       var road = Math.atan2(q.tz, q.tx), fwd = Math.cos(car.h - road) >= 0 ? road : road + Math.PI;
@@ -849,7 +906,7 @@ var RB = (function () {
       car.v *= 0.9;
       if (car.bumpT <= 0) car.rollV += sg * 1.2;
       if (car.bumpT <= 0) { ev(r, 'wall', car); car.bumpT = 0.4; }
-      q = g.query(car.x, car.z); ds = dS(g, q.s, car.s);
+      q = g.query(car.x, car.z, car.s); ds = dS(g, q.s, car.s);
     }
     car.s = q.s; car.prog += ds; car.d = q.d;
     // height: car.y is above the ground under the car (car.gy); vy is the true vertical speed. On the ground the car
@@ -888,7 +945,7 @@ var RB = (function () {
     // item boxes
     for (var bi = 0; bi < g.boxes.length; bi++) {
       var bx = g.boxes[bi], bs = r.boxes[bi];
-      if (bs.t > 0 || car.y > 1.2) continue;
+      if (bs.t > 0 || car.y > 1.2 || Math.abs(car.gy - groundAt(g, bx.s)) > 2) continue;
       if ((car.x - bx.x) * (car.x - bx.x) + (car.z - bx.z) * (car.z - bx.z) < BOX_R * BOX_R) {
         bs.t = BOX_RESPAWN;
         if (!car.item) {
@@ -904,7 +961,7 @@ var RB = (function () {
       var cr = car.magnetT > 0 ? MAGNET_R : COIN_R;
       for (var ci = 0; ci < g.coins.length; ci++) {
         var cn = g.coins[ci], cs = r.coins[ci];
-        if (cs.t > 0) continue;
+        if (cs.t > 0 || Math.abs(car.gy + car.y - groundAt(g, cn.s)) > 2) continue;
         if ((car.x - cn.x) * (car.x - cn.x) + (car.z - cn.z) * (car.z - cn.z) < cr * cr && car.y < 1.5) { cs.t = COIN_RESPAWN; car.coins++; ev(r, 'coin', car, { n: 1, x: cn.x, z: cn.z }); }
       }
     }
@@ -933,7 +990,7 @@ var RB = (function () {
       for (j = 0; j < r.cars.length; j++) {
         var c = r.cars[j]; if (c.air || c.fallT > 0) continue;
         if (c.i === gp.owner && gp.safe > 0) continue;
-        if ((c.x - gp.x) * (c.x - gp.x) + (c.z - gp.z) * (c.z - gp.z) < 0.95 * 0.95) { hit(r, c, 'goo'); r.goos.splice(i, 1); break; }
+        if (Math.abs(c.gy - gp.y) < 1.5 && (c.x - gp.x) * (c.x - gp.x) + (c.z - gp.z) * (c.z - gp.z) < 0.95 * 0.95) { hit(r, c, 'goo'); r.goos.splice(i, 1); break; }
       }
     }
     // bees fly to their target, or along the road when there is none
@@ -941,11 +998,15 @@ var RB = (function () {
       var b = r.bees[i]; b.t -= DT;
       if (b.t <= 0) { r.bees.splice(i, 1); continue; }
       var tgt = b.target >= 0 ? r.cars[b.target] : null, want;
+      var bq = g.query(b.x, b.z, b.s);
       if (tgt && !tgt.done) want = Math.atan2(tgt.z - b.z, tgt.x - b.x);
-      else { var bq = g.query(b.x, b.z); want = headingAt(g, bq.s + 4); }
+      else want = headingAt(g, bq.s + 4);
       b.h += clamp(angDiff(want, b.h), -BEE_TURN * DT, BEE_TURN * DT);
       b.x += Math.cos(b.h) * BEE_SPEED * DT; b.z += Math.sin(b.h) * BEE_SPEED * DT;
-      if (tgt && (tgt.x - b.x) * (tgt.x - b.x) + (tgt.z - b.z) * (tgt.z - b.z) < 1) { hit(r, tgt, 'bee'); r.bees.splice(i, 1); }
+      b.s = g.query(b.x, b.z, bq.s).s;
+      var wantY = tgt && !tgt.done ? tgt.gy + Math.max(0, tgt.y) + 1 : groundAt(g, b.s) + 1;
+      b.y += (wantY - b.y) * Math.min(1, 4 * DT);
+      if (tgt && Math.abs(b.y - tgt.gy - Math.max(0, tgt.y) - 1) < 1.8 && (tgt.x - b.x) * (tgt.x - b.x) + (tgt.z - b.z) * (tgt.z - b.z) < 1) { hit(r, tgt, 'bee'); r.bees.splice(i, 1); }
     }
     // hazards: a car low enough to touch one is hit, then gets HAZ_COOL s to get clear
     for (i = 0; i < g.hazards.length; i++) {
@@ -964,7 +1025,7 @@ var RB = (function () {
     // cars bump each other apart, the lighter one moving more
     for (i = 0; i < r.cars.length; i++) for (j = i + 1; j < r.cars.length; j++) {
       var a = r.cars[i], c2 = r.cars[j];
-      if (a.fallT > 0 || c2.fallT > 0 || Math.abs(a.y - c2.y) > 0.6) continue;
+      if (a.fallT > 0 || c2.fallT > 0 || Math.abs(a.gy + a.y - c2.gy - c2.y) > 0.8) continue;
       var dx = c2.x - a.x, dz = c2.z - a.z, d2 = dx * dx + dz * dz, min = CAR_R * 2;
       if (d2 < min * min && d2 > 1e-6) {
         var d = Math.sqrt(d2), push = (min - d), wa = c2.stats.weight / (a.stats.weight + c2.stats.weight);
@@ -1237,6 +1298,7 @@ var RB = (function () {
     DT: DT, PACE: PACE, DRIFT_TIERS: DRIFT_TIERS, RUNOFF: RUNOFF, RAMP_LEN: RAMP_LEN, PAD_LEN: PAD_LEN, PAD_W: PAD_W, MAGNET_R: MAGNET_R, ROLL_T: ROLL_T, START_CAR: START_CAR,
     PLACE_PAY: PLACE_PAY, PART_PAY: PART_PAY, PART_UP: PART_UP, PART_DOWN: PART_DOWN, tradeParts: tradeParts, PARTS: PARTS, ITEMS: ITEMS, ITEM_KEYS: ITEM_KEYS, UPGRADES: UPGRADES, UP_KEYS: UP_KEYS,
     PERKS: PERKS, CARS: CARS, LOOKS: LOOKS, LOOK_KEYS: LOOK_KEYS, TRACKS: TRACKS, WORLDS: WORLDS, HUB: HUB,
+    BRIDGE_CLEAR: BRIDGE_CLEAR, EDGE: EDGE, onBridge: onBridge,
     rng: rng, angDiff: angDiff, clamp: clamp, track: track, pointAt: pointAt, groundAt: groundAt, slopeAt: slopeAt, headingAt: headingAt, lookOpt: lookOpt,
     rollItem: rollItem, hazardAt: hazardAt, HAZ: HAZ, envOf: envOf, carStats: carStats, statsFor: statsFor, startRace: startRace, input: input, stepRace: stepRace,
     surfaceSpeed: surfaceSpeed, hit: hit, botInput: botInput, finishRace: finishRace, trackUnlocked: trackUnlocked,

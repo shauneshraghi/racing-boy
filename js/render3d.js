@@ -391,7 +391,7 @@
       var want = 0;
       if (c.onRamp >= 0 && r.g.ramps[c.onRamp]) want = Math.atan(r.g.ramps[c.onRamp].h / r.g.ramps[c.onRamp].len);
       else if (c.air) want = Math.max(-0.35, Math.min(0.35, Math.atan2(c.vy, Math.max(4, c.v)) * 0.6));
-      else if (D.slopeAt) { var sq = r.g.query(c.x, c.z); want = Math.atan(D.slopeAt(r.g, c.s) * (Math.cos(c.h) * sq.tx + Math.sin(c.h) * sq.tz)); }
+      else if (D.slopeAt) { var sq = r.g.query(c.x, c.z, c.s); want = Math.atan(D.slopeAt(r.g, c.s) * (Math.cos(c.h) * sq.tx + Math.sin(c.h) * sq.tz)); }
       st.pitchS += (want - st.pitchS) * Math.min(1, dt * 12);
       if (ud.body) { ud.body.rotation.x = c.roll || 0; ud.body.rotation.z = (c.pitch || 0) + st.pitchS * 0.0; ud.body.position.y = -Math.max(0, c.dip || 0); }
       o.rotation.z = st.pitchS; o.rotation.order = 'YXZ';
@@ -516,11 +516,11 @@
       R.coins.done();
       // goo puddles and bees, pooled
       while (R.goos.length < r.goos.length) { var go = compactAll(make('goo', stubGoo)); go.traverse(function (m) { if (m.isMesh) m.receiveShadow = true; }); sc.add(go); R.goos.push(go); }
-      R.goos.forEach(function (o, i) { var gp = r.goos[i]; o.visible = !!gp; if (gp) { o.position.set(gp.x, (D.groundAt ? D.groundAt(g, g.query(gp.x, gp.z).s) : 0) + 0.005, gp.z); var s = 25 - gp.t + 0.3; o.scale.setScalar(Math.min(1, s * 3)); } });
+      R.goos.forEach(function (o, i) { var gp = r.goos[i]; o.visible = !!gp; if (gp) { o.position.set(gp.x, (gp.y !== undefined ? gp.y : D.groundAt ? D.groundAt(g, g.query(gp.x, gp.z).s) : 0) + 0.005, gp.z); var s = 25 - gp.t + 0.3; o.scale.setScalar(Math.min(1, s * 3)); } });
       while (R.bees.length < r.bees.length) { var be = make('bee', stubBee); if (be.userData && typeof be.userData.flap === 'function') { var db = movers(be, be.userData.flap); db.add(be); compact(be, db); } be.traverse(function (m) { if (m.isMesh) m.castShadow = true; }); sc.add(be); R.bees.push(be); }
       R.bees.forEach(function (o, i) {
         var b = r.bees[i]; o.visible = !!b; if (!b) return;
-        o.position.set(b.x, (D.groundAt ? D.groundAt(g, g.query(b.x, b.z).s) : 0) + 1 + Math.sin(time * 20 + i) * 0.08, b.z); o.rotation.y = -(b.h || 0);
+        o.position.set(b.x, (b.y !== undefined ? b.y : (D.groundAt ? D.groundAt(g, g.query(b.x, b.z).s) : 0) + 1) + Math.sin(time * 20 + i) * 0.08, b.z); o.rotation.y = -(b.h || 0);
         if (typeof o.userData.flap === 'function') o.userData.flap(time + i); else (o.userData.wings || []).forEach(function (w, k) { w.rotation.x = Math.sin(time * 60 + k * Math.PI) * 0.8; });
       });
       // hazards walk and roll across the road
@@ -573,6 +573,12 @@
         y.lineJoin = 'round'; y.beginPath();
         for (var i = 0; i <= g.n; i += 2) { var q = M(g.samples[i].x, g.samples[i].z); if (i) y.lineTo(q[0], q[1]); else y.moveTo(q[0], q[1]); }
         y.closePath(); y.strokeStyle = '#000a'; y.lineWidth = Math.max(5, w / 28); y.stroke(); y.strokeStyle = '#e8e4f0'; y.lineWidth = Math.max(3, w / 50); y.stroke();
+        // bridges drawn again on top, outlined, so an overpass reads as passing over
+        (g.bridges || []).forEach(function (br) {
+          y.beginPath();
+          for (var s = br.s0 - 3, first = true; s <= (br.s1 < br.s0 ? br.s1 + g.L : br.s1) + 3; s += 1, first = false) { var bp = D.pointAt(g, s, 0), q3 = M(bp.x, bp.z); if (first) y.moveTo(q3[0], q3[1]); else y.lineTo(q3[0], q3[1]); }
+          y.lineCap = 'butt'; y.strokeStyle = '#000c'; y.lineWidth = Math.max(7, w / 20); y.stroke(); y.strokeStyle = '#fff4c8'; y.lineWidth = Math.max(3, w / 50); y.stroke();
+        });
         var f = M(g.samples[0].x, g.samples[0].z); y.fillStyle = '#fff'; y.fillRect(f[0] - 3, f[1] - 3, 6, 6);
         mapCache[key] = c;
       }

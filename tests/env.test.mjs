@@ -20,7 +20,7 @@ function turnAfter(trackId) {
   while (r.phase !== 'race') R.stepRace(r, 1 / 20);
   for (let i = 0; i < 40; i++) { R.input(r, { steer: 0 }); R.stepRace(r, 1 / 20); }
   const h0 = p.h;
-  for (let i = 0; i < 20; i++) { R.input(r, { steer: 1 }); R.stepRace(r, 1 / 20); }
+  for (let i = 0; i < 10; i++) { R.input(r, { steer: 1 }); R.stepRace(r, 1 / 20); } // half a second: clear of the walls
   return Math.abs(p.h - h0);
 }
 
