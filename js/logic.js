@@ -283,7 +283,9 @@ var RB = (function () {
       coins: [{ u: 0.09, off: -1.5, n: 6 }, { u: 0.3, off: 0, n: 6 }, { u: 0.42, off: 1.5, n: 6 }, { u: 0.53, off: -1.4, n: 5 }, { u: 0.77, off: 0, n: 6 }, { u: 0.86, off: 1.5, n: 6 }, { u: 0.96, off: 0, n: 5 }]
     },
 
-    // world 4, Lava Lane: every ramp gap is a glowing lava river; the hills are far bigger than worlds 1-2
+    // world 4, Lava Lane: every ramp gap is a glowing lava river; the hills are far bigger than worlds 1-2 (10-16 cells)
+    // round the foot of the cone over cooled-lava whoops, a lava river jump, lava bombs, then a spiral climb round the
+    // cone (a magma boulder rolls across it) to the crater rim at 14.5 and a plunge off the rim with big air
     cinder: {
       name: 'Cinder Cone', world: 3, laps: 3, hw: 3.7, scale: 1, ai: 0.96,
       pts: [[186, 59], [124, 70], [84, 119], [84, 181], [113, 222], [143, 225], [159, 211], [122, 178], [124, 133], [156, 111], [188, 119], [198, 145], [187, 168], [186, 194], [195, 220], [238, 214], [262, 158], [240, 91]],
@@ -295,6 +297,8 @@ var RB = (function () {
       boxes: [0.25, 0.75],
       coins: [{ u: 0.05, off: 1.5, n: 6 }, { u: 0.14, off: 0, n: 5 }, { u: 0.38, off: -1.5, n: 6 }, { u: 0.56, off: 0, n: 5 }, { u: 0.8, off: 1.5, n: 6 }, { u: 0.93, off: 0, n: 5 }]
     },
+    // steam vents in a basalt-column gorge, a lava river jump out of it, a switchback climb (a magma boulder on the
+    // middle leg) to a plateau at 12.5, a hop off its edge and whoops down the cooled flow
     basalt: {
       name: 'Basalt Gorge', world: 3, laps: 3, hw: 3.6, scale: 0.82, ai: 0.98,
       pts: [[70, 224], [130, 226], [180, 220], [214, 200], [232, 170], [262, 160], [284, 134], [288, 100], [268, 74], [220, 74], [176, 78], [150, 64], [160, 44], [204, 42], [246, 34], [262, 14], [236, -2], [180, -6], [120, 0], [84, 24], [62, 66], [56, 110], [50, 150], [40, 192]],
@@ -306,6 +310,8 @@ var RB = (function () {
       boxes: [0.12, 0.6],
       coins: [{ u: 0.07, off: -1.5, n: 6 }, { u: 0.24, off: 1.5, n: 5 }, { u: 0.36, off: 0, n: 6 }, { u: 0.5, off: -1.4, n: 6 }, { u: 0.72, off: 0, n: 6 }, { u: 0.92, off: 0, n: 5 }]
     },
+    // the long one: a lava river jump, a long climb past rolling magma, the ridge between two lava lakes with lava bombs,
+    // up to the summit at 16 and a plunge off it, steam vents on the flats and a second lava river
     caldera: {
       name: 'Caldera Ridge', world: 3, laps: 2, hw: 3.6, scale: 1.1, ai: 0.995,
       pts: [[40, 260], [110, 268], [180, 262], [240, 240], [290, 200], [318, 150], [320, 100], [296, 62], [240, 50], [180, 46], [136, 42], [104, 56], [84, 86], [100, 118], [150, 132], [196, 160], [196, 200], [150, 214], [96, 206], [48, 222]],
