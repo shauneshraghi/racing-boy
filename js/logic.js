@@ -58,7 +58,13 @@ var RB = (function () {
     sheep: { r: 0.65, h: 1.0, period: 9, gap: 2.6 },
     bale: { r: 0.85, h: 1.3, period: 5, gap: 4 },
     tumble: { r: 0.6, h: 0.9, period: 4, gap: 5, bounce: 0.9 },
-    boulder: { r: 1.0, h: 1.6, period: 7, gap: 5 }
+    boulder: { r: 1.0, h: 1.6, period: 7, gap: 5 },
+    // world 5, Moon Base: a six-wheeled rover, moon rocks bouncing high in the low gravity (a car slips under one
+    // at the top of its bounce), little meteorites skipping low, and a tracked robot with a slowly turning dish
+    rover: { r: 0.95, h: 1.2, period: 10, gap: 4 },
+    moonrock: { r: 0.8, h: 1.3, period: 6, gap: 6, bounce: 2.2 },
+    meteor: { r: 0.55, h: 0.8, period: 3.6, gap: 4.5, bounce: 0.7 },
+    dish: { r: 1.0, h: 1.5, period: 12, gap: 5 }
   };
   var HAZ_OVER = 1.2, HAZ_SLOW = 0.8, HAZ_COOL = 1;
   var BEE_SPEED = 21, BEE_TURN = 6, BEE_LIFE = 6;
@@ -275,6 +281,51 @@ var RB = (function () {
       ramps: [{ u: 0.06, gap: 3.8 }, { u: 0.5, gap: 0 }, { u: 0.73, gap: 3.8 }],
       boxes: [0.16, 0.6],
       coins: [{ u: 0.09, off: -1.5, n: 6 }, { u: 0.3, off: 0, n: 6 }, { u: 0.42, off: 1.5, n: 6 }, { u: 0.53, off: -1.4, n: 5 }, { u: 0.77, off: 0, n: 6 }, { u: 0.86, off: 1.5, n: 6 }, { u: 0.96, off: 0, n: 5 }]
+    },
+
+    // world 5, Moon Base: low gravity (WORLDS grav), so crests launch easily and every jump floats; the gaps are
+    // chasms. Each track has a dome-base run (base: [u0, u1], drawn as a glass tunnel) and gets harder (ai)
+    // a chasm leap off the start straight, up the crater wall to the rim, a pad and a big floaty dive into a small
+    // crater, across its floor, a hop off the far rim, a rover crossing, the dome base S-bends, meteorites skipping
+    // across and the rim whoops
+    rimhop: {
+      name: 'Rim Hopper', world: 4, laps: 3, hw: 4.2, scale: 1, ai: 1.03,
+      pts: [[30, 40], [100, 24], [180, 22], [250, 30], [296, 60], [290, 108], [250, 124], [200, 116], [160, 132], [150, 176], [110, 204], [60, 200], [30, 170], [40, 130], [18, 90]],
+      elev: [[0, 0], [0.1, 0], [0.16, 10], [0.17, 10], [0.19, 4], [0.25, 4], [0.27, 8], [0.28, 8], [0.295, 3], [0.33, 0], [0.71, 0], [0.722, 2.4], [0.734, 0.4], [0.746, 2.6], [0.758, 0.4], [0.77, 2.4], [0.782, 0]],
+      hazards: [{ u: 0.49, kind: 'rover' }, { u: 0.665, kind: 'meteor', n: 3 }],
+      pads: [{ u: 0.06, off: 0 }, { u: 0.167, off: 0 }, { u: 0.7, off: 0 }, { u: 0.9, off: -1.5 }],
+      ramps: [{ u: 0.07, gap: 7 }],
+      base: [0.53, 0.62],
+      boxes: [0.12, 0.56],
+      coins: [{ u: 0.04, off: 1.6, n: 6 }, { u: 0.22, off: -1.5, n: 6 }, { u: 0.4, off: 0, n: 6 }, { u: 0.6, off: 1.4, n: 5 }, { u: 0.8, off: -1.4, n: 6 }, { u: 0.95, off: 0, n: 5 }]
+    },
+    // the climb to the highland, a rim crest into the head of the rille, the winding valley down with moon rocks
+    // bouncing across, the dome base on the valley floor, a chasm leap over the rille, the hairpin climb out and a
+    // hop off the last crest
+    rille: {
+      name: 'Rille Run', world: 4, laps: 3, hw: 4.2, scale: 0.9, ai: 1.01,
+      pts: [[30, 50], [100, 26], [170, 30], [230, 20], [290, 40], [300, 90], [260, 110], [270, 150], [230, 176], [240, 220], [190, 240], [140, 220], [100, 240], [50, 222], [40, 180], [70, 140], [30, 110]],
+      elev: [[0, 0], [0.03, 0], [0.15, 12], [0.235, 12], [0.25, 8.5], [0.33, 7], [0.55, 2], [0.8, 2], [0.88, 9], [0.94, 9], [0.955, 5], [0.995, 0]],
+      hazards: [{ u: 0.19, kind: 'dish' }, { u: 0.42, kind: 'moonrock', n: 2 }, { u: 0.64, kind: 'rover' }],
+      pads: [{ u: 0.17, off: 1.5 }, { u: 0.225, off: 0 }, { u: 0.5, off: -1.4 }, { u: 0.715, off: 0 }, { u: 0.93, off: 0 }],
+      ramps: [{ u: 0.725, gap: 8 }],
+      base: [0.6, 0.7],
+      boxes: [0.1, 0.58],
+      coins: [{ u: 0.07, off: -1.5, n: 6 }, { u: 0.2, off: 0, n: 6 }, { u: 0.36, off: 1.4, n: 5 }, { u: 0.52, off: 0, n: 5 }, { u: 0.78, off: -1.4, n: 6 }, { u: 0.9, off: 1.4, n: 5 }]
+    },
+    // the finale: the long climb up the outer crater wall to the rim, a pad and a huge dive into the bowl, a chasm
+    // leap on the bowl floor, meteorites and a satellite-dish rover, the climb out and a hop off the rim, a second
+    // chasm on the plain, the rim whoops, bouncing moon rocks, the dome base and a ramp to the line
+    starfall: {
+      name: 'Starfall Crater', world: 4, laps: 2, hw: 4.2, scale: 0.9, ai: 1.06,
+      pts: [[30, 60], [120, 28], [220, 24], [320, 34], [390, 70], [396, 140], [350, 170], [300, 160], [250, 180], [240, 230], [290, 260], [330, 300], [290, 340], [200, 340], [140, 310], [90, 330], [40, 300], [30, 240], [70, 190], [40, 140]],
+      elev: [[0, 0], [0.02, 0], [0.13, 16], [0.14, 16], [0.165, 4], [0.44, 4], [0.5, 13], [0.505, 13], [0.518, 9.5], [0.6, 0], [0.655, 0], [0.665, 2.6], [0.675, 0.4], [0.685, 2.8], [0.695, 0]],
+      hazards: [{ u: 0.3, kind: 'meteor', n: 3 }, { u: 0.42, kind: 'dish' }, { u: 0.71, kind: 'rover' }, { u: 0.8, kind: 'moonrock', n: 2 }],
+      pads: [{ u: 0.02, off: 0 }, { u: 0.1, off: -1.5 }, { u: 0.135, off: 0 }, { u: 0.198, off: 0 }, { u: 0.36, off: 1.4 }, { u: 0.495, off: 0 }, { u: 0.618, off: 0 }, { u: 0.78, off: -1.4 }, { u: 0.955, off: 0 }],
+      ramps: [{ u: 0.205, gap: 8.5 }, { u: 0.625, gap: 8.5 }, { u: 0.965, gap: 0 }],
+      base: [0.84, 0.93],
+      boxes: [0.07, 0.32, 0.74],
+      coins: [{ u: 0.05, off: 1.5, n: 6 }, { u: 0.18, off: 0, n: 6 }, { u: 0.27, off: -1.5, n: 6 }, { u: 0.4, off: 1.4, n: 5 }, { u: 0.56, off: 0, n: 6 }, { u: 0.73, off: 1.5, n: 6 }, { u: 0.88, off: 0, n: 6 }]
     }
   };
   // aiSpeed is the rivals' top speed in cells/s before PACE; pay multiplies the place money. Optional environment
@@ -286,7 +337,7 @@ var RB = (function () {
     { id: 'desert', name: 'Sunbaked Canyon', tracks: ['dune', 'mesa', 'oasis'], aiSpeed: 9.6, pay: 1.6, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
     { id: 'ice', name: 'Snowcap Peaks', tracks: [], aiSpeed: 11, pay: 2.4, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
     { id: 'volcano', name: 'Lava Lane', tracks: [], aiSpeed: 12, pay: 3.4, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
-    { id: 'moon', name: 'Moon Base', tracks: [], aiSpeed: 13, pay: 4.8, skill: [0.95, 0.93, 0.91, 0.89, 0.87] }
+    { id: 'moon', name: 'Moon Base', tracks: ['rimhop', 'rille', 'starfall'], aiSpeed: 12, pay: 4.8, skill: [0.95, 0.93, 0.91, 0.89, 0.87], grav: 0.55 }
   ];
   var RIVALS = ['Mia', 'Rocco', 'Juno', 'Theo', 'Pia', 'Bram', 'Lulu', 'Kai', 'Nell', 'Otto'];
 
