@@ -751,3 +751,52 @@ test('elevation: a trick off a crest boosts on landing', () => {
   }
   assert.ok(boosted);
 });
+
+// ---------- hazards ----------
+R.TRACKS.hazardtest = {
+  name: 'Hazard Test', world: 0, laps: 3, hw: 3.6, scale: 1,
+  pts: [[20, 20], [140, 20], [200, 60], [140, 100], [20, 100], [-40, 60]],
+  hazards: [{ u: 0.1, kind: 'bale', period: 4 }, { u: 0.5, kind: 'sheep', n: 3 }],
+  pads: [], ramps: [], boxes: [], coins: []
+};
+
+test('hazards cross the road and back, the same at the same race time', () => {
+  const s = R.newState(3), r = R.startRace(s, 'hazardtest'), g = r.g;
+  assert.equal(g.hazards.length, 4, 'a bale and a flock of three sheep');
+  let lo = 1e9, hi = -1e9;
+  for (let t = 0; t < 8; t += 0.1) { r.t = t; const h = R.hazardAt(r, 0); lo = Math.min(lo, h.d); hi = Math.max(hi, h.d); }
+  assert.ok(lo < -g.hw + 0.5 && hi > g.hw - 0.5, 'sweeps the road ' + lo + '..' + hi);
+  r.t = 2.3; const a = R.hazardAt(r, 1); r.t = 2.3; const b = R.hazardAt(r, 1);
+  assert.deepEqual([a.x, a.z], [b.x, b.z]);
+  const q = g.query(a.x, a.z);
+  assert.ok(Math.abs(R.angDiff(0, 0)) < 1e-9 && Math.abs(q.s - g.hazards[1].s) < 1.5, 'stays on its stretch');
+});
+
+test('running into a hazard slows the car; a shield blocks it', () => {
+  for (const shield of [false, true]) {
+    const s = R.newState(3), r = R.startRace(s, 'hazardtest'), g = r.g;
+    r.phase = 'race'; r.cars.length = 1;
+    const p = r.cars[0];
+    r.t = 1; const h = R.hazardAt(r, 0);
+    R._place(r, p, h.s - 0.3, h.d); p.v = p.stats.speed; if (shield) p.shieldT = 5;
+    r.events.length = 0;
+    r.t = 1 - 1 / 60; R.input(r, {}); R.stepRace(r, 1 / 60);
+    const types = r.events.map(e => e.type);
+    if (shield) { assert.ok(types.includes('blocked'), types.join()); assert.ok(p.v > p.stats.speed * 0.9); }
+    else { assert.ok(types.includes('hit'), types.join()); assert.ok(p.v < p.stats.speed * 0.8, 'v ' + p.v); assert.ok(p.slowT > 0); }
+  }
+});
+
+test('the clean bot steers round hazards; rivals mostly do', () => {
+  const s = R.newState(5), r = R.startRace(s, 'hazardtest');
+  const hits = [0, 0, 0, 0, 0, 0];
+  while (!r.cars[0].done && r.t < 200) {
+    R.input(r, R.botInput(r, r.cars[0], 'clean')); R.stepRace(r, 1 / 20);
+    for (const e of r.events) if (e.type === 'hit' && e.kind === 'hazard') hits[e.car]++;
+    r.events.length = 0;
+  }
+  assert.ok(r.cars[0].done, 'finished');
+  assert.ok(hits[0] === 0, 'the clean bot hit ' + hits[0]);
+  const rivals = hits.slice(1).reduce((a, b) => a + b, 0);
+  assert.ok(rivals >= 1 && rivals <= 12, 'rivals mostly dodge but bonk now and then: ' + rivals);
+});
