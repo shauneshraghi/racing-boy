@@ -460,7 +460,7 @@
 
     var CAM = {
       land: { dist: 6.0, height: 2.3, ahead: 4.0, lookY: 0.6, fov: 54 },
-      tall: { dist: 7.2, height: 3.3, ahead: 3.5, lookY: 0.4, fov: 74 },
+      tall: { dist: 6.3, height: 3.0, ahead: 3.5, lookY: 0.4, fov: 72 },
       follow: 6, boostFov: 9, boostPull: 0.14
     };
     function drawRace(r, dt) {

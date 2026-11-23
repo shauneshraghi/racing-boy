@@ -274,7 +274,7 @@ var RB3DWorld = (function () {
       return toTex(c, true);
     },
     tyre: function () {
-      var N = 64, c = pix(N, N, function (x, y, o) { var ty = y % 32, v = 0.12 + (ty < 3 || ty > 28 ? -0.06 : 0) + (x % 8 < 2 ? 0.03 : 0) + 0.03 * hash(x, y, 2); o[0] = o[1] = o[2] = 255 * v; });
+      var N = 64, c = pix(N, N, function (x, y, o) { var ty = y % 32, v = 0.75 + (ty < 4 || ty > 27 ? -0.45 : 0) + (x % 8 < 2 ? -0.1 : 0) + 0.06 * hash(x, y, 2); o[0] = o[1] = o[2] = 255 * v; });
       return toTex(c, true);
     },
     corrugated: function () {
@@ -321,7 +321,7 @@ var RB3DWorld = (function () {
       v *= 1 - 0.14 * wear; rough -= 0.2 * wear; ht = lerp(ht, 0.3, wear * 0.6);
       // tar-sealed cracks along the road
       var crack = Math.abs(fbm(x / W * 3 + 7, y / H * 6, 3, 209, 0, 6) - 0.5);
-      if (crack < 0.006) { v *= 0.7; rough -= 0.25; ht = 0.2; }
+      if (crack < 0.0025) { v *= 0.82; rough -= 0.2; ht = 0.25; }
       // paint: edge lines and the centre dash, worn in places
       var paint = (Math.abs(Math.abs(d) - (hw - 0.3)) < 0.09) || (Math.abs(d) < 0.07 && (s % 2.6) < 1.2);
       if (paint && fbm(x / W * 60, y / H * 120, 2, 211, 0, 120) > 0.3 + 0.2 * gr) { v = 0.86 + 0.06 * gr; rough = 0.55; ht = 0.6; }
@@ -590,7 +590,7 @@ var RB3DWorld = (function () {
       }
       return p;
     },
-    hedge: function () { var p = []; canopy(p, [[0, 0.55, 0, 0.62, 0.75], [0.3, 0.5, 0.2, 0.4]], 21, col('#3e6e2c'), 5); return p; },
+    hedge: function () { var p = []; canopy(p, [[0, 0.55, 0, 0.62, 0.75], [0.3, 0.5, 0.2, 0.4]], 21, col('#5e9a40'), 5); return p; },
     bush: function () { var p = []; canopy(p, [[0, 0.45, 0, 0.6], [0.5, 0.35, 0.2, 0.45], [-0.45, 0.38, -0.15, 0.48]], 11, col('#4a7a30'), 3); return p; },
     shrub: function () { var p = []; canopy(p, [[0, 0.32, 0, 0.42], [0.35, 0.26, 0.15, 0.32], [-0.3, 0.28, -0.1, 0.34]], 13, col('#8a9a68'), 2); return p; },
     rock: function () { var g = rockGeo(0.6, 2, 0.7); paint(g, function (x, y) { return mixC(col('#6f6a62'), col('#a8a296'), clamp(y / 0.6 + 0.4, 0, 1)); }); return [{ mat: 'stone', g: g }]; },
@@ -764,7 +764,7 @@ var RB3DWorld = (function () {
   var LOOK = {
     hills: { sunAz: -2.2, sunEl: 0.72, sun: '#fff0d8', sunI: 2.5, hemiSky: '#cfe3ff', hemiGround: '#6a5a3a', hemiI: 0.6,
       zenith: '#2a66c4', horizon: '#bcd4e6', fog: '#c4d6e2', fogD: 0.0034, cloudA: '#ffffff', cloudB: '#a8b4c8', cover: 0.5, exposure: 1.0,
-      grass: ['#46782e', '#66923e', '#345c24'], rough: '#46682a', dry: '#98984a', shoulder: '#8a7050', bank: '#6a5a40', water: '#2a6a6a',
+      grass: ['#46782e', '#66923e', '#345c24'], rough: '#46682a', dry: '#98984a', shoulder: '#8a7050', bank: '#6a5a40', water: '#1e5058',
       mtn: ['#6a8aa8', '#a8bccc'], hill: 9, ground: 'grass' },
     desert: { sunAz: -2.0, sunEl: 0.5, sun: '#ffdcaa', sunI: 2.8, hemiSky: '#b8c8f0', hemiGround: '#b06a3a', hemiI: 0.7,
       zenith: '#3a62b8', horizon: '#f2cfa2', fog: '#efcfa4', fogD: 0.0030, cloudA: '#fff2e0', cloudB: '#d8a890', cover: 0.62, exposure: 1.0,
@@ -783,7 +783,7 @@ var RB3DWorld = (function () {
     'float fbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * vn(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; } return s; }',
     'void main() {',
     '  vec3 d = normalize(vDir); float e = d.y;',
-    '  vec3 c = mix(uHorizon, uZenith, pow(clamp(e, 0.0, 1.0), 0.5));',
+    '  vec3 c = mix(uHorizon, uZenith, pow(clamp(e, 0.0, 1.0), 0.38));',
     '  if (e < 0.0) c = mix(uHorizon, uGround, clamp(-e * 6.0, 0.0, 1.0));',
     '  float sd = max(dot(d, uSunDir), 0.0);',
     '  c += uSun * (pow(sd, 6.0) * 0.18 + pow(sd, 48.0) * 0.5) * (0.6 + 0.4 * clamp(1.0 - e * 2.0, 0.0, 1.0));',
@@ -1055,6 +1055,7 @@ var RB3DWorld = (function () {
       var s0 = Math.max(0, rr[0] * 0.5 - 2), s1 = rr[1] * 0.5 + 2;
       [-1, 1].forEach(function (sd) {
         for (var s = s0; s < s1; s += 1) {
+          if (g.ramps.some(function (m) { if (!m.gap) return false; var u = ((s - m.s - m.len) % g.L + g.L) % g.L; return u < m.gap || u > g.L - 1; })) continue;
           var list = sRange(s, Math.min(s1, s + 1), 0.5), cc = Math.round(s) % 2 ? wht : red;
           var kg = strip(g, list, sd * (hw - 0.15), sd * (hw + 0.6), function (ss, d, f) { return 0.015 + Math.sin(f * Math.PI) * 0.05; }, null, null, function () { return cc; }, 3);
           b.add(kerbMat, kg, new THREE.Matrix4(), WHITE, kg.attributes.position.getX(0), kg.attributes.position.getZ(0));
@@ -1122,7 +1123,7 @@ var RB3DWorld = (function () {
       var wm = MATS['water' + worldId + (c.canyon ? 'c' : '')];
       if (!wm) {
         var nt = T('waterN').clone(); nt.needsUpdate = true; nt.repeat.set(1, 1);
-        wm = MATS['water' + worldId + (c.canyon ? 'c' : '')] = std({ color: col(c.canyon ? '#4a7a6a' : L.water), roughness: 0.06, metalness: 0.0, normalMap: nt, normalScale: new THREE.Vector2(0.35, 0.35), transparent: true, opacity: 0.86, envMapIntensity: 1.3 });
+        wm = MATS['water' + worldId + (c.canyon ? 'c' : '')] = std({ color: col(c.canyon ? '#4a7a6a' : L.water), roughness: 0.12, metalness: 0.0, normalMap: nt, normalScale: new THREE.Vector2(0.3, 0.3), transparent: true, opacity: 0.9, envMapIntensity: 0.55 });
         anim.push(function (t) { nt.offset.set(t * 0.02, t * 0.035); });
       }
       var w = new THREE.Mesh(wg, wm); w.receiveShadow = true; w.renderOrder = 2; group.add(w);
@@ -1170,7 +1171,7 @@ var RB3DWorld = (function () {
       // tyre stacks on the outside of bends, in front of the wall
       for (s = 0; s < g.L; s += 0.72) {
         var p = D.pointAt(g, s, sd * (lim + 0.32));
-        if (p.k * sd < -0.045 && !wet(s)) { var stackN = Math.floor(s / 0.72); addProto(b, 'tyres', mtx(p.x, 0, p.z, r() * 6.3), stackN % 2 ? col('#ffffff') : col('#d83a2a'), p.x, p.z); }
+        if (p.k * sd < -0.045 && !wet(s)) { var stackN = Math.floor(s / 0.72); addProto(b, 'tyres', mtx(p.x, 0, p.z, r() * 6.3), stackN % 2 ? col('#e8e8e8') : col('#c8281e'), p.x, p.z); }
       }
     });
 
@@ -1347,7 +1348,7 @@ var RB3DWorld = (function () {
       var sg = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.7), std({ map: signTex('GARAGE', '#1f4a8a', '#ffe066'), roughness: 0.5, emissive: col('#ffffff'), emissiveIntensity: 0.15, emissiveMap: signTex('GARAGE', '#1f4a8a', '#ffe066') }));
       sg.position.set(cx - 0.3, 2.25, z1 + 0.06); group.add(sg);
       // tyres and a toolbox by the door
-      addProto(b, 'tyres', mtx(4.9, 0, 4.3, 0, 0.9), WHITE); addProto(b, 'tyres', mtx(5.3, 0, 4.5, 0, 0.9), col('#d83a2a'));
+      addProto(b, 'tyres', mtx(4.9, 0, 4.3, 0, 0.9), col('#3a3a3a')); addProto(b, 'tyres', mtx(5.3, 0, 4.5, 0, 0.9), col('#d83a2a'));
       b.add('shiny', box(0.5, 0.6, 0.35), mtx(1.6, 0, 4.35, 0.2), col('#d8342a'));
     })();
     // the paint shop: stucco, a tiled gable roof, a striped awning over a shop window
