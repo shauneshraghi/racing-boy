@@ -4,6 +4,7 @@ A browser kart-style racing game in plain HTML, CSS and JavaScript with no build
 
 ## Layout
 
+- Graphics are real 3D by default (the user's kid asked for realistic graphics): three.js r158 vendored at `js/vendor/three.min.js` (MIT, `three.LICENSE`, the UMD build so `file://` still works), `js/models3d.js` (`RB3DModels`: PBR cars per `CARS` model and look, glider, shield, crate, coin, bee, goo, the kid, studio `preview` canvases, `envMap`), `js/world3d.js` (`RB3DWorld`: race scenes from track geometry with road ribbon, kerbs, pads, ramps matching the logic's profile, creeks, walls, terrain, instanced trees and grass, per-world sky and light; the plaza from `HUB.rows`) and `js/render3d.js`, which replaces `RBRender` with the same API (chase camera, sun shadows following the player, bloom and boost blur on desktop, pooled particles, overlay text). It falls back to the pixel renderer below with `?gfx=pixel`, `?hd=0`, or no WebGL. `tools/models.html` shows every model (`?focus=<name>&view=front|rear|side|top|low&solo=1`, `?previews=1`). `?bloom=0|1` overrides bloom.
 - `index.html` is the page shell. It loads the scripts in order with plain `<script>` tags (logic, post, sprites, render, audio, ui), so the game also runs from `file://`. The stylesheet and scripts carry a `?v=N` stamp: bump it on every deploy, because GitHub Pages lets browsers keep each file for 10 minutes.
 - `js/logic.js` is the pure game logic (`RB`), no DOM: tracks, car physics, items, rival AI, economy, unlocks, the plaza map and walking, and save/load. Tested in Node.
 - `js/post.js` is the HD-2D post-process (`RBPost`), grown from Dig's: WebGL2 upscaling with hard pixels, depth of field (a screen band on the plaza, a depth buffer in races), distance fog, drifting cloud shadows, sun shafts, screen-space point lights, bloom, grading (a low-key tone curve `tone` = [gamma, exposure], warm highlights, cool shadows, vignette, grain) and, while boosting, a radial speed blur with a colour fringe. Without WebGL2 (or with `?hd=0`) the renderer draws plain 2D.
@@ -61,4 +62,4 @@ A browser kart-style racing game in plain HTML, CSS and JavaScript with no build
   - Commits, comments and other repo artifacts carry no AI identity, session links or co-author trailers.
   - Game rules are test-first: write a failing test in `tests/`, then make it pass.
   - Reports to the user lead with the answer, plainly worded, with no recap or closing offer. Name things by what they are, not by run label or issue number alone.
-  - Visual work aims at Square Enix's HD-2D look (see Layout); the art stays original.
+  - Visual work aims at realistic 3D (PBR materials, soft shadows, natural light); the pixel HD-2D renderer is kept as a fallback. The art stays original.
