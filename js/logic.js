@@ -58,7 +58,13 @@ var RB = (function () {
     sheep: { r: 0.65, h: 1.0, period: 9, gap: 2.6 },
     bale: { r: 0.85, h: 1.3, period: 5, gap: 4 },
     tumble: { r: 0.6, h: 0.9, period: 4, gap: 5, bounce: 0.9 },
-    boulder: { r: 1.0, h: 1.6, period: 7, gap: 5 }
+    boulder: { r: 1.0, h: 1.6, period: 7, gap: 5 },
+    // world 4, Lava Lane: a lava bomb hops high enough to drive under at the top of a hop, a magma boulder rolls
+    // across; a steam vent stays put in its lane (hazard off, or spread across the road in a row) and puffs for the
+    // vent share of each period, harmless while it rests
+    bomb: { r: 0.7, h: 1.1, period: 5, gap: 6, bounce: 2.4 },
+    magma: { r: 1.15, h: 1.9, period: 7.5, gap: 7 },
+    vent: { r: 0.95, h: 3.5, period: 3.4, gap: 6, vent: 0.4 }
   };
   // world 3, Snowcap Peaks: snowballs rolling across, a waddling penguin flock, ice blocks sliding over the ice
   HAZ.snowball = { r: 0.95, h: 1.7, period: 6, gap: 5 };
@@ -318,6 +324,47 @@ var RB = (function () {
       ramps: [{ u: 0.1, gap: 3.8 }, { u: 0.515, gap: 3.8 }],
       boxes: [0.07, 0.55],
       coins: [{ u: 0.12, off: 1.5, n: 6 }, { u: 0.27, off: 0, n: 6 }, { u: 0.42, off: -1.4, n: 6 }, { u: 0.6, off: 0, n: 6 }, { u: 0.72, off: 1.4, n: 5 }, { u: 0.82, off: 0, n: 6 }, { u: 0.9, off: -1.4, n: 6 }]
+    },
+
+    // world 4, Lava Lane: every ramp gap is a glowing lava river; the hills are far bigger than worlds 1-2 (10-16 cells)
+    // round the foot of the cone over cooled-lava whoops, a lava river jump, lava bombs, then a spiral climb round the
+    // cone (a magma boulder rolls across it) to the crater rim at 14.5 and a plunge off the rim with big air
+    cinder: {
+      name: 'Cinder Cone', world: 3, laps: 3, hw: 3.7, scale: 1, ai: 0.96,
+      pts: [[186, 59], [124, 70], [84, 119], [84, 181], [113, 222], [143, 225], [159, 211], [122, 178], [124, 133], [156, 111], [188, 119], [198, 145], [187, 168], [186, 194], [203, 223], [242, 212], [262, 158], [240, 91]],
+      elev: [[0, 0], [0.06, 0], [0.07, 1.3], [0.08, 0.2], [0.09, 1.3], [0.1, 0.2], [0.11, 1.3], [0.12, 0], [0.36, 0], [0.42, 4], [0.45, 5],
+        [0.51, 10], [0.54, 11], [0.595, 14.5], [0.635, 14.5], [0.655, 5], [0.71, 0]],
+      hazards: [{ u: 0.28, kind: 'bomb', n: 2 }, { u: 0.48, kind: 'magma' }],
+      pads: [{ u: 0.03, off: 0 }, { u: 0.17, off: 0 }, { u: 0.4, off: 1.4 }, { u: 0.62, off: 0 }, { u: 0.85, off: -1.4 }],
+      ramps: [{ u: 0.2, gap: 4 }],
+      boxes: [0.25, 0.75],
+      coins: [{ u: 0.05, off: 1.5, n: 6 }, { u: 0.14, off: 0, n: 5 }, { u: 0.38, off: -1.5, n: 6 }, { u: 0.56, off: 0, n: 5 }, { u: 0.8, off: 1.5, n: 6 }, { u: 0.93, off: 0, n: 5 }]
+    },
+    // a lava river jump on the start straight, steam vents in a basalt-column gorge, a switchback climb (a magma
+    // boulder on the middle leg) to a plateau at 12.5, a hop off its edge and whoops down the cooled flow
+    basalt: {
+      name: 'Basalt Gorge', world: 3, laps: 3, hw: 3.6, scale: 0.82, ai: 0.98,
+      pts: [[70, 224], [130, 226], [180, 220], [214, 200], [232, 170], [262, 160], [284, 134], [288, 100], [268, 74], [220, 74], [176, 78], [150, 64], [160, 44], [204, 42], [246, 34], [262, 14], [236, -2], [180, -6], [120, 0], [84, 24], [62, 66], [56, 110], [50, 150], [40, 192]],
+      elev: [[0, 0], [0.32, 0], [0.44, 4.5], [0.47, 5], [0.57, 9], [0.62, 9.5], [0.7, 12.5], [0.765, 12.5], [0.78, 6], [0.83, 3], [0.84, 2.6], [0.85, 3.8], [0.86, 1.8],
+        [0.87, 3], [0.88, 1], [0.89, 2.2], [0.9, 0.4], [0.95, 0]],
+      hazards: [{ u: 0.2, kind: 'vent', n: 3 }, { u: 0.52, kind: 'magma' }],
+      pads: [{ u: 0.03, off: 0 }, { u: 0.07, off: 0 }, { u: 0.25, off: 0 }, { u: 0.4, off: 1.4 }, { u: 0.66, off: -1.4 }, { u: 0.755, off: 0 }, { u: 0.97, off: 1.4 }],
+      ramps: [{ u: 0.085, gap: 4.2 }],
+      boxes: [0.12, 0.6],
+      coins: [{ u: 0.07, off: -1.5, n: 6 }, { u: 0.24, off: 1.5, n: 5 }, { u: 0.36, off: 0, n: 6 }, { u: 0.5, off: -1.4, n: 6 }, { u: 0.72, off: 0, n: 6 }, { u: 0.92, off: 0, n: 5 }]
+    },
+    // the long one: a lava river jump, a long climb past rolling magma, the ridge between two lava lakes with lava bombs,
+    // up to the summit at 16 and a plunge off it, steam vents on the flats and a second lava river
+    caldera: {
+      name: 'Caldera Ridge', world: 3, laps: 2, hw: 3.6, scale: 1.1, ai: 0.995,
+      pts: [[40, 260], [110, 268], [180, 262], [240, 240], [290, 200], [318, 150], [320, 100], [296, 62], [240, 50], [180, 46], [136, 42], [104, 56], [84, 86], [100, 118], [150, 132], [196, 160], [196, 200], [150, 214], [96, 206], [48, 222]],
+      elev: [[0, 0], [0.2, 0], [0.29, 5], [0.32, 6], [0.4, 10], [0.53, 10.5], [0.575, 16], [0.59, 16], [0.605, 7], [0.67, 2], [0.74, 0]],
+      hazards: [{ u: 0.31, kind: 'magma', n: 2 }, { u: 0.47, kind: 'bomb', n: 3 }, { u: 0.78, kind: 'vent', n: 3 }, { u: 0.95, kind: 'bomb' }],
+      pads: [{ u: 0.03, off: 0 }, { u: 0.085, off: 0 }, { u: 0.17, off: -1.4 }, { u: 0.25, off: 1.4 }, { u: 0.34, off: 0 }, { u: 0.44, off: -1.4 }, { u: 0.52, off: 1.4 },
+        { u: 0.585, off: 0 }, { u: 0.7, off: 1.4 }, { u: 0.74, off: -1.4 }, { u: 0.865, off: 0 }, { u: 0.96, off: 1.4 }],
+      ramps: [{ u: 0.1, gap: 4.2 }, { u: 0.88, gap: 4.2 }],
+      boxes: [0.16, 0.66],
+      coins: [{ u: 0.05, off: 1.5, n: 6 }, { u: 0.22, off: 0, n: 6 }, { u: 0.36, off: -1.5, n: 6 }, { u: 0.5, off: 0, n: 6 }, { u: 0.63, off: 1.4, n: 5 }, { u: 0.75, off: 0, n: 6 }, { u: 0.92, off: -1.5, n: 6 }]
     }
   };
   // aiSpeed is the rivals' top speed in cells/s before PACE; pay multiplies the place money. Optional environment
@@ -328,7 +375,7 @@ var RB = (function () {
     { id: 'hills', name: 'Grassy Hills Town', tracks: ['meadow', 'creek', 'windmill'], aiSpeed: 8.8, pay: 1, skill: [0.93, 0.91, 0.89, 0.87, 0.85] },
     { id: 'desert', name: 'Sunbaked Canyon', tracks: ['dune', 'mesa', 'oasis'], aiSpeed: 9.6, pay: 1.6, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
     { id: 'ice', name: 'Snowcap Peaks', tracks: ['pines', 'skijump', 'glacier'], aiSpeed: 10.6, grip: 0.85, pay: 2.4, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
-    { id: 'volcano', name: 'Lava Lane', tracks: [], aiSpeed: 12, pay: 3.4, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
+    { id: 'volcano', name: 'Lava Lane', tracks: ['cinder', 'basalt', 'caldera'], aiSpeed: 11.7, pay: 3.4, skill: [0.96, 0.94, 0.92, 0.9, 0.88], rough: 0.85 },
     { id: 'moon', name: 'Moon Base', tracks: [], aiSpeed: 13, pay: 4.8, skill: [0.95, 0.93, 0.91, 0.89, 0.87] }
   ];
   var RIVALS = ['Mia', 'Rocco', 'Juno', 'Theo', 'Pia', 'Bram', 'Lulu', 'Kai', 'Nell', 'Otto'];
@@ -393,6 +440,7 @@ var RB = (function () {
       var K = HAZ[hz.kind], n = hz.n || 1;
       for (var m = 0; m < n; m++) g.hazards.push({ s: wrapS({ L: L }, hz.u * L + m * K.gap), kind: hz.kind, r: K.r, h: K.h, bounce: K.bounce || 0,
         period: hz.period || K.period, phase: (hz.phase !== undefined ? hz.phase : k * 0.37) + m * 0.11, amp: T.hw + HAZ_OVER });
+      if (K.vent) for (var vi = 0; vi < n; vi++) { var vt = g.hazards[g.hazards.length - n + vi]; vt.vent = K.vent; vt.off = hz.off !== undefined ? hz.off : [-0.5, 0.5, 0][vi % 3] * T.hw; vt.phase += vi * 0.34; }
     });
     g.ramps = T.ramps.map(function (m) { return { s: m.u * L, len: RAMP_LEN, gap: m.gap, h: RAMP_H }; });
     g.boxes = [];
@@ -563,9 +611,15 @@ var RB = (function () {
 
   // where hazard i is at the race time: x, z, arc s, offset d, the heading it walks or rolls, its hop y and roll angle
   function hazardAt(r, i, t) {
+    if (r.g.hazards[i].vent) return ventAt(r, i, t);
     var hz = r.g.hazards[i], ph = TAU * ((t === undefined ? r.t : t) / hz.period + hz.phase), d = hz.amp * Math.sin(ph), p = pointAt(r.g, hz.s, d);
     var dir = Math.cos(ph) >= 0 ? 1 : -1;
     return { x: p.x, z: p.z, s: hz.s, d: d, h: p.h + dir * Math.PI / 2, y: hz.bounce * Math.abs(Math.sin(ph * 3)), roll: d / hz.r, kind: hz.kind, r: hz.r };
+  }
+  // a steam vent (world 4): fixed in its lane; puff runs 0..1..0 while it is on, and it only hits while on
+  function ventAt(r, i, t) {
+    var hz = r.g.hazards[i], c = (t === undefined ? r.t : t) / hz.period + hz.phase, f = c - Math.floor(c), on = f < hz.vent, p = pointAt(r.g, hz.s, hz.off);
+    return { x: p.x, z: p.z, s: hz.s, d: hz.off, h: p.h, y: 0, roll: 0, kind: hz.kind, r: hz.r, on: on, puff: on ? Math.max(0, Math.sin(Math.PI * f / hz.vent)) : 0 };
   }
   // the lane a car should take past hazards it will reach in the next few cells, or lane if none is in the way
   function dodge(r, car, lane) {
@@ -575,7 +629,7 @@ var RB = (function () {
       if (ahead < 0.5 || ahead > 12) continue;
       if (car.ai && (car.i * 7 + i * 3 + car.lap) % 4 === 0) continue; // rivals miss one now and then
       var hz = hazardAt(r, i, r.t + ahead / Math.max(4, car.v)), room = hz.r + CAR_R + 0.9;
-      if (Math.abs(hz.d - lane) < room) {
+      if (hz.on !== false && Math.abs(hz.d - lane) < room) {
         var side = Math.abs(hz.d) > g.hw - room ? -Math.sign(hz.d) : lane >= hz.d ? 1 : -1;
         lane = clamp(hz.d + side * room, -g.hw + 0.6, g.hw - 0.6);
       }
@@ -844,7 +898,7 @@ var RB = (function () {
         if (Math.abs(dS(g, hc.s, g.hazards[i].s)) > 3) continue;
         hz = hz || hazardAt(r, i);
         var rr = hz.r + CAR_R;
-        if (hc.y > hz.h - hz.y || (hc.x - hz.x) * (hc.x - hz.x) + (hc.z - hz.z) * (hc.z - hz.z) > rr * rr) continue;
+        if (hz.on === false || hc.y > g.hazards[i].h - hz.y || (hc.x - hz.x) * (hc.x - hz.x) + (hc.z - hz.z) * (hc.z - hz.z) > rr * rr) continue;
         hc.hazT = r.t + HAZ_COOL;
         hit(r, hc, 'hazard', { hazard: hz.kind });
       }
