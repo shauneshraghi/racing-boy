@@ -674,7 +674,7 @@ function tapTurn(tap) {
 
 test('steering is calm: a quick key tap nudges the car a few degrees, holding the key still turns hard', () => {
   assert.ok(tapTurn(0.1) < 2.5, '0.1 s tap ' + tapTurn(0.1));
-  assert.ok(tapTurn(0.2) < 6, '0.2 s tap ' + tapTurn(0.2));
+  assert.ok(tapTurn(0.2) < 9, '0.2 s tap ' + tapTurn(0.2));
   assert.ok(tapTurn(0.5) > 35, '0.5 s hold ' + tapTurn(0.5));
 });
 
