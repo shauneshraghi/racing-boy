@@ -374,6 +374,29 @@ test('higher upgrade levels need higher-tier parts', () => {
   assert.ok(R.upgradeCost(s, s.car, 'engine').parts[1] > 0, 'level 4 needs gears');
 });
 
+test('parts swap: trade three of a tier up for one of the next, or one down for two of the tier below', () => {
+  const s = R.newState(1);
+  s.parts = [7, 0, 0, 0, 0];
+  assert.ok(R.tradeParts(s, 0, 1));
+  assert.deepEqual([...s.parts], [4, 1, 0, 0, 0]);
+  assert.ok(R.tradeParts(s, 0, 1));
+  assert.ok(!R.tradeParts(s, 0, 1), 'one bolt is not enough to trade up');
+  assert.deepEqual([...s.parts], [1, 2, 0, 0, 0]);
+  assert.ok(R.tradeParts(s, 1, 0));
+  assert.deepEqual([...s.parts], [3, 1, 0, 0, 0]);
+  assert.ok(!R.tradeParts(s, 0, 2), 'only next-door tiers trade');
+  assert.ok(!R.tradeParts(s, 3, 2), 'nothing to trade down');
+  assert.ok(!R.tradeParts(s, 4, 5) && !R.tradeParts(s, 0, -1), 'no tier past the ends');
+  assert.ok(R.PART_UP > R.PART_DOWN, 'a round trip loses parts, so swapping is never a profit');
+});
+
+test('every part tier can be earned on a track that has races: farming any one tier reaches any upgrade', () => {
+  const s = R.newState(1);
+  s.parts = [3 * 3 * 3 * 3, 0, 0, 0, 0];
+  for (let t = 0; t < 4; t++) while (R.tradeParts(s, t, t + 1));
+  assert.equal(s.parts[4], 1, '81 bolts make one crystal');
+});
+
 test('customisation: buy a cosmetic once, equip it per car', () => {
   const s = R.newState(1); s.coins = 10000;
   const slots = Object.keys(R.LOOKS);
@@ -683,6 +706,23 @@ test('small stick moves turn gently, full lock keeps the full turn', () => {
   assert.ok(yawAt(0.3) < 0.2, 'yaw at 0.3 stick ' + yawAt(0.3));
   assert.ok(yawAt(0.6) < 0.45, 'yaw at 0.6 stick ' + yawAt(0.6));
   assert.ok(yawAt(1) > 0.9, 'yaw at full lock ' + yawAt(1));
+});
+
+test('letting go of a full-lock turn stops it quickly: the car carries on only a few degrees', () => {
+  const { p, step } = heldCar();
+  for (let i = 0; i < 60; i++) step({ steer: 1 });
+  const h0 = p.h;
+  for (let i = 0; i < 60; i++) step({ steer: 0 });
+  const carry = R.angDiff(p.h, h0) * 180 / Math.PI;
+  assert.ok(carry > 0 && carry < 8, 'heading carried on ' + carry + ' degrees');
+});
+
+test('counter-steering out of a turn reverses the yaw quickly', () => {
+  const { p, step } = heldCar();
+  for (let i = 0; i < 60; i++) step({ steer: 1 });
+  let yaw = 0;
+  for (let i = 0; i < 6; i++) yaw = step({ steer: -1 }).yaw;
+  assert.ok(yaw < 0, 'yaw 0.1 s into a counter-steer ' + yaw);
 });
 
 // ---------- elevation ----------

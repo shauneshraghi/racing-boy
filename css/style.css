@@ -103,6 +103,9 @@ button { font:inherit; }
 .opt .sw { width:34px; height:24px; border-radius:6px; border:2px solid #0006; }
 .opt small { color:var(--muted); font-weight:500; }
 .opt small.short { color:var(--bad); }
+.opt:disabled { opacity:.5; cursor:default; }
+.swapHead { margin:14px 2px 0; }
+.grid.swap .opt { min-height:56px; font-size:16px; }
 .world { margin:6px 2px 6px; font-size:18px; color:var(--gold); }
 .world.locked { color:var(--muted); }
 .note { color:var(--muted); font-size:14px; margin:4px 2px 10px; }

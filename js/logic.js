@@ -43,6 +43,9 @@ var RB = (function () {
   // winds in, carries on a moment after letting go, and the car runs a little wide of where it points
   var YAW_LAG = 0.12, GRIP_BITE = 6, AIR_BITE = 0.2;
   var DRIFT_LAG = 0.4, DRIFT_BITE = 3; // the yaw lag and the bite in a drift, × the above
+  // outside a drift the yaw unwinds faster than it winds in (lag × YAW_UNWIND when the steering eases off or reverses),
+  // so letting go stops the turn within a few degrees instead of swinging past the line and asking for a correction
+  var YAW_UNWIND = 0.35;
   // body animation, springs in the car's frame: roll (+ = right side down) leans out of a turn at ROLL_K rad per
   // cell/s² of sideways pull, pitch (+ = nose up) squats under throttle at PITCH_K, dip (cells) compresses on landing
   // at DIP_K × the fall speed; BODY_W is the springs' frequency (rad/s) and BODY_Z their damping ratio
@@ -68,6 +71,9 @@ var RB = (function () {
   var PLACE_HOLD = 0.5;         // a new place must hold this long before it is announced (pass / lostPlace)
   var PLACE_PAY = [120, 85, 65, 50, 40, 30];
   var PART_PAY = [4, 3, 2, 2, 1, 1];
+  // parts swap at the garage: PART_UP of a tier buy one of the next, one of a tier breaks into PART_DOWN of the one
+  // below, so racing any track can earn the tier an upgrade needs (a round trip loses parts)
+  var PART_UP = 3, PART_DOWN = 2;
   var FIRST_WIN = { coins: 100, parts: 3 }; // the first win of a track: coins × the world's pay, and parts of the next tier
   var PARTS = [
     { id: 'bolt', name: 'Bolts', icon: '🔩' }, { id: 'gear', name: 'Gears', icon: '⚙️' },
@@ -650,7 +656,8 @@ var RB = (function () {
     var shaped = aimed ? steer : STEER_LIN * steer + (1 - STEER_LIN) * steer * steer * steer;
     var yawWant = car.driftDir ? car.driftDir * rate * (DRIFT_WIDE + (DRIFT_TURN - DRIFT_WIDE) * (1 + steer * car.driftDir) / 2) : shaped * rate;
     var wt = Math.sqrt(st.weight || 1);
-    car.yawV += (yawWant - car.yawV) * Math.min(1, DT / (YAW_LAG * wt * (car.driftDir ? DRIFT_LAG : 1)));
+    var unwind = !car.driftDir && car.yawV * (yawWant - car.yawV) < 0;
+    car.yawV += (yawWant - car.yawV) * Math.min(1, DT / (YAW_LAG * wt * (car.driftDir ? DRIFT_LAG : unwind ? YAW_UNWIND : 1)));
     car.h += car.yawV * DT;
     // move along the direction of travel, which swings toward the heading as the tyres bite
     var bite = GRIP_BITE * st.grip / wt * (car.air ? AIR_BITE : car.driftDir ? DRIFT_BITE : 1);
@@ -923,6 +930,13 @@ var RB = (function () {
     return true;
   }
   function pay(s, cost) { s.coins -= cost.coins; for (var i = 0; i < 5; i++) s.parts[i] -= cost.parts[i]; }
+  function tradeParts(s, from, to) {
+    if (from < 0 || to < 0 || from >= PARTS.length || to >= PARTS.length || Math.abs(to - from) !== 1) return false;
+    var give = to > from ? PART_UP : 1, get = to > from ? 1 : PART_DOWN;
+    if ((s.parts[from] || 0) < give) return false;
+    s.parts[from] -= give; s.parts[to] = (s.parts[to] || 0) + get;
+    return true;
+  }
   function upgradeCost(s, id, key) {
     var c = s.cars[id]; if (!c) return null;
     var L = c.up[key]; if (L >= CARS[id].caps[key]) return null;
@@ -1068,7 +1082,7 @@ var RB = (function () {
 
   return {
     DT: DT, PACE: PACE, DRIFT_TIERS: DRIFT_TIERS, RUNOFF: RUNOFF, RAMP_LEN: RAMP_LEN, PAD_LEN: PAD_LEN, PAD_W: PAD_W, MAGNET_R: MAGNET_R, ROLL_T: ROLL_T, START_CAR: START_CAR,
-    PLACE_PAY: PLACE_PAY, PART_PAY: PART_PAY, PARTS: PARTS, ITEMS: ITEMS, ITEM_KEYS: ITEM_KEYS, UPGRADES: UPGRADES, UP_KEYS: UP_KEYS,
+    PLACE_PAY: PLACE_PAY, PART_PAY: PART_PAY, PART_UP: PART_UP, PART_DOWN: PART_DOWN, tradeParts: tradeParts, PARTS: PARTS, ITEMS: ITEMS, ITEM_KEYS: ITEM_KEYS, UPGRADES: UPGRADES, UP_KEYS: UP_KEYS,
     PERKS: PERKS, CARS: CARS, LOOKS: LOOKS, LOOK_KEYS: LOOK_KEYS, TRACKS: TRACKS, WORLDS: WORLDS, HUB: HUB,
     rng: rng, angDiff: angDiff, clamp: clamp, track: track, pointAt: pointAt, groundAt: groundAt, slopeAt: slopeAt, headingAt: headingAt, lookOpt: lookOpt,
     rollItem: rollItem, hazardAt: hazardAt, HAZ: HAZ, carStats: carStats, statsFor: statsFor, startRace: startRace, input: input, stepRace: stepRace,
