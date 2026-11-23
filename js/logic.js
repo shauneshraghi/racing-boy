@@ -277,7 +277,10 @@ var RB = (function () {
       coins: [{ u: 0.09, off: -1.5, n: 6 }, { u: 0.3, off: 0, n: 6 }, { u: 0.42, off: 1.5, n: 6 }, { u: 0.53, off: -1.4, n: 5 }, { u: 0.77, off: 0, n: 6 }, { u: 0.86, off: 1.5, n: 6 }, { u: 0.96, off: 0, n: 5 }]
     }
   };
-  // aiSpeed is the rivals' top speed in cells/s before PACE; pay multiplies the place money
+  // aiSpeed is the rivals' top speed in cells/s before PACE; pay multiplies the place money. Optional environment
+  // factors (default 1): grip × every car's turn rate and tyre bite (ice < 1), grav × gravity in the air (the moon < 1),
+  // rough × the off-road speed factor. A track's optional ai multiplies aiSpeed there, so a world can get harder
+  // track by track.
   var WORLDS = [
     { id: 'hills', name: 'Grassy Hills Town', tracks: ['meadow', 'creek', 'windmill'], aiSpeed: 8.8, pay: 1, skill: [0.93, 0.91, 0.89, 0.87, 0.85] },
     { id: 'desert', name: 'Sunbaked Canyon', tracks: ['dune', 'mesa', 'oasis'], aiSpeed: 9.6, pay: 1.6, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
@@ -484,7 +487,9 @@ var RB = (function () {
   }
   // a press is latched until a fixed step uses it, so a frame too short for a step cannot drop it
   function input(r, inp) { var p = r.cars[0]; p.inp = inp || {}; if (p.inp.item) p.itemQueued = true; }
-  function surfaceSpeed(r, car, d) { return Math.abs(d) <= r.g.hw ? 1 : car.stats.grass; }
+  function surfaceSpeed(r, car, d) { return Math.abs(d) <= r.g.hw ? 1 : Math.min(1, car.stats.grass * envOf(r).rough); }
+  // the world's environment factors (see WORLDS)
+  function envOf(r) { var W = WORLDS[r.world]; return { grip: W.grip || 1, grav: W.grav || 1, rough: W.rough || 1 }; }
   function ev(r, type, car, extra) { var e = { type: type, car: car ? car.i : -1 }; if (extra) for (var k in extra) e[k] = extra[k]; r.events.push(e); if (r.events.length > 200) r.events.shift(); }
 
   function hit(r, car, kind, extra) {
@@ -645,7 +650,7 @@ var RB = (function () {
     if (car.driftDir) car.v *= 1 - 0.12 * DT;
     var accel = (car.v - v0) / DT;
     // turning
-    var rate = st.grip * Math.min(1, car.v / 4) * (car.air ? 0.3 + 0.1 * (st.glide || 0) : car.hopT > 0 ? HOP_STEER : 1);
+    var env = envOf(r), rate = st.grip * env.grip * Math.min(1, car.v / 4) * (car.air ? 0.3 + 0.1 * (st.glide || 0) : car.hopT > 0 ? HOP_STEER : 1);
     // in a drift the car always turns its own way: steering in tightens it, steering against widens it
     var shaped = aimed ? steer : STEER_LIN * steer + (1 - STEER_LIN) * steer * steer * steer;
     var yawWant = car.driftDir ? car.driftDir * rate * (DRIFT_WIDE + (DRIFT_TURN - DRIFT_WIDE) * (1 + steer * car.driftDir) / 2) : shaped * rate;
@@ -653,7 +658,7 @@ var RB = (function () {
     car.yawV += (yawWant - car.yawV) * Math.min(1, DT / (YAW_LAG * wt * (car.driftDir ? DRIFT_LAG : 1)));
     car.h += car.yawV * DT;
     // move along the direction of travel, which swings toward the heading as the tyres bite
-    var bite = GRIP_BITE * st.grip / wt * (car.air ? AIR_BITE : car.driftDir ? DRIFT_BITE : 1);
+    var bite = GRIP_BITE * st.grip * env.grip / wt * (car.air ? AIR_BITE : car.driftDir ? DRIFT_BITE : 1);
     car.vh += angDiff(car.h, car.vh) * Math.min(1, bite * DT);
     car.x += Math.cos(car.vh) * car.v * DT; car.z += Math.sin(car.vh) * car.v * DT;
     // a drift slides the car toward the outside of the turn (the left of a right-hand drift)
@@ -696,14 +701,14 @@ var RB = (function () {
     // rides the hills (gvy); where the ground falls away faster than gravity pulls, it flies off the crest
     var gNew = groundAt(g, q.s), gvyNew = (gNew - car.gy) / DT;
     if (!car.air && car.onRamp < 0) {
-      if (car.gvyOk && car.v > DRIFT_MIN_V && car.gvy - gvyNew > G * DT * 1.05) {
+      if (car.gvyOk && car.v > DRIFT_MIN_V && car.gvy - gvyNew > G * env.grav * DT * 1.05) {
         car.air = true; car.trick = false; car.vy = car.gvy; car.y = car.gy + car.gvy * DT - gNew; ev(r, 'jump', car, { crest: true });
       }
       car.gvyOk = true;
     }
     if (car.air) {
       // the glider opens on the way down and slows the fall
-      car.vy -= G * DT * (car.vy < 0 && st.glide ? Math.max(0.25, 1 - 0.22 * st.glide) : 1);
+      car.vy -= G * env.grav * DT * (car.vy < 0 && st.glide ? Math.max(0.25, 1 - 0.22 * st.glide) : 1);
       car.y += car.gy - gNew + car.vy * DT;
       if (car.y <= 0) {
         car.dipV += DIP_K * Math.max(0, gvyNew - car.vy);
@@ -752,7 +757,7 @@ var RB = (function () {
   // the rivals' top speed: their skill, slowed in sharp bends, and pulled toward the player (rubber band)
   function aiTop(r, car) {
     var W = WORLDS[r.world], p = r.cars[0], g = r.g;
-    var top = W.aiSpeed * PACE * car.skill;
+    var top = W.aiSpeed * (TRACKS[r.id].ai || 1) * PACE * car.skill;
     if (!p.done) {
       var gap = car.prog - p.prog;
       top *= 1 + clamp(-gap * (gap > 0 ? 0.011 : 0.004), -0.25, 0.06);
@@ -864,7 +869,7 @@ var RB = (function () {
       // finish the field at its present pace so the result table is complete
       r.cars.forEach(function (c) {
         if (c.done) return;
-        c.done = true; c.finishT = r.t + (r.laps * L - c.prog) / Math.max(1, WORLDS[r.world].aiSpeed * c.skill * 0.9);
+        c.done = true; c.finishT = r.t + (r.laps * L - c.prog) / Math.max(1, WORLDS[r.world].aiSpeed * (TRACKS[r.id].ai || 1) * c.skill * 0.9);
       });
       updateOrder(r);
       r.phase = 'done'; ev(r, 'raceOver', p, { place: p.place });
@@ -1071,7 +1076,7 @@ var RB = (function () {
     PLACE_PAY: PLACE_PAY, PART_PAY: PART_PAY, PARTS: PARTS, ITEMS: ITEMS, ITEM_KEYS: ITEM_KEYS, UPGRADES: UPGRADES, UP_KEYS: UP_KEYS,
     PERKS: PERKS, CARS: CARS, LOOKS: LOOKS, LOOK_KEYS: LOOK_KEYS, TRACKS: TRACKS, WORLDS: WORLDS, HUB: HUB,
     rng: rng, angDiff: angDiff, clamp: clamp, track: track, pointAt: pointAt, groundAt: groundAt, slopeAt: slopeAt, headingAt: headingAt, lookOpt: lookOpt,
-    rollItem: rollItem, hazardAt: hazardAt, HAZ: HAZ, carStats: carStats, statsFor: statsFor, startRace: startRace, input: input, stepRace: stepRace,
+    rollItem: rollItem, hazardAt: hazardAt, HAZ: HAZ, envOf: envOf, carStats: carStats, statsFor: statsFor, startRace: startRace, input: input, stepRace: stepRace,
     surfaceSpeed: surfaceSpeed, hit: hit, botInput: botInput, finishRace: finishRace, trackUnlocked: trackUnlocked,
     worldUnlocked: worldUnlocked, canAfford: canAfford, upgradeCost: upgradeCost, buyUpgrade: buyUpgrade, buyCar: buyCar,
     selectCar: selectCar, carUnlocked: carUnlocked, carLockReason: carLockReason, buyLook: buyLook, equip: equip, newState: newState, serialize: serialize, deserialize: deserialize,
