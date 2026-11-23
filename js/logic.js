@@ -347,44 +347,56 @@ var RB = (function () {
     },
 
     // world 4, Lava Lane: every ramp gap is a glowing lava river; the hills are far bigger than worlds 1-2 (10-16 cells)
-    // round the foot of the cone over cooled-lava whoops, a lava river jump, lava bombs, then a spiral climb round the
-    // cone (a magma boulder rolls across it) to the crater rim at 14.5 and a plunge off the rim with big air
+    // round the foot of the cone over cooled-lava whoops and past lava bombs, then the spiral climb round the cone (a
+    // magma boulder rolls across it) to the crater rim at 14.5, open on the crater side, a plunge off the rim with big
+    // air and on over a railed bridge that carries the road across its own spiral start, down to a lava river jump on
+    // the back straight
     cinder: {
-      name: 'Cinder Cone', world: 3, laps: 3, hw: 3.7, scale: 1, ai: 0.96,
-      pts: [[186, 59], [124, 70], [84, 119], [84, 181], [113, 222], [143, 225], [159, 211], [122, 178], [124, 133], [156, 111], [188, 119], [198, 145], [187, 168], [186, 194], [203, 223], [242, 212], [262, 158], [240, 91]],
-      elev: [[0, 0], [0.06, 0], [0.07, 1.3], [0.08, 0.2], [0.09, 1.3], [0.1, 0.2], [0.11, 1.3], [0.12, 0], [0.36, 0], [0.42, 4], [0.45, 5],
-        [0.51, 10], [0.54, 11], [0.595, 14.5], [0.635, 14.5], [0.655, 5], [0.71, 0]],
-      hazards: [{ u: 0.28, kind: 'bomb', n: 2 }, { u: 0.48, kind: 'magma' }],
-      pads: [{ u: 0.03, off: 0 }, { u: 0.17, off: 0 }, { u: 0.4, off: 1.4 }, { u: 0.62, off: 0 }, { u: 0.85, off: -1.4 }],
-      ramps: [{ u: 0.2, gap: 4 }],
-      boxes: [0.25, 0.75],
-      coins: [{ u: 0.05, off: 1.5, n: 6 }, { u: 0.14, off: 0, n: 5 }, { u: 0.38, off: -1.5, n: 6 }, { u: 0.56, off: 0, n: 5 }, { u: 0.8, off: 1.5, n: 6 }, { u: 0.93, off: 0, n: 5 }]
+      name: 'Cinder Cone', world: 3, laps: 3, hw: 3.7, scale: 0.84, ai: 0.96,
+      pts: [[150, 58], [195, 60], [228, 80], [240, 120], [232, 170], [208, 207], [182, 224], [150, 228], [107, 210], [84, 172], [88, 130], [114, 100], [150, 93], [181, 107],
+        [196, 135], [192, 164], [174, 183], [150, 186], [127, 197], [100, 214], [72, 226], [46, 208], [38, 160], [46, 110], [70, 74], [106, 59]],
+      elev: [[0, 0], [0.1, 0], [0.11, 1.3], [0.12, 0.2], [0.13, 1.3], [0.14, 0.2], [0.15, 1.3], [0.16, 0], [0.36, 0], [0.585, 14.5], [0.652, 14.5], [0.667, 8.5],
+        [0.745, 8.5], [0.8, 0]],
+      bridges: [[0.677, 0.737, 'rail']], drops: [[0.59, 0.645, 1]],
+      hazards: [{ u: 0.23, kind: 'bomb', n: 2 }, { u: 0.47, kind: 'magma' }],
+      pads: [{ u: 0.02, off: 0 }, { u: 0.29, off: 0 }, { u: 0.55, off: -1.4 }, { u: 0.65, off: 0 }, { u: 0.82, off: 0 }],
+      ramps: [{ u: 0.84, gap: 4 }],
+      boxes: [0.19, 0.77],
+      coins: [{ u: 0.05, off: 1.5, n: 6 }, { u: 0.13, off: 0, n: 5 }, { u: 0.38, off: -1.5, n: 6 }, { u: 0.56, off: 0, n: 5 }, { u: 0.7, off: 0, n: 6 }, { u: 0.93, off: 0, n: 5 }]
     },
-    // a lava river jump on the start straight, steam vents in a basalt-column gorge, a switchback climb (a magma
-    // boulder on the middle leg) to a plateau at 12.5, a hop off its edge and whoops down the cooled flow
+    // round the bend into the basalt-column gorge, a lava river jump at its mouth and steam vents along it, under the
+    // bridge, the switchback climb (a magma boulder on the middle leg) to a plateau at 12.5 with an open ledge on the
+    // left, a hop off its edge, back across high over the gorge on an open bridge and whoops down the cooled flow
     basalt: {
-      name: 'Basalt Gorge', world: 3, laps: 3, hw: 3.6, scale: 0.82, ai: 0.98,
-      pts: [[70, 224], [130, 226], [180, 220], [214, 200], [232, 170], [262, 160], [284, 134], [288, 100], [268, 74], [220, 74], [176, 78], [150, 64], [160, 44], [204, 42], [246, 34], [262, 14], [236, -2], [180, -6], [120, 0], [84, 24], [62, 66], [56, 110], [50, 150], [40, 192]],
-      elev: [[0, 0], [0.32, 0], [0.44, 4.5], [0.47, 5], [0.57, 9], [0.62, 9.5], [0.7, 12.5], [0.765, 12.5], [0.78, 6], [0.83, 3], [0.84, 2.6], [0.85, 3.8], [0.86, 1.8],
-        [0.87, 3], [0.88, 1], [0.89, 2.2], [0.9, 0.4], [0.95, 0]],
-      hazards: [{ u: 0.2, kind: 'vent', n: 3 }, { u: 0.52, kind: 'magma' }],
-      pads: [{ u: 0.03, off: 0 }, { u: 0.07, off: 0 }, { u: 0.25, off: 0 }, { u: 0.4, off: 1.4 }, { u: 0.66, off: -1.4 }, { u: 0.755, off: 0 }, { u: 0.97, off: 1.4 }],
-      ramps: [{ u: 0.085, gap: 4.2 }],
-      boxes: [0.12, 0.6],
-      coins: [{ u: 0.07, off: -1.5, n: 6 }, { u: 0.24, off: 1.5, n: 5 }, { u: 0.36, off: 0, n: 6 }, { u: 0.5, off: -1.4, n: 6 }, { u: 0.72, off: 0, n: 6 }, { u: 0.92, off: 0, n: 5 }]
+      name: 'Basalt Gorge', world: 3, laps: 3, hw: 3.6, scale: 0.74, ai: 0.98,
+      pts: [[295, 256], [335, 257], [364, 240], [372, 202], [352, 166], [305, 151], [255, 149], [200, 150], [140, 152], [85, 150], [50, 140], [35, 105], [38, 65], [55, 45],
+        [75, 60], [78, 92], [86, 116], [102, 125], [115, 112], [116, 70], [125, 38], [155, 25], [185, 27], [208, 42], [219, 72], [220, 120], [220, 180], [222, 212], [236, 238],
+        [262, 252]],
+      elev: [[0, 0], [0.415, 0], [0.49, 4.5], [0.515, 4.5], [0.575, 9], [0.62, 9], [0.675, 12.5], [0.718, 12.5], [0.73, 8], [0.898, 8], [0.905, 5.6], [0.91, 6.6],
+        [0.915, 4.2], [0.92, 5.1], [0.926, 2.6], [0.931, 3.4], [0.94, 0]],
+      bridges: [[0.828, 0.896]], drops: [[0.685, 0.712, -1]],
+      hazards: [{ u: 0.32, kind: 'vent', n: 3 }, { u: 0.545, kind: 'magma' }],
+      pads: [{ u: 0.01, off: 0 }, { u: 0.16, off: 0 }, { u: 0.19, off: 0 }, { u: 0.4, off: 1.4 }, { u: 0.64, off: -1.4 }, { u: 0.715, off: 0 }, { u: 0.79, off: 0 }],
+      ramps: [{ u: 0.2, gap: 4.2 }],
+      boxes: [0.12, 0.67],
+      coins: [{ u: 0.04, off: -1.5, n: 6 }, { u: 0.24, off: 1.5, n: 5 }, { u: 0.35, off: 0, n: 6 }, { u: 0.5, off: -1.4, n: 6 }, { u: 0.7, off: 0, n: 6 }, { u: 0.85, off: 0, n: 6 }]
     },
-    // the long one: a lava river jump, a long climb past rolling magma, the ridge between two lava lakes with lava bombs,
-    // up to the summit at 16 and a plunge off it, steam vents on the flats and a second lava river
+    // the long one, a figure 8: a lava river jump on the start straight, under the ridge, the long climb past rolling
+    // magma, lava bombs along the top, the straight ridge between two lava lakes (open on both sides, then an open
+    // bridge over the start straight), up to the summit at 16 and a plunge off it, steam vents on the flats and a
+    // second lava river
     caldera: {
-      name: 'Caldera Ridge', world: 3, laps: 2, hw: 3.6, scale: 1.1, ai: 0.995,
-      pts: [[40, 260], [110, 268], [180, 262], [240, 240], [290, 200], [318, 150], [320, 100], [296, 62], [240, 50], [180, 46], [136, 42], [104, 56], [84, 86], [100, 118], [150, 132], [196, 160], [196, 200], [150, 214], [96, 206], [48, 222]],
-      elev: [[0, 0], [0.2, 0], [0.29, 5], [0.32, 6], [0.4, 10], [0.53, 10.5], [0.575, 16], [0.59, 16], [0.605, 7], [0.67, 2], [0.74, 0]],
-      hazards: [{ u: 0.31, kind: 'magma', n: 2 }, { u: 0.47, kind: 'bomb', n: 3 }, { u: 0.78, kind: 'vent', n: 3 }, { u: 0.95, kind: 'bomb' }],
-      pads: [{ u: 0.03, off: 0 }, { u: 0.085, off: 0 }, { u: 0.17, off: -1.4 }, { u: 0.25, off: 1.4 }, { u: 0.34, off: 0 }, { u: 0.44, off: -1.4 }, { u: 0.52, off: 1.4 },
-        { u: 0.585, off: 0 }, { u: 0.7, off: 1.4 }, { u: 0.74, off: -1.4 }, { u: 0.865, off: 0 }, { u: 0.96, off: 1.4 }],
-      ramps: [{ u: 0.1, gap: 4.2 }, { u: 0.88, gap: 4.2 }],
-      boxes: [0.16, 0.66],
-      coins: [{ u: 0.05, off: 1.5, n: 6 }, { u: 0.22, off: 0, n: 6 }, { u: 0.36, off: -1.5, n: 6 }, { u: 0.5, off: 0, n: 6 }, { u: 0.63, off: 1.4, n: 5 }, { u: 0.75, off: 0, n: 6 }, { u: 0.92, off: -1.5, n: 6 }]
+      name: 'Caldera Ridge', world: 3, laps: 2, hw: 3.6, scale: 1.15, ai: 0.995,
+      pts: [[80, 150], [130, 150], [170, 150], [220, 150], [270, 148], [305, 128], [315, 90], [305, 50], [270, 30], [220, 28], [185, 38], [170, 70], [170, 110], [170, 150],
+        [170, 190], [170, 225], [160, 258], [130, 278], [90, 285], [50, 282], [25, 255], [22, 210], [38, 170]],
+      elev: [[0, 0], [0.215, 0], [0.37, 10], [0.47, 10.5], [0.66, 10.5], [0.72, 16], [0.735, 16], [0.748, 9], [0.8, 0]],
+      bridges: [[0.562, 0.6]], drops: [[0.54, 0.562, 0]],
+      hazards: [{ u: 0.29, kind: 'magma', n: 2 }, { u: 0.43, kind: 'bomb', n: 3 }, { u: 0.815, kind: 'vent', n: 3 }, { u: 0.17, kind: 'bomb' }],
+      pads: [{ u: 0.02, off: 0 }, { u: 0.12, off: 0 }, { u: 0.2, off: -1.4 }, { u: 0.26, off: 1.4 }, { u: 0.33, off: -1.4 }, { u: 0.39, off: 1.4 }, { u: 0.47, off: 0 },
+        { u: 0.64, off: 1.4 }, { u: 0.725, off: 0 }, { u: 0.78, off: -1.4 }, { u: 0.86, off: 0 }, { u: 0.95, off: -1.4 }],
+      ramps: [{ u: 0.045, gap: 4.2 }, { u: 0.895, gap: 4.2 }],
+      boxes: [0.15, 0.665],
+      coins: [{ u: 0.07, off: 1.5, n: 6 }, { u: 0.25, off: 0, n: 6 }, { u: 0.38, off: -1.5, n: 6 }, { u: 0.5, off: 0, n: 6 }, { u: 0.58, off: 0, n: 5 }, { u: 0.77, off: 0, n: 6 }, { u: 0.92, off: -1.5, n: 6 }]
     },
 
     // world 5, Moon Base: low gravity (WORLDS grav), so crests launch easily and every jump floats; the gaps are

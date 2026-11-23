@@ -1666,7 +1666,7 @@ var RB3DWorld = (function () {
     species: [['charred', 0.45], ['basaltcol', 0.53], ['obsidian', 0.75], ['ashshrub', 1]],
     band: ['charred', 'obsidian', 'basaltcol', 'charred', 'ashshrub'], maxTrees: 340, treeDens: 0.7, treeScale: [0.8, 0.6],
     roadside: 'obsidian', palms: false, far: 'volcano', tuftN: 1400, tuftC: '#b8a888', flowers: false, canyons: [], waterGlow: '#ff4a0a',
-    sea: -1.3, slump: 0.85, gorges: { basalt: [[0.13, 0.28]], cinder: [[0.6, 0.64]], caldera: [[0.74, 0.84]] } };
+    sea: -1.3, slump: 0.85, gorges: { basalt: [[0.2, 0.215], [0.26, 0.39]], cinder: [[0.4, 0.47]], caldera: [[0.79, 0.87]] } };
   // ---------- world 5, Moon Base ----------
   // grey regolith pitted with craters under a black sky full of stars and a big blue planet, a hard white sun, a ring
   // of rounded crater-rim mountains, dome habitats, landers, radio dishes and masts, light-strip barriers, rocks and
