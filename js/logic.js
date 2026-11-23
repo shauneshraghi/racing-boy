@@ -199,55 +199,82 @@ var RB = (function () {
   // ---------- worlds and tracks ----------
   // Control points of the closed centreline, in cells; features are placed by fraction u of the lap and a
   // lateral offset in cells (+ is the driver's right).
+  // Control points of the closed centreline, in cells; features are placed by fraction u of the lap and a
+  // lateral offset in cells (+ is the driver's right). elev keys are [u, ground height in cells]; a short steep drop
+  // after a rise is a crest the car flies off, a run of short humps is a set of whoops (a pad before them means big
+  // air). Jump gaps sit on level ground. hazards: { u, kind (HAZ), n (a flock), period, phase }.
   var TRACKS = {
+    // the intro: a long start straight, a climb up Sheep Hill (a flock wanders across the top) and a hop off its
+    // crest, a ramp in the S-bends and home along the woods
     meadow: {
-      name: 'Meadow Loop', world: 0, laps: 3, hw: 3.6, scale: 1.47,
-      pts: [[20, 20], [60, 14], [100, 20], [114, 40], [100, 60], [76, 60], [62, 72], [68, 92], [50, 106], [24, 100], [12, 76], [14, 46]],
-      pads: [{ u: 0.06, off: 0 }, { u: 0.33, off: -1.5 }, { u: 0.62, off: 1.5 }, { u: 0.86, off: 0 }],
-      ramps: [{ u: 0.48, gap: 0 }],
-      boxes: [0.2, 0.7],
-      coins: [{ u: 0.12, off: 1.6, n: 6 }, { u: 0.4, off: -1.6, n: 6 }, { u: 0.55, off: 0, n: 5 }, { u: 0.78, off: -1.2, n: 6 }, { u: 0.93, off: 1.4, n: 5 }]
+      name: 'Meadow Loop', world: 0, laps: 3, hw: 3.6, scale: 1.1,
+      pts: [[30, 30], [80, 22], [130, 26], [162, 46], [166, 80], [146, 104], [112, 108], [92, 128], [66, 140], [38, 128], [44, 100], [22, 78], [14, 52]],
+      elev: [[0, 0], [0.2, 0], [0.33, 3], [0.42, 3], [0.4325, 1], [0.55, 0]],
+      hazards: [{ u: 0.345, kind: 'sheep', n: 3 }],
+      pads: [{ u: 0.05, off: 0 }, { u: 0.4, off: 0 }, { u: 0.6, off: 1.5 }, { u: 0.86, off: 0 }],
+      ramps: [{ u: 0.64, gap: 0 }],
+      boxes: [0.25, 0.72],
+      coins: [{ u: 0.12, off: 1.6, n: 6 }, { u: 0.29, off: -1.6, n: 6 }, { u: 0.47, off: 0, n: 5 }, { u: 0.78, off: -1.2, n: 6 }, { u: 0.93, off: 1.4, n: 5 }]
     },
+    // downhill to the creek jump, a climbing hairpin up to the farm, hay bales rolling across the farm lane, down
+    // through the chicane and a pad into the whoops
     creek: {
-      name: 'Creek Jump', world: 0, laps: 3, hw: 3.5, scale: 1.45,
-      pts: [[16, 30], [40, 14], [74, 16], [96, 28], [118, 20], [136, 36], [128, 62], [100, 70], [82, 90], [56, 96], [36, 80], [40, 58], [20, 52]],
-      pads: [{ u: 0.1, off: 0 }, { u: 0.36, off: 1.4 }, { u: 0.58, off: 0 }, { u: 0.8, off: -1.4 }],
-      ramps: [{ u: 0.24, gap: 4 }, { u: 0.68, gap: 0 }],
-      boxes: [0.15, 0.5],
-      coins: [{ u: 0.05, off: -1.5, n: 6 }, { u: 0.3, off: 0, n: 5 }, { u: 0.45, off: 1.5, n: 6 }, { u: 0.74, off: 0, n: 5 }, { u: 0.9, off: 1.5, n: 6 }]
+      name: 'Creek Jump', world: 0, laps: 3, hw: 3.5, scale: 1,
+      pts: [[30, 40], [70, 24], [115, 22], [160, 30], [196, 24], [220, 42], [204, 62], [182, 58], [162, 70], [166, 98], [140, 118], [108, 110], [86, 126], [58, 120], [44, 96], [22, 76]],
+      elev: [[0, 2], [0.06, 2], [0.19, 0], [0.33, 0], [0.48, 3.5], [0.62, 3.5], [0.72, 1], [0.79, 1], [0.8, 2], [0.81, 1], [0.82, 2], [0.83, 1], [0.84, 2], [0.85, 1], [0.95, 2]],
+      hazards: [{ u: 0.54, kind: 'bale', n: 2 }],
+      pads: [{ u: 0.1, off: 0 }, { u: 0.36, off: 1.4 }, { u: 0.58, off: -1.4 }, { u: 0.775, off: 0 }],
+      ramps: [{ u: 0.235, gap: 4 }],
+      boxes: [0.15, 0.66],
+      coins: [{ u: 0.05, off: -1.5, n: 6 }, { u: 0.3, off: 0, n: 5 }, { u: 0.45, off: 1.5, n: 6 }, { u: 0.7, off: 0, n: 5 }, { u: 0.9, off: 1.5, n: 6 }]
     },
+    // up Windmill Hill to a ramp off the summit, down past the flock, the creek jump in the valley, the switchback
+    // climb with bales rolling down it and a hop off the last crest
     windmill: {
-      name: 'Windmill Hills', world: 0, laps: 2, hw: 3.6, scale: 1.47,
-      pts: [[20, 24], [56, 12], [96, 16], [130, 12], [156, 30], [150, 58], [120, 64], [104, 84], [128, 104], [118, 128], [84, 132], [64, 112], [42, 120], [18, 106], [26, 80], [12, 56]],
-      pads: [{ u: 0.05, off: 0 }, { u: 0.22, off: -1.5 }, { u: 0.4, off: 1.5 }, { u: 0.57, off: 0 }, { u: 0.75, off: -1.5 }, { u: 0.9, off: 1.4 }],
-      ramps: [{ u: 0.31, gap: 0 }, { u: 0.64, gap: 4.25 }],
+      name: 'Windmill Hills', world: 0, laps: 2, hw: 3.6, scale: 1,
+      pts: [[30, 40], [80, 24], [140, 22], [196, 30], [226, 56], [210, 82], [176, 80], [160, 100], [188, 122], [214, 146], [196, 178], [150, 186], [118, 166], [96, 190], [60, 196], [30, 176], [40, 148], [64, 130], [46, 104], [18, 78]],
+      elev: [[0, 0], [0.1, 0], [0.26, 5], [0.33, 5], [0.45, 1.5], [0.6, 0], [0.72, 0], [0.85, 3], [0.9, 3], [0.9125, 1], [0.98, 0]],
+      hazards: [{ u: 0.53, kind: 'sheep', n: 4 }, { u: 0.79, kind: 'bale', period: 6 }],
+      pads: [{ u: 0.05, off: 0 }, { u: 0.2, off: -1.5 }, { u: 0.3, off: 0 }, { u: 0.57, off: 0 }, { u: 0.7, off: -1.5 }, { u: 0.88, off: 0 }],
+      ramps: [{ u: 0.315, gap: 0 }, { u: 0.65, gap: 4.25 }],
       boxes: [0.14, 0.56],
-      coins: [{ u: 0.1, off: 1.5, n: 6 }, { u: 0.27, off: 0, n: 6 }, { u: 0.45, off: -1.5, n: 6 }, { u: 0.6, off: 1.4, n: 5 }, { u: 0.7, off: 0, n: 6 }, { u: 0.86, off: -1.5, n: 6 }, { u: 0.96, off: 0, n: 5 }]
+      coins: [{ u: 0.08, off: 1.5, n: 6 }, { u: 0.24, off: 0, n: 6 }, { u: 0.4, off: -1.5, n: 6 }, { u: 0.53, off: 1.4, n: 5 }, { u: 0.75, off: 0, n: 6 }, { u: 0.86, off: -1.5, n: 6 }, { u: 0.95, off: 0, n: 5 }]
     },
     // world 2, Sunbaked Canyon: a ramp's gap is a canyon on mesa and a water creek on oasis
+    // dune hopping along the top, a ramp at the bend, tumbleweeds, up the big dune and off its lip
     dune: {
-      name: 'Dune Sweep', world: 1, laps: 3, hw: 3.8, scale: 1.65,
-      pts: [[20, 40], [50, 16], [92, 12], [128, 26], [140, 56], [122, 80], [96, 74], [72, 88], [60, 112], [30, 108], [14, 80]],
-      pads: [{ u: 0.05, off: 0 }, { u: 0.3, off: 1.5 }, { u: 0.55, off: -1.5 }, { u: 0.8, off: 0 }],
-      ramps: [{ u: 0.42, gap: 0 }],
-      boxes: [0.18, 0.66],
-      coins: [{ u: 0.1, off: -1.5, n: 6 }, { u: 0.25, off: 0, n: 6 }, { u: 0.48, off: 1.5, n: 6 }, { u: 0.72, off: 0, n: 5 }, { u: 0.9, off: -1.4, n: 6 }]
+      name: 'Dune Sweep', world: 1, laps: 3, hw: 3.8, scale: 1,
+      pts: [[30, 60], [70, 26], [130, 18], [190, 30], [218, 70], [200, 110], [160, 116], [128, 100], [96, 118], [90, 154], [56, 174], [24, 150], [20, 104]],
+      elev: [[0, 0], [0.07, 0], [0.084, 2.4], [0.098, 0.4], [0.112, 2.6], [0.126, 0.4], [0.14, 2.4], [0.154, 0], [0.58, 0], [0.7, 4], [0.74, 4], [0.752, 2], [0.84, 0]],
+      hazards: [{ u: 0.52, kind: 'tumble', n: 2 }, { u: 0.88, kind: 'tumble', n: 3 }],
+      pads: [{ u: 0.05, off: 0 }, { u: 0.3, off: 1.5 }, { u: 0.62, off: -1.5 }, { u: 0.72, off: 0 }],
+      ramps: [{ u: 0.43, gap: 0 }],
+      boxes: [0.2, 0.66],
+      coins: [{ u: 0.18, off: -1.5, n: 6 }, { u: 0.25, off: 0, n: 6 }, { u: 0.48, off: 1.5, n: 6 }, { u: 0.8, off: 0, n: 5 }, { u: 0.94, off: -1.4, n: 6 }]
     },
+    // up onto the mesa, a canyon leap across its top, a hop off the edge, down the switchbacks into boulder alley,
+    // a second canyon in the gulch and over the ridge home
     mesa: {
-      name: 'Mesa Leap', world: 1, laps: 3, hw: 3.5, scale: 1.35,
-      pts: [[16, 24], [56, 12], [100, 16], [124, 30], [110, 46], [78, 44], [60, 58], [78, 74], [110, 74], [124, 92], [104, 110], [60, 112], [30, 100], [12, 64]],
-      pads: [{ u: 0.03, off: 0 }, { u: 0.33, off: -1.4 }, { u: 0.6, off: 1.4 }, { u: 0.85, off: 0 }],
+      name: 'Mesa Leap', world: 1, laps: 3, hw: 3.5, scale: 1,
+      pts: [[24, 40], [74, 18], [130, 20], [170, 36], [160, 62], [120, 62], [96, 80], [118, 100], [160, 100], [184, 124], [166, 154], [118, 162], [80, 150], [48, 164], [20, 136], [14, 90]],
+      elev: [[0, 0], [0.02, 0], [0.08, 4], [0.28, 4], [0.285, 2.4], [0.45, 0], [0.84, 0], [0.9, 1.5], [0.93, 1.5], [0.94, 0.3], [0.99, 0]],
+      hazards: [{ u: 0.48, kind: 'boulder', n: 2 }, { u: 0.6, kind: 'tumble' }],
+      pads: [{ u: 0.03, off: 0 }, { u: 0.2, off: -1.4 }, { u: 0.55, off: 1.4 }, { u: 0.68, off: 0 }, { u: 0.88, off: 0 }],
       ramps: [{ u: 0.12, gap: 3.8 }, { u: 0.72, gap: 3.8 }],
-      boxes: [0.2, 0.52],
-      coins: [{ u: 0.07, off: 1.5, n: 6 }, { u: 0.28, off: 0, n: 5 }, { u: 0.45, off: -1.5, n: 6 }, { u: 0.66, off: 0, n: 5 }, { u: 0.92, off: 1.5, n: 6 }]
+      boxes: [0.22, 0.52],
+      coins: [{ u: 0.07, off: 1.5, n: 6 }, { u: 0.26, off: 0, n: 5 }, { u: 0.4, off: -1.5, n: 6 }, { u: 0.64, off: 0, n: 5 }, { u: 0.92, off: 1.5, n: 6 }]
     },
+    // the long tour: the oasis creek, up the dunes and over the whoops, a ramp, tumbleweeds and a boulder on the
+    // flats, the second creek and a hop off the last ridge
     oasis: {
-      name: 'Oasis Run', world: 1, laps: 2, hw: 3.6, scale: 1.62,
-      pts: [[20, 30], [60, 14], [104, 20], [140, 14], [170, 34], [164, 66], [136, 74], [120, 98], [146, 118], [150, 146], [116, 158], [80, 146], [58, 124], [30, 134], [12, 104], [26, 72]],
-      pads: [{ u: 0.04, off: 0 }, { u: 0.2, off: 1.5 }, { u: 0.38, off: -1.5 }, { u: 0.55, off: 0 }, { u: 0.74, off: 1.5 }, { u: 0.9, off: -1.4 }],
-      ramps: [{ u: 0.12, gap: 3.8 }, { u: 0.47, gap: 0 }, { u: 0.66, gap: 3.8 }],
+      name: 'Oasis Run', world: 1, laps: 2, hw: 3.6, scale: 1,
+      pts: [[30, 50], [90, 22], [160, 28], [230, 20], [272, 50], [262, 94], [220, 104], [196, 134], [230, 160], [246, 206], [206, 236], [150, 228], [120, 200], [88, 222], [48, 212], [22, 176], [44, 140], [26, 100]],
+      elev: [[0, 0], [0.12, 0], [0.24, 3], [0.25, 3], [0.257, 4.4], [0.264, 3], [0.271, 4.4], [0.278, 3], [0.32, 3], [0.42, 0], [0.8, 0], [0.9, 2.5], [0.93, 2.5], [0.94, 0.8], [0.99, 0]],
+      hazards: [{ u: 0.56, kind: 'tumble', n: 2 }, { u: 0.64, kind: 'boulder' }, { u: 0.84, kind: 'tumble' }],
+      pads: [{ u: 0.03, off: 0 }, { u: 0.2, off: 1.5 }, { u: 0.245, off: 0 }, { u: 0.47, off: -1.5 }, { u: 0.68, off: 1.5 }, { u: 0.9, off: -1.4 }],
+      ramps: [{ u: 0.06, gap: 3.8 }, { u: 0.5, gap: 0 }, { u: 0.73, gap: 3.8 }],
       boxes: [0.16, 0.6],
-      coins: [{ u: 0.08, off: -1.5, n: 6 }, { u: 0.25, off: 0, n: 6 }, { u: 0.42, off: 1.5, n: 6 }, { u: 0.58, off: -1.4, n: 5 }, { u: 0.7, off: 0, n: 6 }, { u: 0.84, off: 1.5, n: 6 }, { u: 0.95, off: 0, n: 5 }]
+      coins: [{ u: 0.09, off: -1.5, n: 6 }, { u: 0.3, off: 0, n: 6 }, { u: 0.42, off: 1.5, n: 6 }, { u: 0.53, off: -1.4, n: 5 }, { u: 0.77, off: 0, n: 6 }, { u: 0.86, off: 1.5, n: 6 }, { u: 0.96, off: 0, n: 5 }]
     }
   };
   // aiSpeed is the rivals' top speed in cells/s before PACE; pay multiplies the place money
