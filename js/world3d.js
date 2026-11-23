@@ -1087,9 +1087,17 @@ var RB3DWorld = (function () {
   // ---------- hazards ----------
   // a model for each logic hazard kind (RB.HAZ), facing +x (the way it walks or rolls), on the ground at y = 0;
   // userData.pose(hz, t) turns its roll and steps its legs from RB.hazardAt
+  // HAZOBJ[kind](grp, inner) builds a new world's hazard model into inner and returns pose(hz, t) or nothing
+  var HAZOBJ = {};
   function hazardObj(kind) {
     var grp = new THREE.Group(), inner = new THREE.Group(), b = new Batch(0), I = new THREE.Matrix4(), legs = [];
     grp.add(inner);
+    if (HAZOBJ[kind]) {
+      var pose = HAZOBJ[kind](grp, inner);
+      grp.userData.pose = function (hz, t) { if (pose) pose(hz, t); else inner.rotation.z = -hz.roll; };
+      grp.traverse(function (o) { if (o.isMesh) o.receiveShadow = true; });
+      return grp;
+    }
     if (kind === 'sheep') {
       var wool = blob(0.5, 2, 7, 0.78, 0.35); wool.scale(1.3, 1, 1); wool.translate(0, 0.78, 0); paint(wool, function (x, y) { return mixC(col('#c8c2b4'), col('#fbf8f0'), clamp((y - 0.5) / 0.6, 0, 1)); }); b.add('plain', wool, I);
       var head = new THREE.SphereGeometry(0.22, 12, 8); head.scale(1.25, 1, 0.9); head.translate(0.78, 0.92, 0); paint(head, col('#2e2a2a')); b.add('plain', head, I);
