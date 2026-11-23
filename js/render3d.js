@@ -211,7 +211,7 @@
         if (e.type === 'wall') { if (c.i === 0) shake = Math.max(shake, 0.18); for (var w = 0; w < 4; w++) puff(c.x, gy + 0.2, c.z, landDust(r), 0.6, 0.5, 0.4); }
       });
     }
-    function landDust(r) { return r && r.world === 1 ? '#d8b078' : '#b8a07a'; }
+    function landDust(r) { var L = race && race.world.look; return L && L.dust || (r && r.world === 1 ? '#d8b078' : '#b8a07a'); }
     function stepParts(dt) {
       for (var i = parts.length - 1; i >= 0; i--) {
         var p = parts[i]; p.life -= dt; if (p.life <= 0) { parts.splice(i, 1); continue; }
