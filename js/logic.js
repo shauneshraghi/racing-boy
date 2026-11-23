@@ -308,42 +308,49 @@ var RB = (function () {
     },
     // world 3, Snowcap Peaks: icy roads (WORLDS grip), mountains two to three times the height of the hills; a ramp's
     // gap is a crevasse in the glacier
-    // a switchback climb up the ridge to the summit pass (penguins waddle across it), a hop off the pass, the plunging
-    // downhill run to the valley, snowballs at its foot and a pad into the moguls
+    // a figure 8: the start straight runs under the pass bridge, then the switchback climb (two hairpins) to the summit
+    // pass at 10, a ledge with an open drop on the left, penguins waddling across, a hop off the end of the pass, over
+    // the railed bridge above the start straight, the plunging run down, a pad into the moguls and home
     pines: {
-      name: 'Pine Ridge Pass', world: 2, laps: 3, hw: 4.2, scale: 0.76,
-      pts: [[30, 210], [100, 214], [170, 206], [226, 186], [236, 150], [200, 130], [140, 128], [108, 104], [128, 78], [190, 74], [236, 56], [232, 22], [180, 12], [110, 14], [56, 30], [24, 70], [12, 130], [14, 180]],
-      elev: [[0, 0], [0.2, 0], [0.4, 5.5], [0.55, 10], [0.645, 10], [0.655, 7.5], [0.75, 0], [0.84, 0], [0.853, 1.6], [0.866, 0], [0.879, 1.6], [0.892, 0]],
-      hazards: [{ u: 0.52, kind: 'penguin', n: 4 }, { u: 0.77, kind: 'snowball' }],
-      pads: [{ u: 0.05, off: 0 }, { u: 0.17, off: 1.5 }, { u: 0.49, off: -1.4 }, { u: 0.63, off: 0 }, { u: 0.825, off: 0 }],
+      name: 'Pine Ridge Pass', world: 2, laps: 3, hw: 4.2, scale: 0.68, ai: 1.01,
+      pts: [[45, 120], [110, 120], [160, 118], [205, 125], [235, 150], [225, 178], [165, 182], [143, 185], [128, 195], [125, 212], [137, 225], [162, 229], [228, 230], [248, 233], [260, 243], [261, 259], [248, 270], [225, 273], [150, 272], [105, 258], [95, 205], [102, 160], [110, 120], [115, 80], [105, 45], [70, 25], [30, 35], [15, 70], [15, 98], [25, 115]],
+      elev: [[0, 0], [0.12, 0], [0.22, 3.5], [0.28, 4.5], [0.35, 5], [0.44, 9], [0.49, 10], [0.665, 10], [0.675, 7], [0.79, 6.5], [0.875, 0], [0.905, 0], [0.918, 1.6], [0.931, 0], [0.944, 1.6], [0.957, 0]],
+      bridges: [[0.712, 0.792, 'rail']], drops: [[0.513, 0.545, -1]],
+      hazards: [{ u: 0.556, kind: 'penguin', n: 4 }, { u: 0.82, kind: 'snowball' }],
+      pads: [{ u: 0.03, off: 0 }, { u: 0.17, off: 1.5 }, { u: 0.4, off: -1.4 }, { u: 0.655, off: 0 }, { u: 0.89, off: 0 }],
       ramps: [],
-      boxes: [0.13, 0.67],
-      coins: [{ u: 0.09, off: -1.5, n: 6 }, { u: 0.3, off: 0, n: 6 }, { u: 0.46, off: 1.4, n: 6 }, { u: 0.64, off: 0, n: 6 }, { u: 0.78, off: -1.5, n: 6 }, { u: 0.93, off: 1.4, n: 5 }]
+      boxes: [0.1, 0.42],
+      coins: [{ u: 0.07, off: -1.5, n: 6 }, { u: 0.25, off: 0, n: 6 }, { u: 0.46, off: 0, n: 6 }, { u: 0.6, off: 0, n: 6 }, { u: 0.74, off: 0, n: 6 }, { u: 0.97, off: 1.4, n: 5 }]
     },
-    // the long sweeping climb to the summit at 14, the in-run with a pad, the ski jump off the top with huge air
-    // down the landing hill, snowballs rolling across the S-curve descent and ice blocks sliding on the flats
+    // a loop over itself: the long climb up the east face, along a ledge with an open drop on the right and round the
+    // back to the summit at 14, then the in-run (a pad) out over an open bridge high above the start of the climb and
+    // the ski jump off its end with huge air down the landing hill, snowballs on the S-curve descent and ice blocks
+    // sliding on the flats
     skijump: {
-      name: 'Ski Jump Summit', world: 2, laps: 3, hw: 4.2, scale: 0.88, ai: 1.015,
-      pts: [[30, 200], [100, 208], [160, 200], [206, 178], [222, 136], [196, 104], [206, 64], [186, 26], [146, 12], [100, 12], [56, 20], [34, 50], [62, 80], [106, 92], [126, 118], [104, 148], [36, 150], [16, 178]],
-      elev: [[0, 0], [0.12, 0], [0.42, 14], [0.47, 14], [0.5, 11.5], [0.505, 11.5], [0.58, 4], [0.64, 4], [0.8, 0]],
-      hazards: [{ u: 0.73, kind: 'snowball', n: 2 }, { u: 0.875, kind: 'iceblock', n: 2 }],
-      pads: [{ u: 0.05, off: 0 }, { u: 0.24, off: -1.5 }, { u: 0.36, off: 1.4 }, { u: 0.48, off: 0 }, { u: 0.95, off: 0 }],
-      ramps: [{ u: 0.4965, gap: 0 }],
-      boxes: [0.15, 0.67],
-      coins: [{ u: 0.09, off: 1.5, n: 6 }, { u: 0.3, off: 0, n: 6 }, { u: 0.47, off: -1.4, n: 6 }, { u: 0.6, off: 0, n: 5 }, { u: 0.8, off: 1.4, n: 6 }, { u: 0.92, off: -1.4, n: 6 }]
+      name: 'Ski Jump Summit', world: 2, laps: 3, hw: 4.2, scale: 0.63, ai: 1.02,
+      pts: [[60, 200], [110, 200], [150, 195], [175, 170], [178, 130], [170, 90], [150, 55], [110, 40], [70, 45], [40, 70], [38, 100], [55, 122], [90, 130], [140, 130], [178, 130], [215, 130], [255, 131], [295, 134], [322, 150], [330, 188], [305, 225], [255, 247], [170, 252], [110, 254], [55, 251], [32, 245], [19, 229], [22, 211], [38, 201]],
+      elev: [[0, 0], [0.08, 0], [0.15, 2.5], [0.23, 6], [0.31, 10.5], [0.38, 14], [0.515, 14], [0.54, 12.5], [0.546, 12.5], [0.61, 3], [0.63, 3], [0.79, 0]],
+      bridges: [[0.45, 0.515]], drops: [[0.225, 0.26, 1]],
+      hazards: [{ u: 0.68, kind: 'snowball', n: 2 }, { u: 0.86, kind: 'iceblock', n: 2 }],
+      pads: [{ u: 0.03, off: 0 }, { u: 0.17, off: -1.5 }, { u: 0.3, off: 1.4 }, { u: 0.522, off: 0 }, { u: 0.8, off: -1.5 }, { u: 0.95, off: 0 }],
+      ramps: [{ u: 0.539, gap: 0 }],
+      boxes: [0.06, 0.4],
+      coins: [{ u: 0.1, off: 1.5, n: 6 }, { u: 0.2, off: 0, n: 6 }, { u: 0.42, off: 0, n: 6 }, { u: 0.64, off: 0, n: 5 }, { u: 0.76, off: 1.4, n: 6 }, { u: 0.9, off: -1.4, n: 6 }]
     },
-    // the long tour: a crevasse leap on the glacier tongue, moguls, the icefall climb round a hairpin to the plateau at
-    // 12, penguins and a second crevasse up top, a hop off its edge, a snowball and ice blocks on the way down and the
-    // S-curve descent home
+    // the long tour, a figure 8: the start straight runs under the glacier bridge to a crevasse leap on the glacier
+    // tongue, moguls, the icefall climb round a hairpin to the plateau at 12, penguins and a second crevasse up top, a hop
+    // off its edge, down the ledge road with an open drop on the right, over the railed bridge above the start straight
+    // and down round the ice blocks home
     glacier: {
-      name: 'Icefall Glacier', world: 2, laps: 2, hw: 4.2, scale: 0.9, ai: 1.02,
-      pts: [[30, 230], [100, 238], [170, 232], [230, 214], [266, 180], [250, 140], [200, 140], [150, 152], [104, 140], [102, 108], [140, 98], [190, 96], [250, 90], [280, 56], [250, 22], [190, 14], [130, 22], [80, 14], [36, 34], [24, 80], [56, 110], [44, 150], [14, 188]],
-      elev: [[0, 0], [0.16, 0], [0.17, 1.4], [0.18, 0], [0.19, 1.4], [0.2, 0], [0.25, 0], [0.45, 12], [0.605, 12], [0.61, 10], [0.74, 5], [0.79, 5], [0.93, 0]],
-      hazards: [{ u: 0.465, kind: 'penguin', n: 4 }, { u: 0.67, kind: 'snowball' }, { u: 0.765, kind: 'iceblock', n: 2 }],
-      pads: [{ u: 0.04, off: 0 }, { u: 0.15, off: 0 }, { u: 0.31, off: 1.4 }, { u: 0.495, off: 0 }, { u: 0.7, off: -1.4 }, { u: 0.96, off: 0 }],
-      ramps: [{ u: 0.1, gap: 3.8 }, { u: 0.515, gap: 3.8 }],
-      boxes: [0.07, 0.55],
-      coins: [{ u: 0.12, off: 1.5, n: 6 }, { u: 0.27, off: 0, n: 6 }, { u: 0.42, off: -1.4, n: 6 }, { u: 0.6, off: 0, n: 6 }, { u: 0.72, off: 1.4, n: 5 }, { u: 0.82, off: 0, n: 6 }, { u: 0.9, off: -1.4, n: 6 }]
+      name: 'Icefall Glacier', world: 2, laps: 2, hw: 4.2, scale: 0.83, ai: 1.025,
+      pts: [[45, 250], [100, 250], [150, 250], [205, 248], [255, 235], [280, 205], [282, 165], [268, 130], [225, 118], [175, 122], [148, 118], [134, 100], [148, 82], [175, 79], [230, 78], [272, 58], [255, 25], [200, 18], [140, 20], [90, 28], [60, 55], [58, 100], [62, 160], [72, 210], [78, 250], [85, 290], [70, 325], [30, 330], [5, 300], [10, 262]],
+      elev: [[0, 0], [0.2, 0], [0.21, 1.4], [0.22, 0], [0.23, 1.4], [0.24, 0], [0.26, 0], [0.33, 4], [0.36, 5], [0.44, 11], [0.47, 12], [0.618, 12], [0.623, 10], [0.66, 9.5], [0.78, 6.5], [0.85, 6.5], [0.96, 0]],
+      bridges: [[0.79, 0.845, 'rail']], drops: [[0.7, 0.75, 1]],
+      hazards: [{ u: 0.515, kind: 'penguin', n: 4 }, { u: 0.675, kind: 'snowball' }, { u: 0.9, kind: 'iceblock', n: 2 }],
+      pads: [{ u: 0.04, off: 0 }, { u: 0.185, off: 0 }, { u: 0.3, off: 1.4 }, { u: 0.45, off: 0 }, { u: 0.66, off: -1.4 }, { u: 0.97, off: 0 }],
+      ramps: [{ u: 0.08, gap: 3.8 }, { u: 0.57, gap: 3.8 }],
+      boxes: [0.12, 0.69],
+      coins: [{ u: 0.06, off: 1.5, n: 6 }, { u: 0.27, off: 0, n: 6 }, { u: 0.4, off: -1.4, n: 6 }, { u: 0.55, off: 0, n: 6 }, { u: 0.72, off: -1.4, n: 5 }, { u: 0.82, off: 0, n: 6 }, { u: 0.93, off: 1.4, n: 6 }]
     },
 
     // world 4, Lava Lane: every ramp gap is a glowing lava river; the hills are far bigger than worlds 1-2 (10-16 cells)
