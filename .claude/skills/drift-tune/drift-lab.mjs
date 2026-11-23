@@ -66,7 +66,7 @@ function run(id, drift) {
       const b = bs[bi], S = stats[bi];
       if (!p.driftDir) inp = { steer: b.dir, drift: true };
       else {
-        const rate = st.grip * Math.min(1, p.v / 4), Ld = Math.max(1, Math.hypot(aim.x - p.x, aim.z - p.z));
+        const rate = st.grip * R.envOf(r).grip * Math.min(1, p.v / 4), Ld = Math.max(1, Math.hypot(aim.x - p.x, aim.z - p.z));
         const want = 2 * p.v * Math.sin(alpha) / Ld; // pure-pursuit yaw rate
         const ud = clamp(2 * ((want * p.driftDir / rate - K.WIDE) / (K.TURN - K.WIDE)) - 1, -1, 1); // +1 into, -1 against
         const key = mode === "hands" ? 0 : mode === "keys" ? (ud < -0.33 ? -1 : ud > 0.33 ? 1 : 0) : ud; // keys: -1/0/+1, eased
@@ -88,7 +88,7 @@ const f = (x, n = 2) => x.toFixed(n).padStart(5);
 let all = { n: 0, u: 0, against: 0, into: 0, off: 0, wall: 0 }, worst = 0;
 for (const id of tracks) {
   const clean = run(id, false), dr = run(id, true), g = R.track(id), st = dr.st;
-  const v = +(args.v || st.speed), rate = st.grip * Math.min(1, v / 4);
+  const v = +(args.v || st.speed), rate = st.grip * (R.WORLDS[R.TRACKS[id].world].grip || 1) * Math.min(1, v / 4);
   const env = [K.WIDE, (K.WIDE + K.TURN) / 2, K.TURN].map(m => rate * m);
   console.log(`\n${id}  hw ${g.hw}  lap clean ${clean.lap.toFixed(2)} s, drifting ${dr.lap.toFixed(2)} s (${(dr.lap - clean.lap >= 0 ? '+' : '') + (dr.lap - clean.lap).toFixed(2)})`);
   console.log(`  drift yaw at ${v} c/s: wide ${f(env[0])}  neutral ${f(env[1])}  tight ${f(env[2])} rad/s  -> radius ${f(v / env[0], 1)} ${f(v / env[1], 1)} ${f(v / env[2], 1)} cells`);
