@@ -379,6 +379,75 @@ var RBAudio = (function () {
       ]
     }
   };
+  // ---------- world 3, Snowcap Peaks ----------
+  // Pine Ridge Pass: bright G major, a yodelling leap up the octave in the lead, pick bass and a rock beat, a call and
+  // answer B section over a sparkling arpeggio
+  SONGS.pines = {
+    bpm: 182, key: 55, scale: ION, lead: 12, leadType: 'brass', bassType: 'pick', echo: 0.132, loopFrom: 1,
+    mix: { lead: 0.03, bass: 0.034, gtr: 0.012, arp: 0.012, drum: 1 },
+    motifs: {
+      pi3: '....5-6-7-A-B-C-', pi4: 'B---A---5-------',
+      p1: '1-.3-.5-A---5-3-', p2: '4-.6-.A-C---A-6-', p3: '5-5-6-5-3-1-3-5-', p4: '2-------5-------',
+      p5: '1-.3-.5-A---B-C-', p6: 'D---C---A---5---', p7: '6-.6-.5-4-3-2-1-', p8: '1-----------....',
+      q1: 'A-.5-.A-.5-C-A-5', q2: 'B-.5-.B-.5-D-B-5', q3: 'C-B-A-6-A-B-C-D-', q4: 'E-------D-C-B---',
+      q5: 'A-.6-.4-.6-A-C-.', q6: 'B---A---6---5---', q7: '3-4-5-6-7-A-B-C-', q8: 'A---------------'
+    },
+    secs: [
+      { bars: 4, ch: 'I IV I V', mel: [null, null, 'pi3', 'pi4'], bass: 'r...........r.r.', gtr: 'X.......X.....x.', drum: 'hits', fill: 4 },
+      { bars: 16, ch: 'I I IV IV I I V V I I IV IV ii V I I',
+        mel: ['p1', 'p2', 'p3', 'p4', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p4', 'p5', 'p6', 'p7', 'p8'],
+        bass: 'r.r.o.r.r.o.r.f.', gtr: 'X.x.x.x.X.x.x.x.', drum: 'rock', fill: 4 },
+      { bars: 16, ch: 'I I V V IV IV I V vi vi IV IV ii ii V V',
+        mel: ['q1', 'q1', 'q2', 'q2', 'q3', 'q4', 'q5', 'q6', 'q1', 'q1', 'q2', 'q2', 'q3', 'q4', 'q7', 'q8'],
+        bass: 'r.o.r.o.r.o.f.o.', gtr: 'X.x.X.x.X.x.X.x.', arp: 'x.xxx.xxx.xxx.xx', drum: 'drive', fill: 8 }
+    ]
+  };
+  // Ski Jump Summit: soaring D Lydian (the major II is its lift), slap bass climbing in 16ths, a half-time B over a
+  // pad for the flight, then the A tune again a step up
+  SONGS.skijump = {
+    bpm: 192, key: 50, scale: LYD, lead: 12, leadType: 'brass', bassType: 'slap', echo: 0.141, loopFrom: 1,
+    mix: { lead: 0.028, bass: 0.024, gtr: 0.012, arp: 0.011, pad: 0.008, drum: 1 },
+    motifs: {
+      si3: '1-2-3-4-5-6-7-A-', si4: 'B-------A-------',
+      s1: '5-.6-.7-A-----5-', s2: 'B-.A-.7-5-------', s3: '4-.5-.6-7-A-B-C-', s4: 'B-------A-------',
+      s5: '5-.6-.A-.B-C-B-A', s6: '7---5---4---2---', s7: '3-4-5-6-5-4-3-2-', s8: '1---------......',
+      t1: 'C-------B-------', t2: 'A---------C-D-E-', t3: 'D-------C---B---', t4: 'B---------7-A-B-',
+      t5: 'C-------D---E---', t6: 'D-------C-------', t7: 'E-----D-----C---', t8: 'B-A-7-6-5-4-3-2-'
+    },
+    secs: [
+      { bars: 4, ch: 'I II I II', mel: [null, null, 'si3', 'si4'], bass: 'rrorrrorfrorrrot', drum: 'pulse', fill: 4 },
+      { bars: 16, ch: 'I II I II IV IV V V I II I II vi IV V V',
+        mel: ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'],
+        bass: 'rrorrrorfrorrrot', gtr: 'X..x..X..x..X.x.', drum: 'rock', fill: 4 },
+      { bars: 8, ch: 'vi vi IV IV I I II II', mel: ['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8'],
+        bass: 'r...o...r...o.f.', pad: true, arp: 'x.x.x.x.x.x.x.x.', drum: 'half', fill: 8 },
+      { bars: 8, tr: 2, ch: 'I II I II IV IV V V', mel: ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'],
+        bass: 'rrorrfrorrorrtro', gtr: 'X.xxX.xxX.xxX.x.', arp: 'xxxxxxxxxxxxxxxx', drum: 'drive', fill: 4 }
+    ]
+  };
+  // Icefall Glacier: B Dorian, cold and driving, with harmonic-minor V bars that pull hard back home; a pad under
+  // a galloping beat and a high, glinting arpeggio
+  SONGS.glacier = {
+    bpm: 186, key: 47, scale: DOR, scales: { H: HARM }, lead: 12, leadType: 'pluck', bassType: 'pick', echo: 0.161, loopFrom: 1,
+    mix: { lead: 0.042, bass: 0.034, gtr: 0.012, arp: 0.012, pad: 0.009, drum: 1 },
+    motifs: {
+      gi3: '....1-2-3-5-7-A-', gi4: 'H|7---------......',
+      g1: '1-.2-.3-5-3-2-1-', g2: 'g-------5-------', g3: '3-.4-.5-6-5-4-3-', g4: '2-------........',
+      g5: '5-.5-.6-7-A-7-6-', g6: '5-------3-2-1-2-', g7: 'H|7-.7-.A-2-3-2-1-', g8: '1-----------....',
+      h1: 'A-.A-.C-.A-7-.5-', h2: '6-------5-6-7-A-', h3: 'C-.C-.D-.E-D-C-A', h4: 'B---------------',
+      h5: 'A-B-C-D-E-D-C-B-', h6: 'A-------7-6-5-4-', h7: 'H|5-.5-.7-.B-A-7-6', h8: '5---------------'
+    },
+    secs: [
+      { bars: 4, ch: 'i i iv V', mel: [null, null, 'gi3', 'gi4'], pad: true, bass: 'r.......r.......', drum: 'pulse', fill: 4 },
+      { bars: 16, ch: 'i i bVII bVII bVI bVI V V i i bVII bVII iv iv V V',
+        mel: ['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8', 'g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8'],
+        bass: 'r.r.o.r.r.o.f.o.', gtr: 'X.x.x.x.X.x.x.x.', pad: true, drum: 'gallop', fill: 4 },
+      { bars: 16, ch: 'bVI bVII i i bVI bVII V V iv iv i i bVI bVII V V',
+        mel: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8'],
+        bass: 'r.r.o.r.r.r.o.f.', gtr: 'X.xxX.xxX.xxX.x.', pad: true, arp: 'xxxxxxxxxxxxxxxx', drum: 'gallop', fill: 8 }
+    ]
+  };
+  // ---------- end of world 3 ----------
   function midi(n) { return 440 * Math.pow(2, (n - 69) / 12); }
   var NUMERAL = { i: 0, ii: 2, iii: 4, iv: 5, v: 7, vi: 9, vii: 11 };
   function chord(tok, tr) {
