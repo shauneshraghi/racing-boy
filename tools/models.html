@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Racing Boy 3D models</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: #9fb3c4; overflow: hidden; font: 13px/1.3 system-ui, sans-serif; }
+  canvas#view { display: block; width: 100%; height: 100%; }
+  #info { position: fixed; left: 8px; top: 8px; color: #fff; text-shadow: 0 1px 2px #000; white-space: pre; pointer-events: none; }
+  #pv { position: fixed; left: 0; bottom: 0; right: 0; display: none; flex-wrap: wrap; gap: 6px; padding: 8px; background: rgba(40, 52, 64, 0.85); }
+  #pv canvas { background: linear-gradient(#5b6f84, #2c3542); border-radius: 6px; }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="info"></div>
+<div id="pv"></div>
+<!-- Dev page for js/models3d.js: every car with its default look, some alternate looks, the items and the kid.
+     ?focus=<name>&view=front|rear|side|top|low[&solo=1] frames one model; ?previews=1 shows RB3DModels.preview() canvases.
+     Drag to orbit (mouse), wheel to zoom. -->
+<script src="../js/vendor/three.min.js"></script>
+<script src="../js/logic.js"></script>
+<script src="../js/models3d.js"></script>
+<script>
+(function () {
+  'use strict';
+  var T = THREE, q = new URLSearchParams(location.search);
+  var cv = document.getElementById('view');
+  var renderer = new T.WebGLRenderer({ canvas: cv, antialias: true });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.85;
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap;
+  var scene = new T.Scene(); scene.background = new T.Color(0x9fb3c4); scene.environment = RB3DModels.envMap(renderer);
+  scene.fog = new T.Fog(0x9fb3c4, 30, 70);
+  var sun = new T.DirectionalLight(0xfff0d8, 2.4); sun.position.set(8, 14, 6); sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096);
+  var sc = sun.shadow.camera; sc.left = -16; sc.right = 16; sc.top = 16; sc.bottom = -16; sc.near = 1; sc.far = 50; sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02; sun.shadow.radius = 3;
+  scene.add(sun); scene.add(sun.target);
+  scene.add(new T.HemisphereLight(0xd8e8ff, 0x5a5040, 0.35));
+  var gtex = (function () {
+    var c = document.createElement('canvas'); c.width = c.height = 256; var x = c.getContext('2d');
+    x.fillStyle = '#5a5d60'; x.fillRect(0, 0, 256, 256);
+    for (var i = 0; i < 6000; i++) { var v = 70 + Math.random() * 30 | 0; x.fillStyle = 'rgb(' + v + ',' + v + ',' + (v + 2) + ')'; x.fillRect(Math.random() * 256, Math.random() * 256, 1.5, 1.5); }
+    x.fillStyle = 'rgba(255,255,255,0.25)'; x.fillRect(0, 0, 256, 2); x.fillRect(0, 0, 2, 256);
+    var t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace; t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(30, 30); t.anisotropy = 8; return t;
+  })();
+  var ground = new T.Mesh(new T.PlaneGeometry(60, 60), new T.MeshStandardMaterial({ map: gtex, roughness: 0.92 }));
+  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+
+  var objs = {}, tris = {}, t0 = performance.now(), anim = [];
+  function place(name, o, x, z, ry) { o.position.x = x; o.position.z = z; if (ry) o.rotation.y = ry; scene.add(o); objs[name] = o; return o; }
+  var ids = Object.keys(RB.CARS);
+  ids.forEach(function (id, i) {
+    var c = place(id, RB3DModels.car(id), -4, -7.5 + i * 2.5);
+    tris[id] = c.userData.tris;
+  });
+  var alts = [
+    ['pip-alt', 'pip', { paint: 'sun', trim: 'coal', wheels: 'gold', spoiler: 'wing', exhaust: 'twin' }],
+    ['rumble-alt', 'rumble', { paint: 'cherry', trim: 'snow', wheels: 'white', exhaust: 'stack', spoiler: 'duck' }],
+    ['hopper-alt', 'hopper', { paint: 'tangerine', trim: 'sky', wheels: 'star', exhaust: 'twin', spoiler: 'wing' }],
+    ['comet-alt', 'comet', { paint: 'bubblegum', trim: 'coal', wheels: 'chunky', spoiler: 'tall', exhaust: 'stack' }],
+    ['clover-alt', 'clover', { paint: 'sky', trim: 'sun', wheels: 'white', spoiler: 'duck', exhaust: 'pipe' }],
+    ['bolt-alt', 'bolt', { paint: 'snow', trim: 'cherry', wheels: 'chunky', spoiler: 'tall', exhaust: 'stack' }],
+    ['nova-alt', 'nova', { paint: 'gold', trim: 'coal', wheels: 'stock', spoiler: 'wing', exhaust: 'twin' }]
+  ];
+  alts.forEach(function (a, i) { var c = place(a[0], RB3DModels.car(a[1], a[2]), 0, -7.5 + i * 2.5); tris[a[0]] = c.userData.tris; });
+  // one with its glider open and one with its shield up
+  var gl = place('glide', RB3DModels.car('hopper'), 4, -7.5); gl.userData.glider.visible = true; gl.position.y = 0.6;
+  var sh = place('shield', RB3DModels.car('pip', { paint: 'grape' }), 4, -4.5); sh.userData.shield.visible = true;
+  var cr = place('crate', RB3DModels.crate(), 4, -1.5); cr.position.y = 0.6;
+  var co = place('coin', RB3DModels.coin(), 4, 0.2); co.position.y = 0.35; co.rotation.y = 0.6;
+  var be = place('bee', RB3DModels.bee(), 4, 1.6); be.position.y = 0.6; be.rotation.y = -0.5;
+  place('goo', RB3DModels.goo(), 4, 3.6);
+  var kd = place('kid', RB3DModels.kid(), 4, 6); kd.rotation.y = -0.4;
+  var kd2 = place('kid-idle', RB3DModels.kid(), 4.8, 6.8); kd2.rotation.y = -1.2;
+  anim.push(function (t) { kd.userData.anim(t, true); kd2.userData.anim(t, false); be.userData.flap(t); });
+  console.log('build ms', Math.round(performance.now() - t0), JSON.stringify(tris));
+
+  var cam = new T.PerspectiveCamera(34, 1, 0.05, 200), target = new T.Vector3(0, 0.3, 0), orbit = { yaw: 0.9, pitch: 0.42, dist: 20 };
+  function frame(name, view) {
+    var o = objs[name]; if (!o) return;
+    var box = new T.Box3().setFromObject(o, true), c = box.getCenter(new T.Vector3()), r = box.getSize(new T.Vector3()).length() / 2;
+    if (o.userData.shield) { var b2 = new T.Box3(); o.userData.body.updateMatrixWorld(true); b2.setFromObject(o.userData.body); o.userData.wheels.forEach(function (w) { b2.expandByObject(w.pivot); }); if (!o.userData.glider.visible) { c = b2.getCenter(new T.Vector3()); r = b2.getSize(new T.Vector3()).length() / 2; } }
+    target.copy(c); orbit.dist = r * 2.9;
+    var ry = o.rotation.y;
+    var v = { front: [0.7, 0.32], rear: [0.7 + Math.PI, 0.32], side: [Math.PI / 2, 0.12], top: [0.5, 1.1], low: [0.45, 0.12] }[view || 'front'];
+    orbit.yaw = v[0] - ry; orbit.pitch = v[1];
+  }
+  function updCam() {
+    var cp = Math.cos(orbit.pitch);
+    cam.position.set(target.x + orbit.dist * cp * Math.cos(orbit.yaw), target.y + orbit.dist * Math.sin(orbit.pitch), target.z + orbit.dist * cp * Math.sin(orbit.yaw));
+    cam.lookAt(target);
+  }
+  // solo: hide every other model while framing this one
+  window.__frame = function (name, view, solo) {
+    Object.keys(objs).forEach(function (k) { objs[k].visible = !solo || k === name; });
+    frame(name, view); updCam(); renderer.render(scene, cam);
+  };
+  window.__tris = tris;
+  if (q.get('focus')) window.__frame(q.get('focus'), q.get('view'), q.get('solo'));
+  var drag = null;
+  cv.addEventListener('pointerdown', function (e) { drag = [e.clientX, e.clientY]; });
+  window.addEventListener('pointerup', function () { drag = null; });
+  window.addEventListener('pointermove', function (e) { if (!drag) return; orbit.yaw += (e.clientX - drag[0]) * 0.006; orbit.pitch = Math.max(0.02, Math.min(1.5, orbit.pitch + (e.clientY - drag[1]) * 0.006)); drag = [e.clientX, e.clientY]; });
+  cv.addEventListener('wheel', function (e) { orbit.dist *= Math.exp(e.deltaY * 0.001); e.preventDefault(); }, { passive: false });
+  window.addEventListener('keydown', function (e) { var k = Object.keys(objs), i = k.indexOf(window.__cur); if (e.key === 'n') { window.__cur = k[(i + 1) % k.length]; frame(window.__cur, 'front'); } });
+  function resize() { var w = window.innerWidth, h = window.innerHeight; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
+  window.addEventListener('resize', resize); resize();
+  document.getElementById('info').textContent = 'triangles: ' + Object.keys(tris).map(function (k) { return k + ' ' + tris[k]; }).join(', ');
+  if (q.get('previews')) {
+    var pv = document.getElementById('pv'); pv.style.display = 'flex';
+    ids.forEach(function (id) { var c = RB3DModels.preview(id, null, 0.6, 220, 150); if (c) pv.appendChild(c); });
+    alts.slice(0, 3).forEach(function (a) { var c = RB3DModels.preview(a[1], a[2], 2.4, 220, 150); if (c) pv.appendChild(c); });
+  }
+  var still = q.get('still');
+  function loop(now) {
+    var t = still ? 0.35 : now / 1000;
+    anim.forEach(function (f) { f(t); });
+    updCam(); renderer.render(scene, cam);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+  window.__ready = true;
+})();
+</script>
+</body>
+</html>
