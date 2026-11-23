@@ -163,7 +163,7 @@ var RBAudio = (function () {
   // Original tunes in a 16-bit racing style: one theme per race track and a calm plaza/garage theme.
   // Song format (all bar patterns are 16 characters, one per 16th note):
   //   bpm, key (MIDI note of the tonic), scale (semitones of the mode), lead (lead octave above key),
-  //   leadType 'brass' | 'pluck' | 'twang' (a bright, bent, quickly decaying plucked string), bassType 'pick' | 'slap' | 'soft', swing (0..1 of a 16th, delays off-beat 8ths),
+  //   leadType 'brass' | 'pluck' | 'twang' (a bright, bent, quickly decaying plucked string) | 'synth' (a gliding space lead), bassType 'pick' | 'slap' | 'soft', swing (0..1 of a 16th, delays off-beat 8ths),
   //   push (chord changes land on the "and" of 4 for bass and guitar), echo (delay seconds), mix (voice levels).
   //   motifs: name -> one bar of lead. '1'-'7' scale degrees, 'a'-'g' the octave below, 'A'-'G' the octave above,
   //     '-' holds the note, '.' rests. A prefix like 'P|' plays that bar in song.scales.P instead of the song scale.
@@ -405,6 +405,70 @@ var RBAudio = (function () {
           bass: 'rrorrrorfrorrrot', gtr: 'X.xxX.xxX.xxX.x.', arp: 'xxxxxxxxxxxxxxxx', drum: 'drive', fill: 4 }
       ]
     },
+    // world 5, Moon Base: spacey synth themes, a gliding synth lead over pads, arpeggios and a long echo
+    // Rim Hopper: bright and floating, A Lydian (the raised fourth), I - II with a IV - V lift in B
+    rimhop: {
+      bpm: 172, key: 57, scale: LYD, lead: 12, leadType: 'synth', bassType: 'pick', echo: 0.17, loopFrom: 1,
+      mix: { lead: 0.03, bass: 0.032, gtr: 0.008, arp: 0.013, pad: 0.01, drum: 0.95 },
+      motifs: {
+        ri3: '....5-6-7-A-B---', ri4: 'C---B---A-------',
+        s1: '1-.5-.A---7-5-3-', s2: '4-------3-2-1---', s3: '1-.5-.A---B-C-B-', s4: 'A-------7---5---',
+        s5: '6-.6-.7-A-B-A-7-', s6: '5-------4-3-2-3-', s7: '4-5-6-7-A---B---', s8: 'A---------------',
+        t1: 'E---D---C---B---', t2: 'A---B---C-------', t3: 'D-.C-.B-.A-7-A-.', t4: 'B---------------',
+        t5: 'C-B-A-7-6-7-A-B-', t6: 'C-------D-------', t7: 'E-.D-.C-.B-.A-7-', t8: 'A-----------....'
+      },
+      secs: [
+        { bars: 4, ch: 'I II I II', mel: [null, null, 'ri3', 'ri4'], pad: true, bass: 'r.......r.......', drum: 'pulse', fill: 4 },
+        { bars: 16, ch: 'I I II II vi vi IV V I I II II vi vi IV V',
+          mel: ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'],
+          bass: 'r.r.o.r.r.o.f.o.', pad: true, arp: 'xxxxxxxxxxxxxxxx', drum: 'rock', fill: 4 },
+        { bars: 16, ch: 'IV IV I I II II vi vi IV IV I I II II V V',
+          mel: ['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't1', 't2', 't3', 't4', 't5', 't6', 't7', 't8'],
+          bass: 'r.o.r.o.r.o.f.o.', gtr: 'X.x.x.x.X.x.x.x.', arp: 'x.xxx.xxx.xxx.xx', pad: true, drum: 'drive', fill: 8 }
+      ]
+    },
+    // Rille Run: mysterious, E Dorian, slap bass in 16ths under a pad, down the valley and up again
+    rille: {
+      bpm: 182, key: 52, scale: DOR, lead: 12, leadType: 'synth', bassType: 'slap', echo: 0.16, loopFrom: 1,
+      mix: { lead: 0.03, bass: 0.022, gtr: 0.011, arp: 0.012, pad: 0.009, drum: 1 },
+      motifs: {
+        li3: '....1-2-3-5-4-3-', li4: '2---------......',
+        l1: '1-.1-.3-.5-4-3-.', l2: '2---1---g---1---', l3: '3-.3-.5-.7-6-5-.', l4: '4-------3-------',
+        l5: '5-.6-.7-.A-7-6-.', l6: '5---4---3---2---', l7: '1-.3-.5-.6-5-3-.', l8: '1---------......',
+        m1: 'A---7---5---6---', m2: '7-------3-------', m3: 'A-.B-.C-.B-A-7-.', m4: 'A---------------',
+        m5: 'C---B---A---7---', m6: '6---5---6---7---', m7: 'A-.A-.C-.E-D-C-.', m8: 'B-----------....'
+      },
+      secs: [
+        { bars: 4, ch: 'i i bVII i', mel: [null, null, 'li3', 'li4'], pad: true, bass: 'rrorrrorfrorrrot', drum: 'pulse', fill: 4 },
+        { bars: 16, ch: 'i i bVII bVII IV IV i i i i bVII bVII IV IV v v',
+          mel: ['l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8', 'l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8'],
+          bass: 'r.ro.r.rr.ro.rf.', gtr: 'X..x..X..x..X.x.', arp: 'x.x.x.x.x.x.x.x.', pad: true, drum: 'rock', fill: 4 },
+        { bars: 16, ch: 'bVI bVII i i bVI bVII IV IV bVI bVII i i IV IV bVII bVII',
+          mel: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8'],
+          bass: 'rrorrfrorrorrtro', gtr: 'X.xxX.xxX.xxX.x.', arp: 'xxxxxxxxxxxxxxxx', drum: 'gallop', fill: 4 }
+      ]
+    },
+    // Starfall Crater: the finale, C# harmonic minor, big and driving, i - bVI - V with a soaring B over gallops
+    starfall: {
+      bpm: 192, key: 49, scale: HARM, lead: 12, leadType: 'synth', bassType: 'pick', echo: 0.156, loopFrom: 1,
+      mix: { lead: 0.03, bass: 0.028, gtr: 0.012, arp: 0.013, pad: 0.01, drum: 1 },
+      motifs: {
+        fi3: '....5-5-6-7-A-B-', fi4: 'C---7-------....',
+        f1: '1-.1-.5-.3-1-5-.', f2: 'A-------7-6-5---', f3: '6-.6-.A-.6-4-3-.', f4: '5-------4-3-2---',
+        f5: '1-.1-.5-.3-1-A-.', f6: 'B-------A-7-A---', f7: 'C-.B-.A-.7-6-5-.', f8: '5-----------7-A-',
+        g1: 'C---E---D---C---', g2: 'B---C---7-------', g3: 'A-.A-.C-.E-D-C-.', g4: 'D---------------',
+        g5: 'E-.E-.F-.E-D-C-.', g6: 'B---A---7---A---', g7: 'C-D-E-F-E-D-C-B-', g8: 'A-----------5-7-'
+      },
+      secs: [
+        { bars: 4, ch: 'i i bVI V', mel: [null, null, 'fi3', 'fi4'], pad: true, bass: 'r...r...r...r.r.', gtr: 'X.......X.......', drum: 'hits', fill: 4 },
+        { bars: 16, ch: 'i i bVI bVI iv iv V V i i bVI bVI iv V i V',
+          mel: ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8'],
+          bass: 'r.r.o.r.r.o.f.o.', gtr: 'X.x.x.x.X.x.x.x.', arp: 'x.xxx.xxx.xxx.xx', pad: true, drum: 'drive', fill: 4 },
+        { bars: 16, ch: 'bVI bVI bVII bVII i i V V bVI bVI bVII bVII iv iv V V',
+          mel: ['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8', 'g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8'],
+          bass: 'rrorrrorfrorrrot', gtr: 'X.xxX.xxX.xxX.x.', arp: 'xxxxxxxxxxxxxxxx', pad: true, drum: 'gallop', fill: 8 }
+      ]
+    },
     // Victory (results after a win): C major fanfare, brass over a rock beat
     win: {
       bpm: 138, key: 48, scale: ION, lead: 12, leadType: 'brass', bassType: 'pick', echo: 0.2, loopFrom: 0,
@@ -635,6 +699,22 @@ var RBAudio = (function () {
       lfo.connect(depth); depth.connect(o1.detune); depth.connect(o2.detune); lfo.start(t); lfo.stop(end + 0.01);
     }
   }
+  // world 5, Moon Base: a space synth lead, a detuned square and saw that glide up into each note, a sine an octave
+  // up, a filter that opens on the attack and a wide, slow vibrato on long notes
+  function synth(b, t, f, dur, vol) {
+    var c = b.ctx, end = t + dur + 0.2, lp = filt(c, 'lowpass', 1000, 3, null), g = c.createGain();
+    g.gain.value = 0; g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + 0.025);
+    g.gain.setValueAtTime(vol * 0.8, t + Math.max(0.05, dur)); g.gain.exponentialRampToValueAtTime(0.0001, end);
+    lp.frequency.setValueAtTime(900, t); lp.frequency.exponentialRampToValueAtTime(4000, t + 0.07); lp.frequency.setTargetAtTime(1900, t + 0.07, 0.3);
+    lp.connect(g); g.connect(b.fx);
+    var o1 = osc(c, 'square', f, t, end + 0.01, -60, gainNode(c, 0.6, lp)), o2 = osc(c, 'sawtooth', f, t, end + 0.01, -50, lp), o3 = osc(c, 'sine', f * 2, t, end + 0.01, 0, gainNode(c, 0.3, lp));
+    o1.detune.linearRampToValueAtTime(-9, t + 0.05); o2.detune.linearRampToValueAtTime(9, t + 0.05);
+    if (dur > 0.25) {
+      var lfo = c.createOscillator(), depth = c.createGain();
+      lfo.frequency.value = 4.6; depth.gain.setValueAtTime(0, t); depth.gain.setValueAtTime(0, t + 0.18); depth.gain.linearRampToValueAtTime(24, t + 0.45);
+      lfo.connect(depth); depth.connect(o1.detune); depth.connect(o2.detune); depth.connect(o3.detune); lfo.start(t); lfo.stop(end + 0.01);
+    }
+  }
   function dum(b, t, v) { var c = b.ctx, o = osc(c, 'sine', 120, t, t + 0.22, 0, env(c, t, v, 0.002, t + 0.2, b.dry)); o.frequency.exponentialRampToValueAtTime(70, t + 0.12); noiseHit(b, t, 0.012, v * 0.3, b.snrF); }
   function tek(b, t, v) { var c = b.ctx; noiseHit(b, t, 0.045, v, b.snrF); osc(c, 'triangle', 900, t, t + 0.05, 0, env(c, t, v * 0.3, 0.001, t + 0.04, b.dry)); }
   function bassNote(b, t, f, dur, vol, kind) {
@@ -687,7 +767,7 @@ var RBAudio = (function () {
       var code = c.charCodeAt(0), oct = 0, deg;
       if (code >= 97) { oct = -1; deg = code - 97; } else if (code >= 65) { oct = 1; deg = code - 65; } else deg = code - 49;
       var f = midi(bar.key + sh + song.lead + bar.scale[deg] + 12 * oct), d = holds(bar.mel, s) * dt;
-      if (song.leadType === 'pluck') pluck(b, t, f, d, mix.lead); else if (song.leadType === 'twang') twang(b, t, f, d * 0.92, mix.lead); else brass(b, t, f, d * 0.92, mix.lead);
+      if (song.leadType === 'pluck') pluck(b, t, f, d, mix.lead); else if (song.leadType === 'twang') twang(b, t, f, d * 0.92, mix.lead); else if (song.leadType === 'synth') synth(b, t, f, d * 0.92, mix.lead); else brass(b, t, f, d * 0.92, mix.lead);
     }
     // bass
     if (sec.bass && (c = sec.bass.charAt(s)) && (c in BASS_IV || c === 'e')) {
