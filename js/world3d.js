@@ -761,15 +761,40 @@ var RB3DWorld = (function () {
   }
 
   // ---------- per-world look ----------
+  // LOOK_DOC: each world's entry gives the sky and light, then the land: hills (a HILLS shape), tex/texN/normalScale/tile
+  // (terrain texture, normal map and its repeat in cells), dryPatch (hills' dry grass rising with height) or patch (a
+  // colour blotched over the ground), roughMix (how strongly the runoff takes L.rough), cliff (steep slopes),
+  // mtnStyle (a MTN shape for the far ring) with mtnTint/mtnHaze, roadTint and shoulderC, wall ('fence' | 'armco', or a
+  // WALLS entry), bank (props by creeks: 'reeds' | 'redrock' | a proto name), kinds (buildings, by name in BUILD or the
+  // built-ins) and trackKinds (per track), farmHay, species ([proto, cumulative chance]) and band (protos just past the
+  // walls), maxTrees, treeDens, treeScale [min, spread], roadside (a proto here and there by the road), palms (round
+  // water), far ('mesas' or a FAR entry: big things in the far land), tuftN and tuftC (grass tufts), canyons (track ids
+  // whose gaps are dry canyons rather than water), flowers, waterGlow (an emissive colour for the gap fluid: lava); optional:
+  // mtnSnow ([height, colour]: the far ring white above a ragged snowline), canyonC (the colour at a canyon's floor),
+  // canyonWall (a canyon's walls), canyonBank (the proto strewn along a canyon), dust (wheel spray off the road), canyonDepth (a canyon's depth),
+  // shoulderTex (a texture for the road's shoulder strips in place of dirt)
   var LOOK = {
     hills: { sunAz: -2.2, sunEl: 0.72, sun: '#fff0d8', sunI: 2.5, hemiSky: '#cfe3ff', hemiGround: '#6a5a3a', hemiI: 0.6,
       zenith: '#2a66c4', horizon: '#bcd4e6', fog: '#c4d6e2', fogD: 0.0034, cloudA: '#ffffff', cloudB: '#a8b4c8', cover: 0.5, exposure: 1.0,
       grass: ['#46782e', '#66923e', '#345c24'], rough: '#46682a', dry: '#98984a', shoulder: '#8a7050', bank: '#6a5a40', water: '#1e5058',
-      mtn: ['#6a8aa8', '#a8bccc'], hill: 9, ground: 'grass' },
+      mtn: ['#6a8aa8', '#a8bccc'], hill: 9, ground: 'grass',
+      // land and scenery style (see LOOK_DOC above)
+      hills: 'roll', tex: 'grass', texN: null, tile: 4, dryPatch: true, patch: null, roughMix: 0.45, cliff: '#7a6a48',
+      mtnStyle: 'ridge', mtnTint: null, mtnHaze: null, roadTint: '#ffffff', shoulderC: '#c8b8a0', wall: 'fence', bank: 'reeds',
+      kinds: ['barn', 'house', 'house2', 'house'], trackKinds: { windmill: ['windmill', 'barn', 'house', 'windmill', 'house2'] }, farmHay: true,
+      species: [['oak', 0.32], ['elm', 0.5], ['pine', 0.74], ['birch', 0.84], ['bush', 0.95], ['rock', 1]],
+      band: ['oak', 'bush', 'elm', 'bush', 'pine', 'birch'], maxTrees: 520, treeDens: 1, treeScale: [0.85, 0.75],
+      roadside: 'hay', palms: false, far: null, tuftN: 4500, tuftC: '#e8ffd0', flowers: true, canyons: [] },
     desert: { sunAz: -2.0, sunEl: 0.5, sun: '#ffdcaa', sunI: 2.8, hemiSky: '#b8c8f0', hemiGround: '#b06a3a', hemiI: 0.7,
       zenith: '#3a62b8', horizon: '#f2cfa2', fog: '#efcfa4', fogD: 0.0030, cloudA: '#fff2e0', cloudB: '#d8a890', cover: 0.62, exposure: 1.0,
       grass: ['#d8a868', '#e8c088', '#c48a52'], rough: '#b86a40', dry: '#e0b880', shoulder: '#a86a44', bank: '#8a5a3a', water: '#2a7a80',
-      mtn: ['#b8705a', '#d8a888'], hill: 4.5, ground: 'sand' }
+      mtn: ['#b8705a', '#d8a888'], hill: 4.5, ground: 'sand',
+      hills: 'dune', tex: 'sand', texN: 'sandN', normalScale: 0.5, tile: 6, dryPatch: false, patch: '#c07a4a', roughMix: 0.75, cliff: '#b06a42',
+      mtnStyle: 'mesa', mtnTint: '#f0c8a0', mtnHaze: 0.45, roadTint: '#f4e4d8', shoulderC: '#e0b890', wall: 'armco', bank: 'redrock',
+      kinds: ['adobe', 'butte', 'adobe', 'butte', 'butte'], trackKinds: {}, farmHay: false,
+      species: [['cactus', 0.4], ['shrub', 0.65], ['redrock', 0.82], ['pillar', 1]],
+      band: ['cactus', 'shrub', 'redrock', 'shrub', 'pillar'], maxTrees: 380, treeDens: 0.6, treeScale: [0.8, 0.6],
+      roadside: 'shrub', palms: true, far: 'mesas', tuftN: 2000, tuftC: '#ffd890', canyons: ['mesa'] }
   };
   function lookOf(id) { return LOOK[id] || LOOK.hills; }
 
@@ -851,7 +876,7 @@ var RB3DWorld = (function () {
         var fx = x / GC, fz = z / GC, ix = Math.min(CW - 2, Math.floor(fx)), iz = Math.min(CHh - 2, Math.floor(fz)), tx = fx - ix, tz = fz - iz;
         var idw = (coarse[iz * CW + ix] * (1 - tx) + coarse[iz * CW + ix + 1] * tx) * (1 - tz) + (coarse[(iz + 1) * CW + ix] * (1 - tx) + coarse[(iz + 1) * CW + ix + 1] * tx) * tz;
         var d0 = dist[z * W + x], wx2 = this.x0 + x, wz2 = this.z0 + z, near = d0 < lim + 12 ? D.groundAt(g, g.query(wx2, wz2).s) : idw;
-        ry[z * W + x] = lerp(near, idw, smooth(lim + 1, lim + 11, d0)) * (1 - smooth(lim + 40, lim + 110, d0));
+        ry[z * W + x] = lerp(near, idw, smooth(lim + 1, lim + 11, d0)) * (1 - smooth(lim + 40, lim + 110, d0)) * (1 - (L.slump || 0) * smooth(lim + 3, lim + 24, d0));
       }
       this.ry = ry;
     }
@@ -869,15 +894,17 @@ var RB3DWorld = (function () {
         }
         ext[k] = e - 4;
       });
-      var canyon = worldId === 'desert' && trackId === 'mesa';
-      self.creeks.push({ y0: D.groundAt ? D.groundAt(g, (a + b) / 2) : 0, x: mid.x, z: mid.z, tx: mid.tx, tz: mid.tz, nx: nx, nz: nz, half: m.gap / 2, ext: ext, a: a, b: b, depth: canyon ? 3.2 : 1.1, water: canyon ? -2.7 : -0.32, canyon: canyon });
+      var canyon = (L.canyons || []).indexOf(trackId) >= 0;
+      self.creeks.push({ y0: D.groundAt ? D.groundAt(g, (a + b) / 2) : 0, x: mid.x, z: mid.z, tx: mid.tx, tz: mid.tz, nx: nx, nz: nz, half: m.gap / 2, ext: ext, a: a, b: b, depth: canyon ? L.canyonDepth || 3.2 : 1.1, water: canyon ? 0.5 - (L.canyonDepth || 3.2) : -0.32, canyon: canyon });
     });
-    var amp = L.hill, desert = worldId === 'desert';
-    this.hillAt = function (x, z) {
-      if (desert) { var r1 = 1 - Math.abs(fbm(x * 0.02, z * 0.02, 3, 301) * 2 - 1); return amp * (Math.pow(r1, 2) * 0.8 + fbm(x * 0.05, z * 0.05, 2, 303) * 0.3); }
-      var n = fbm(x * 0.014, z * 0.014, 4, 311); return amp * (Math.pow(n, 1.6) * 1.4 + fbm(x * 0.05, z * 0.05, 2, 313) * 0.25);
-    };
+    var amp = L.hill, shape = HILLS[L.hills] || HILLS.roll;
+    this.hillAt = function (x, z) { return shape(x, z, amp); };
   }
+  // the land's shape away from the road, by LOOK.hills: (x, z, amplitude) → height
+  var HILLS = {
+    roll: function (x, z, amp) { var n = fbm(x * 0.014, z * 0.014, 4, 311); return amp * (Math.pow(n, 1.6) * 1.4 + fbm(x * 0.05, z * 0.05, 2, 313) * 0.25); },
+    dune: function (x, z, amp) { var r1 = 1 - Math.abs(fbm(x * 0.02, z * 0.02, 3, 301) * 2 - 1); return amp * (Math.pow(r1, 2) * 0.8 + fbm(x * 0.05, z * 0.05, 2, 303) * 0.3); }
+  };
   Field.prototype.distAt = function (x, z) {
     var fx = x - this.x0, fz = z - this.z0;
     if (fx < 0 || fz < 0 || fx >= this.W - 1 || fz >= this.H - 1) return 999;
@@ -916,13 +943,13 @@ var RB3DWorld = (function () {
     return y;
   };
   // walkable/clear test for placing scenery: away from the road, creeks and water
-  Field.prototype.clear = function (x, z, m) { if (this.distAt(x, z) < this.lim + m) return false; var ck = this.creekAt(x, z); return !ck || ck.p < 0.01; };
+  Field.prototype.clear = function (x, z, m) { if (this.distAt(x, z) < this.lim + m) return false; var ck = this.creekAt(x, z); if (this.L.sea !== undefined && this.height(x, z) < this.L.sea + 0.4) return false; return !ck || ck.p < 0.01; };
 
-  function terrainMat(L, desert) {
-    var key = desert ? 'terrainD' : 'terrainH';
+  function terrainMat(L) {
+    var key = 'terrain_' + L.tex + '_' + (L.texN || '');
     if (MATS[key]) return MATS[key];
-    var m = std({ map: T(desert ? 'sand' : 'grass'), normalMap: desert ? T('sandN') : null, vertexColors: true, roughness: 0.95, metalness: 0 });
-    if (desert) m.normalScale.set(0.5, 0.5);
+    var m = std({ map: T(L.tex), normalMap: L.texN ? T(L.texN) : null, vertexColors: true, roughness: 0.95, metalness: 0 });
+    if (L.texN) m.normalScale.set(L.normalScale || 1, L.normalScale || 1);
     // two scales of the same texture so its repeat does not show
     addHooks(m, [function (sh) {
       sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>',
@@ -935,17 +962,18 @@ var RB3DWorld = (function () {
   }
   // terrain chunk meshes over the field's rectangle: one cell resolution near the road, coarser further out,
   // with skirts hanging under the edges to hide cracks between resolutions
-  function buildTerrain(group, F, L, desert) {
-    var mat = terrainMat(L, desert), cG = L.grass.map(col), cR = col(L.rough), cDry = col(L.dry), cSh = col(L.shoulder), cBank = col(L.bank), tile = desert ? 6 : 4;
+  function buildTerrain(group, F, L) {
+    var mat = terrainMat(L), cG = L.grass.map(col), cR = col(L.rough), cDry = col(L.dry), cSh = col(L.shoulder), cBank = col(L.bank), tile = L.tile || 4;
+    var cPatch = L.patch ? col(L.patch) : null, cCliff = col(L.cliff || '#7a6a48'), cCanyon = L.canyonWall ? col(L.canyonWall) : null;
     var tris = 0;
     function colour(x, z, y, d, ck, out) {
       var n = fbm(x * 0.05, z * 0.05, 3, 401), m = fbm(x * 0.21, z * 0.21, 2, 403), c = mixC(cG[0], cG[2], smooth(0.35, 0.7, n));
       c.lerp(cG[1], smooth(0.55, 0.85, m) * 0.5);
-      if (!desert) c.lerp(cDry, smooth(0.6, 0.85, fbm(x * 0.02, z * 0.02, 2, 405)) * 0.35 + clamp(y / 14, 0, 0.25));
-      else c.lerp(col('#c07a4a'), smooth(0.55, 0.8, fbm(x * 0.03, z * 0.03, 2, 407)) * 0.5);
+      if (L.dryPatch) c.lerp(cDry, smooth(0.6, 0.85, fbm(x * 0.02, z * 0.02, 2, 405)) * 0.35 + clamp(y / 14, 0, 0.25));
+      if (cPatch) c.lerp(cPatch, smooth(0.55, 0.8, fbm(x * 0.03, z * 0.03, 2, 407)) * 0.5);
       // the runoff: rougher, darker grass (red gravel in the canyon) right up to the walls, a dirt shoulder at the road
       var lim = F.lim, hw = F.g.hw;
-      c.lerp(cR, (1 - smooth(lim + 0.5, lim + 2.5, d)) * (desert ? 0.75 : 0.45));
+      c.lerp(cR, (1 - smooth(lim + 0.5, lim + 2.5, d)) * (L.roughMix || 0.45));
       c.lerp(cSh, (1 - smooth(hw + 0.2, hw + 1.1, d)) * 0.8);
       if (ck) c.lerp(cBank, smooth(0.05, 0.4, ck.p));
       out.copy(c);
@@ -966,8 +994,9 @@ var RB3DWorld = (function () {
         var y = H(i, j), gx = (H(i + 1, j) - H(i - 1, j)) / (2 * res), gz = (H(i, j + 1) - H(i, j - 1)) / (2 * res), l = Math.hypot(gx, 1, gz);
         pos[k * 3] = x; pos[k * 3 + 1] = y; pos[k * 3 + 2] = z; nor[k * 3] = -gx / l; nor[k * 3 + 1] = 1 / l; nor[k * 3 + 2] = -gz / l;
         uv[k * 2] = x / tile; uv[k * 2 + 1] = z / tile;
-        var d = F.distAt(x, z); colour(x, z, y, d, F.creekAt(x, z), tmp);
-        var slope = 1 - 1 / l; if (slope > 0.08) tmp.lerp(desert ? col('#b06a42') : col('#7a6a48'), smooth(0.08, 0.35, slope) * 0.6);
+        var d = F.distAt(x, z), ck0 = F.creekAt(x, z); colour(x, z, y, d, ck0, tmp);
+        var slope = 1 - 1 / l; if (slope > 0.08) tmp.lerp(cCliff, smooth(0.08, 0.35, slope) * 0.6);
+        if (cCanyon && ck0 && ck0.c.canyon) tmp.lerp(cCanyon, smooth(0.02, 0.3, ck0.p));
         clr[k * 3] = tmp.r; clr[k * 3 + 1] = tmp.g; clr[k * 3 + 2] = tmp.b;
         if (i < nx && j < nz) { var a = k, b = k + 1, c = k + nx + 1, e = c + 1; idx.push(a, c, b, b, c, e); }
       }
@@ -998,7 +1027,7 @@ var RB3DWorld = (function () {
       var dr = Math.hypot(x2 - cxm, z2 - czm) / R, y2 = F.hillAt(x2, z2) * (1 + dr * 1.5) + smooth(0.55, 1, dr) * L.hill * 3;
       if (inside) y2 = -4;
       else { var ex = Math.max(F.x0 - x2, x2 - (F.x0 + F.w), F.z0 - z2, z2 - (F.z0 + F.h)); if (ex < step) y2 = Math.min(y2, F.height(clamp(x2, F.x0, F.x0 + F.w), clamp(z2, F.z0, F.z0 + F.h)) + Math.max(0, ex) * 0.1) - 0.3; }
-      fp.push(x2, y2, z2); fu.push(x2 / (desert ? 6 : 4), z2 / (desert ? 6 : 4));
+      fp.push(x2, y2, z2); fu.push(x2 / tile, z2 / tile);
       colour(x2, z2, y2, 999, null, tmp); tmp.multiplyScalar(0.92); fc.push(tmp.r, tmp.g, tmp.b);
       if (i < n2 && j < n2) { var a2 = j * (n2 + 1) + i; fi.push(a2, a2 + n2 + 1, a2 + 1, a2 + 1, a2 + n2 + 1, a2 + n2 + 2); }
     }
@@ -1008,15 +1037,22 @@ var RB3DWorld = (function () {
     return tris;
   }
   // distant mountains (or mesas) on a ring, hazed toward the horizon colour
-  function mountains(group, cx, cz, L, desert, seed) {
+  // the far ring's height profile, by LOOK.mtnStyle: (angle, ring fraction, noise, seed) → height
+  var MTN = {
+    ridge: function (a, f, n, seed) { var ridge = 1 - Math.abs(fbm(Math.cos(a) * 5 + seed, Math.sin(a) * 5 + f * 2, 4, 505) * 2 - 1); return (40 + 110 * n * ridge); },
+    mesa: function (a, f, n) { return smooth(0.42, 0.5, n) * (60 + 50 * fbm(a * 2, 1, 2, 503)); }
+  };
+  function mountains(group, cx, cz, L, seed) {
+    var shape = MTN[L.mtnStyle] || MTN.ridge, tint = L.mtnTint ? col(L.mtnTint) : null, snow = L.mtnSnow ? col(L.mtnSnow[1]) : null;
     var pos = [], clr = [], idx = [], A = 160, R0 = 520, R1 = 760, rings = 5, base = col(L.mtn[0]), top = col(L.mtn[1]), hz = col(L.fog);
     for (var j = 0; j <= rings; j++) for (var i = 0; i <= A; i++) {
       var a = i / A * Math.PI * 2, f = j / rings, r = lerp(R0, R1, f), env = Math.sin(f * Math.PI);
       var n = fbm(Math.cos(a) * 3 + seed, Math.sin(a) * 3 + f, 4, 501), h;
-      if (desert) { h = smooth(0.42, 0.5, n) * (60 + 50 * fbm(a * 2, 1, 2, 503)) * env; }
-      else { var ridge = 1 - Math.abs(fbm(Math.cos(a) * 5 + seed, Math.sin(a) * 5 + f * 2, 4, 505) * 2 - 1); h = (40 + 110 * n * ridge) * env; }
+      h = shape(a, f, n, seed) * env;
       pos.push(cx + Math.cos(a) * r, h - 8, cz + Math.sin(a) * r);
-      var c = mixC(base, top, clamp(h / 140, 0, 1)); if (desert) c.lerp(col('#f0c8a0'), fbm(a * 9, h * 0.05, 2, 507) * 0.3); c.lerp(hz, desert ? 0.45 : 0.5 + 0.2 * f);
+      var c = mixC(base, top, clamp(h / 140, 0, 1)); if (tint) c.lerp(tint, fbm(a * 9, h * 0.05, 2, 507) * 0.3);
+      if (snow) c.lerp(snow, smooth(L.mtnSnow[0] - 6, L.mtnSnow[0] + 6, h + 40 * (fbm(a * 11, f * 3, 2, 511) - 0.5)));
+      c.lerp(hz, L.mtnHaze != null ? L.mtnHaze : 0.5 + 0.2 * f);
       clr.push(c.r, c.g, c.b);
       if (i < A && j < rings) { var k = j * (A + 1) + i; idx.push(k, k + 1, k + A + 1, k + 1, k + A + 2, k + A + 1); }
     }
@@ -1057,9 +1093,17 @@ var RB3DWorld = (function () {
   // ---------- hazards ----------
   // a model for each logic hazard kind (RB.HAZ), facing +x (the way it walks or rolls), on the ground at y = 0;
   // userData.pose(hz, t) turns its roll and steps its legs from RB.hazardAt
+  // HAZOBJ[kind](grp, inner) builds a new world's hazard model into inner and returns pose(hz, t) or nothing
+  var HAZOBJ = {};
   function hazardObj(kind) {
     var grp = new THREE.Group(), inner = new THREE.Group(), b = new Batch(0), I = new THREE.Matrix4(), legs = [];
     grp.add(inner);
+    if (HAZOBJ[kind]) {
+      var pose = HAZOBJ[kind](grp, inner);
+      grp.userData.pose = function (hz, t) { if (pose) pose(hz, t); else inner.rotation.z = -hz.roll; };
+      grp.traverse(function (o) { if (o.isMesh) o.receiveShadow = true; });
+      return grp;
+    }
     if (kind === 'sheep') {
       var wool = blob(0.5, 2, 7, 0.78, 0.35); wool.scale(1.3, 1, 1); wool.translate(0, 0.78, 0); paint(wool, function (x, y) { return mixC(col('#c8c2b4'), col('#fbf8f0'), clamp((y - 0.5) / 0.6, 0, 1)); }); b.add('plain', wool, I);
       var head = new THREE.SphereGeometry(0.22, 12, 8); head.scale(1.25, 1, 0.9); head.translate(0.78, 0.92, 0); paint(head, col('#2e2a2a')); b.add('plain', head, I);
@@ -1097,28 +1141,840 @@ var RB3DWorld = (function () {
     return grp;
   }
 
+  // ---------- per-world registries ----------
+  // extension points a world's LOOK can name: BUILD[kind](batch, matrix facing the road, rng, group, anim) for
+  // buildings; WALLS[name](batch, g, run of s values, offset, side, GY) for the barrier; FAR[name](batch, field, rng,
+  // group, anim) for big things in the far land. UNTINTED protos keep their colour (rocks), LOW ones are not scaled up
+  // like trees, SMALL ones do not block other placements.
+  var BUILD = {}, WALLS = {}, FAR = {};
+  var UNTINTED = { rock: 1, redrock: 1, pillar: 1 }, LOW = { bush: 1, rock: 1, shrub: 1 }, SMALL = { bush: 1, shrub: 1 };
+
+  // ---------- world 3, Snowcap Peaks ----------
+  // snow textures, the 'snowpack' material, snowy firs, rocks, bushes and snowmen, chalets and a lodge, snow-bank
+  // walls with marker poles, far snowy peaks, the snowball / penguin / ice-block hazards, and the LOOK entry
+  // wind-packed snow: soft drifts, faint ripples, blue in the hollows, a few sparkles; plus its normal map
+  MAKE.snow = function () {
+    var N = 512, hf = new Float32Array(N * N);
+    var c = pix(N, N, function (x, y, o) {
+      var n = fbm(x / N * 5, y / N * 5, 4, 211, 5, 5), w = fbm(x / N * 3, y / N * 3, 2, 213, 3, 3), g = hash(x, y, 17);
+      var rip = Math.sin((y / N * 14 + w * 5 + x / N * 3) * Math.PI * 2) * 0.5 + 0.5;
+      hf[y * N + x] = n * 0.7 + rip * 0.3;
+      var v = 0.9 + 0.07 * n + 0.03 * rip + 0.03 * (g - 0.5), cold = clamp(0.55 - n, 0, 0.4);
+      o[0] = 246 * v - 34 * cold; o[1] = 249 * v - 20 * cold; o[2] = 255 * v;
+      if (g > 0.996) { o[0] = o[1] = o[2] = 255; }
+      o[0] = Math.min(255, o[0]); o[1] = Math.min(255, o[1]); o[2] = Math.min(255, o[2]);
+    });
+    TX.snowN = toTex(normalCanvas(hf, N, N, 1.6));
+    return toTex(c, true);
+  };
+  MAKE.snowN = function () { T('snow'); return TX.snowN; };
+  // packed snow on roofs, banks, branches and hazards (matte, bright, a touch of sheen) and clear blue ice (ice blocks,
+  // icicles: glossy, a little see-through); made on first use, so MAT('snowpack') and MAT('clearIce') find them
+  function snowMats() {
+    if (MATS.snowpack) return;
+    var m = std({ map: T('snow'), normalMap: T('snowN'), vertexColors: true, roughness: 0.7, metalness: 0, envMapIntensity: 0.5 });
+    m.normalScale.set(0.5, 0.5); m.name = 'snowpack'; addHooks(m, [nearFade]); MATS.snowpack = m;
+    var ice = std({ vertexColors: true, roughness: 0.06, metalness: 0.05, transparent: true, opacity: 0.82, envMapIntensity: 1.4 }); ice.name = 'clearIce'; MATS.clearIce = ice;
+  }
+  SHADOW.snowpack = 1;
+  var SNOW = col('#f4f8ff'), SNOW_B = col('#c6d6ea');
+  // a snow-laden conifer: dark jagged tiers, each with a cap of snow on its upper part (snow: how far down it reaches)
+  function conifer(seed, tiers, h0, rad0, snow, base) {
+    snowMats();
+    var p = []; trunk(p, 1.2, 0.2, 0.11, BARK_D, 0, seed);
+    var dark = base.clone().multiplyScalar(0.4);
+    for (var i = 0; i < tiers; i++) {
+      var f = i / tiers, rad = rad0 * (1 - f * 0.8), h = h0 * (1 - f * 0.25), y = 0.8 + i * h0 * 0.48;
+      [0, 1].forEach(function (cap) {
+        var hh = cap ? h * snow : h, rr = cap ? rad * 0.85 * snow + 0.05 : rad * 0.85;
+        var g = new THREE.ConeGeometry(rr, hh, 9, 1, true), P = g.attributes.position, uv = new Float32Array(P.count * 2);
+        for (var j = 0; j < P.count; j++) {
+          var x = P.getX(j), yy = P.getY(j), z = P.getZ(j), a = Math.atan2(z, x), w = 1 + 0.2 * Math.sin(a * 5 + i * 2 + seed) + 0.1 * (hash(j, i, seed) - 0.5);
+          P.setXYZ(j, x * w, yy - (yy < -hh / 2 + 0.01 ? (cap ? 0.12 : 0.28) * w : 0), z * w);
+          uv[j * 2] = 0.52 + 0.2 * (0.5 + 0.5 * Math.cos(a)); uv[j * 2 + 1] = 0.02 + 0.46 * (0.5 + yy / hh);
+        }
+        g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.computeVertexNormals(); g.translate(0, y + h - hh / 2 + (cap ? 0.03 : 0), 0);
+        if (cap) { paint(g, function (x, yy) { return mixC(SNOW_B, SNOW, clamp((yy - y - h + hh) / hh * 1.4, 0, 1)); }); p.push({ mat: 'snowpack', g: g }); }
+        else { paint(g, function (x, yy) { return mixC(dark, base, 0.15 + 0.5 * clamp((yy - y) / h, 0, 1)).multiplyScalar(0.75); }); p.push({ mat: 'foliage', g: g }); }
+      });
+    }
+    return p;
+  }
+  PROTOS.fir = function () { return conifer(5, 6, 1.7, 1.5, 0.42, col('#2a4a3a')); };
+  PROTOS.snowfir = function () { return conifer(8, 7, 1.5, 1.35, 0.7, col('#2e4e40')); };
+  // a grey boulder with snow lying on its top
+  PROTOS.icerock = function () {
+    snowMats();
+    var g = rockGeo(0.9, 13, 0.8), cap = rockGeo(0.86, 13, 0.8);
+    paint(g, function (x, y) { return mixC(col('#4e5560'), col('#8a929c'), clamp(y / 0.9 + 0.4, 0, 1)); });
+    var P = cap.attributes.position; for (var i = 0; i < P.count; i++) P.setY(i, Math.max(P.getY(i), 0.25) + 0.04);
+    cap.computeVertexNormals(); paint(cap, SNOW);
+    return [{ mat: 'stone', g: g }, { mat: 'snowpack', g: cap }];
+  };
+  // a snow-buried bush: a soft mound with dark twigs poking out
+  PROTOS.snowbush = function () {
+    snowMats();
+    var p = [], m = blob(0.6, 2, 31, 0.55, 0.25); m.translate(0, 0.12, 0); paint(m, function (x, y) { return mixC(SNOW_B, SNOW, clamp(y / 0.4, 0, 1)); }); p.push({ mat: 'snowpack', g: m });
+    var r = prng(33);
+    for (var i = 0; i < 7; i++) { var t = cyl(0.012, 0.025, 0.5 + r() * 0.4, 4); t.rotateZ((r() - 0.5) * 1.2); t.rotateY(r() * 6.3); t.translate((r() - 0.5) * 0.7, 0.2, (r() - 0.5) * 0.7); paint(t, col('#3a2e28')); p.push({ mat: 'plain', g: t }); }
+    return p;
+  };
+  // a roadside snowman with a scarf, a carrot nose and a hat
+  PROTOS.snowman = function () {
+    snowMats();
+    var p = [];
+    [[0, 0.42, 0.48], [0, 1.08, 0.34], [0, 1.56, 0.24]].forEach(function (s, i) { var b = blob(s[2], 2, 41 + i, 0.95, 0.06); b.translate(s[0], s[1], 0); paint(b, function (x, y) { return mixC(SNOW_B, SNOW, clamp((y - s[1] + s[2]) / (s[2] * 1.6), 0, 1)); }); p.push({ mat: 'snowpack', g: b }); });
+    var nose = new THREE.ConeGeometry(0.05, 0.28, 8); nose.rotateZ(-Math.PI / 2); nose.translate(0.36, 1.56, 0); paint(nose, col('#f07a20')); p.push({ mat: 'plain', g: nose });
+    [-1, 1].forEach(function (sd) { var e = new THREE.SphereGeometry(0.035, 6, 4); e.translate(0.21, 1.64, sd * 0.08); paint(e, col('#1a1a1e')); p.push({ mat: 'shiny', g: e }); });
+    for (var k = 0; k < 3; k++) { var b2 = new THREE.SphereGeometry(0.04, 6, 4); b2.translate(0.33 - k * 0.01, 1.2 - k * 0.15, 0); paint(b2, col('#1a1a1e')); p.push({ mat: 'shiny', g: b2 }); }
+    var sc = new THREE.TorusGeometry(0.25, 0.06, 6, 16); sc.rotateX(Math.PI / 2); sc.translate(0, 1.36, 0); paint(sc, col('#d8342a')); p.push({ mat: 'cloth', g: sc });
+    var tail = box(0.1, 0.36, 0.05); tail.translate(0.16, 1.02, 0.18); paint(tail, col('#d8342a')); p.push({ mat: 'cloth', g: tail });
+    var brim = cyl(0.24, 0.24, 0.03, 14); brim.translate(0, 1.74, 0); paint(brim, col('#22222a')); p.push({ mat: 'plain', g: brim });
+    var hat = cyl(0.15, 0.16, 0.26, 14); hat.translate(0, 1.76, 0); paint(hat, col('#22222a')); p.push({ mat: 'plain', g: hat });
+    [-1, 1].forEach(function (sd) { var arm = cyl(0.015, 0.025, 0.55, 4); arm.rotateX(sd * 1.0); arm.translate(0, 1.05, sd * 0.28); paint(arm, col('#4a3a2e')); p.push({ mat: 'plain', g: arm }); });
+    return p;
+  };
+  // the snow on a gabled roof: a slab on each slope, thicker at the ridge
+  function roofSnow(b, m, w, d, h, o, y) { var s = gable(w + 0.06, d + 0.06, h + 0.04, o + 0.04); s.translate(0, y + 0.1, 0); paint(s, SNOW); b.add('snowpack', s, m, WHITE); var r2 = box(w + 2 * o + 0.1, 0.12, 0.3); r2.translate(0, y + h + 0.02, 0); paint(r2, SNOW); b.add('snowpack', r2, m, WHITE); }
+  // timber chalets on a stone base: steep snowy roof, balcony, windows glowing warm, a chimney
+  function chalet(b, m, r, big) {
+    snowMats();
+    var W = big ? 5.2 : 3.4, Dp = big ? 3.8 : 2.8, H = big ? 3.0 : 1.9, wood = col(big ? '#7a4a2e' : '#8a5634'), rh = big ? 2.2 : 1.6;
+    function put(mat, g, c, mm) { b.add(mat, g, mm ? m.clone().multiply(mm) : m, c); }
+    put('stone', box(W + 0.2, 0.7, Dp + 0.2), col('#8a8c90'));
+    put('plank', box(W, H - 0.5, Dp).translate(0, 0.7, 0), wood);
+    put('plank', gableEnds(W, Dp, rh).translate(0, H + 0.2, 0), wood.clone().multiplyScalar(0.9));
+    put('roof', gable(W, Dp, rh, 0.45).translate(0, H + 0.15, 0), col('#4a3a34'));
+    roofSnow(b, m, W, Dp, rh, 0.45, H + 0.15);
+    put('stone', box(0.5, rh + 0.9, 0.5).translate(W * 0.28, H + 0.2, -Dp * 0.18), col('#7a7a7e'));
+    var cap = box(0.62, 0.12, 0.62); cap.translate(W * 0.28, H + rh + 1.1, -Dp * 0.18); paint(cap, SNOW); b.add('snowpack', cap, m, WHITE);
+    // the front: door, glowing windows with shutters, a balcony with a railing under the gable
+    put('plank', box(0.7, 1.15, 0.08).translate(-W * 0.25, 0.7, Dp / 2), col('#4a2c1c'));
+    var wins = big ? [-W * 0.05, W * 0.3] : [W * 0.22];
+    wins.forEach(function (wx) {
+      put('glow', box(0.6, 0.6, 0.05).translate(wx, 1.15, Dp / 2 + 0.01), col('#ffd890'));
+      put('plank', box(0.74, 0.08, 0.1).translate(wx, 1.08, Dp / 2 + 0.03), col('#f2ead8'));
+      [-1, 1].forEach(function (sd) { put('plank', box(0.22, 0.66, 0.06).translate(wx + sd * 0.44, 1.12, Dp / 2 + 0.03), col('#b8342a')); });
+    });
+    put('glow', box(0.7, 0.55, 0.05).translate(0, H + 0.45, Dp / 2 + 0.01), col('#ffd890'));
+    put('plank', box(W * 0.7, 0.12, 0.9).translate(0, H - 0.1, Dp / 2 + 0.45), wood.clone().multiplyScalar(0.8));
+    var bs = box(W * 0.7, 0.06, 0.9); bs.translate(0, H + 0.02, Dp / 2 + 0.45); paint(bs, SNOW); b.add('snowpack', bs, m, WHITE);
+    for (var k = 0; k <= 8; k++) put('plank', box(0.06, 0.5, 0.06).translate(-W * 0.35 + k * W * 0.7 / 8, H, Dp / 2 + 0.86), wood.clone().multiplyScalar(0.7));
+    put('plank', box(W * 0.7, 0.08, 0.08).translate(0, H + 0.48, Dp / 2 + 0.86), wood.clone().multiplyScalar(0.7));
+    // icicles along the eaves
+    var ic = new THREE.ConeGeometry(0.04, 1, 5);
+    for (var q = 0; q < (big ? 14 : 9); q++) { var len = 0.15 + r() * 0.35, g2 = ic.clone(); g2.rotateX(Math.PI); g2.scale(1, len, 1); g2.translate(-W / 2 - 0.3 + q * (W + 0.6) / (big ? 13 : 8), H + 0.12 - len / 2, Dp / 2 + 0.42); paint(g2, col('#cfe8ff')); b.add('clearIce', g2, m, WHITE); }
+    // a woodpile and a pair of skis by the door
+    var logs = cyl(0.12, 0.12, 0.9, 6); logs.rotateX(Math.PI / 2);
+    for (var lg = 0; lg < 6; lg++) { var l2 = logs.clone(); l2.translate(-W / 2 - 0.45, 0.12 + Math.floor(lg / 3) * 0.22, -0.5 + (lg % 3) * 0.25 + Math.floor(lg / 3) * 0.12); put('bark', l2, col('#8a6a4a')); }
+    [-0.12, 0.12].forEach(function (sx) { var sk = box(0.08, 1.7, 0.03); sk.rotateZ(0.12); sk.translate(-W * 0.25 + 0.6 + sx, 0, Dp / 2 + 0.12); put('shiny', sk, col(sx < 0 ? '#e8342a' : '#2a7ae8')); });
+  }
+  BUILD.chalet = function (b, m, r) { chalet(b, m, r, false); };
+  BUILD.lodge = function (b, m, r) { chalet(b, m, r, true); };
+  // a snow bank along the run (rounded, higher in the middle) with orange-and-black marker poles
+  WALLS.snowbank = function (b, g, run, wd, sd, GY) {
+    snowMats();
+    var prof = [[-0.75, 0], [-0.45, 0.42], [0, 0.72], [0.45, 0.5], [0.8, 0]], P = [], U = [], I = [], C = [], n = prof.length;
+    run.forEach(function (s, j) {
+      var gy = GY(s), wob = 0.12 * Math.sin(s * 0.7) + 0.08 * Math.sin(s * 1.9);
+      prof.forEach(function (pr, q) { var pp = D.pointAt(g, s, wd + sd * pr[0]); P.push(pp.x, gy + pr[1] * (1 + wob) - 0.05, pp.z); U.push(s * 0.35, q * 0.4); var c = mixC(SNOW_B, SNOW, clamp(pr[1] / 0.6, 0, 1)); C.push(c.r, c.g, c.b); });
+      if (j) for (var q = 0; q < n - 1; q++) { var a = (j - 1) * n + q, c2 = j * n + q; if (sd > 0) I.push(a, c2, a + 1, a + 1, c2, c2 + 1); else I.push(a, a + 1, c2, a + 1, c2 + 1, c2); }
+    });
+    var bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); bg.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); bg.setAttribute('color', new THREE.Float32BufferAttribute(C, 3)); bg.setIndex(I); bg.computeVertexNormals();
+    if (bg.attributes.normal.getY(2) < 0) { for (var k = 0; k < I.length; k += 3) { var t = I[k + 1]; I[k + 1] = I[k + 2]; I[k + 2] = t; } bg.setIndex(I); bg.computeVertexNormals(); }
+    var p0 = D.pointAt(g, run[0], wd); b.add('snowpack', bg, new THREE.Matrix4(), WHITE, p0.x, p0.z);
+    for (var q2 = 0; q2 < run.length; q2 += 10) {
+      var pq = D.pointAt(g, run[q2], wd - sd * 0.3), mm = mtx(pq.x, GY(run[q2]), pq.z, -pq.h);
+      b.add('plain', cyl(0.035, 0.035, 1.5, 6), mm, col('#ff7a1a'));
+      [0.55, 1.05].forEach(function (y) { b.add('plain', cyl(0.038, 0.038, 0.16, 6).translate(0, y, 0), mm, col('#22222a')); });
+    }
+  };
+  // far snowy peaks standing out in the land round the track: rock below, snow above a ragged snowline
+  function peakGeo(rad, h, seed) {
+    var g = new THREE.ConeGeometry(rad, h, 20, 8), P = g.attributes.position;
+    for (var i = 0; i < P.count; i++) {
+      var x = P.getX(i), y = P.getY(i), z = P.getZ(i), a = Math.atan2(z, x), t = (y + h / 2) / h;
+      var w = 1 + 0.35 * (fbm(Math.cos(a) * 1.7 + seed, Math.sin(a) * 1.7 + t * 3, 3, seed | 0) - 0.5) * 2;
+      P.setXYZ(i, x * w, y + (t > 0.05 && t < 0.98 ? 0.06 * h * (fbm(a * 2 + seed, t * 4, 2, 71) - 0.5) : 0), z * w);
+    }
+    g.computeVertexNormals(); g.translate(0, h / 2, 0);
+    paint(g, function (x, y, z) { var a = Math.atan2(z, x), line = 0.42 + 0.14 * fbm(a * 3 + seed, 1, 2, 73); return y / h > line ? SNOW : mixC(col('#454c58'), col('#7a828e'), clamp(y / h / line, 0, 1)); });
+    return g;
+  }
+  FAR.peaks = function (b, F, r) {
+    for (var i = 0; i < 16; i++) {
+      var a = r() * 6.3, d = 0.5 * Math.hypot(F.w, F.h) + 40 + r() * 160, x = F.x0 + F.w / 2 + Math.cos(a) * d, z = F.z0 + F.h / 2 + Math.sin(a) * d;
+      if (F.distAt(x, z) < 50) continue;
+      b.add('plain', peakGeo(24 + r() * 26, 40 + r() * 55, r() * 9), mtx(x, F.hillAt(x, z) - 4, z, r() * 6.3), WHITE, x, z);
+    }
+  };
+  // the far ring: jagged alpine peaks
+  MTN.alps = function (a, f, n, seed) { var ridge = 1 - Math.abs(fbm(Math.cos(a) * 6 + seed, Math.sin(a) * 6 + f * 2, 4, 509) * 2 - 1); return 50 + 190 * Math.pow(n, 1.3) * Math.pow(ridge, 1.6); };
+  // the land: big snowy slopes and ridges
+  HILLS.peaks = function (x, z, amp) { var n = fbm(x * 0.012, z * 0.012, 4, 317), rg = 1 - Math.abs(fbm(x * 0.02, z * 0.02, 3, 319) * 2 - 1); return amp * (Math.pow(n, 1.5) * 1.3 + Math.pow(rg, 3) * 0.5 + fbm(x * 0.06, z * 0.06, 2, 321) * 0.15); };
+  // hazards (facing +x, on the ground at y = 0): a rolling snowball, a waddling penguin, a sliding block of ice
+  HAZOBJ.snowball = function (grp, inner) {
+    snowMats();
+    var b = new Batch(0), I = new THREE.Matrix4(), s = blob(0.95, 3, 51, 1, 0.1); paint(s, function (x, y) { return mixC(SNOW_B, SNOW, clamp(y / 0.9 + 0.5, 0, 1)); }); b.add('snowpack', s, I);
+    var r = prng(53);
+    for (var k = 0; k < 9; k++) { var c = blob(0.2 + r() * 0.15, 1, 55 + k, 0.8, 0.2), a = r() * 6.3, e = r() * 3 - 1.5; c.translate(Math.cos(a) * Math.cos(e) * 0.88, Math.sin(e) * 0.88, Math.sin(a) * Math.cos(e) * 0.88); paint(c, SNOW); b.add('snowpack', c, I); }
+    for (k = 0; k < 4; k++) { var tw = cyl(0.015, 0.02, 0.5, 4); tw.rotateZ(r() * 6.3); tw.rotateY(r() * 6.3); tw.translate((r() - 0.5) * 0.4, 0.9, (r() - 0.5) * 0.4); paint(tw, col('#4a3a2e')); b.add('plain', tw, I); }
+    b.build(inner, { cast: true }); inner.position.y = 0.95;
+  };
+  HAZOBJ.penguin = function (grp, inner) {
+    snowMats();
+    var b = new Batch(0), I = new THREE.Matrix4(), flips = [], feet = [];
+    var body = blob(0.32, 2, 61, 1.45, 0.04); body.translate(0, 0.52, 0);
+    paint(body, function (x, y, z) { return x > 0.12 && Math.abs(z) < 0.24 && y < 0.82 ? col('#f4f2ec') : col('#22242c'); }); b.add('shiny', body, I);
+    var head = new THREE.SphereGeometry(0.2, 14, 10); head.translate(0.05, 0.98, 0); paint(head, function (x, y, z) { return x > 0.1 && y < 0.97 && Math.abs(z) < 0.13 ? col('#f4f2ec') : col('#22242c'); }); b.add('shiny', head, I);
+    var beak = new THREE.ConeGeometry(0.05, 0.18, 8); beak.rotateZ(-Math.PI / 2); beak.translate(0.29, 0.96, 0); paint(beak, col('#f0a020')); b.add('plain', beak, I);
+    [-1, 1].forEach(function (sd) { var e = new THREE.SphereGeometry(0.035, 8, 6); e.translate(0.19, 1.04, sd * 0.08); paint(e, col('#ffffff')); b.add('shiny', e, I); var pu = new THREE.SphereGeometry(0.02, 6, 4); pu.translate(0.215, 1.045, sd * 0.08); paint(pu, col('#101014')); b.add('shiny', pu, I); });
+    var cheek = new THREE.SphereGeometry(0.05, 8, 6); cheek.scale(1, 0.6, 1); cheek.translate(0.16, 0.92, 0.13); paint(cheek, col('#ffb0a0')); b.add('plain', cheek, I);
+    b.build(inner, { cast: true });
+    [-1, 1].forEach(function (sd) {
+      var fg = new THREE.Group(), fl = new THREE.SphereGeometry(0.16, 8, 6); fl.scale(0.5, 1.4, 0.25); fl.translate(0, -0.18, 0); paint(fl, col('#22242c'));
+      var fm = new THREE.Mesh(fl, MAT('shiny')); fm.castShadow = true; fg.add(fm); fg.position.set(-0.02, 0.78, sd * 0.31); inner.add(fg); flips.push([fg, sd]);
+      var ft = new THREE.SphereGeometry(0.1, 8, 4); ft.scale(1.5, 0.35, 1); ft.translate(0.08, 0.03, 0); paint(ft, col('#f0a020'));
+      var fmesh = new THREE.Mesh(ft, MAT('plain')); fmesh.position.z = sd * 0.12; inner.add(fmesh); feet.push([fmesh, sd]);
+    });
+    return function (hz, t) {
+      var ph = t * 9 + hz.s;
+      inner.rotation.x = Math.sin(ph) * 0.16; inner.position.y = Math.abs(Math.sin(ph)) * 0.05;
+      flips.forEach(function (f) { f[0].rotation.x = f[1] * (0.25 + 0.3 * Math.abs(Math.sin(ph * 1.5))); });
+      feet.forEach(function (f) { f[0].position.x = Math.sin(ph) * 0.06 * f[1]; });
+    };
+  };
+  HAZOBJ.iceblock = function (grp, inner) {
+    snowMats();
+    var b = new Batch(0), I = new THREE.Matrix4(), cube = new THREE.BoxGeometry(1.5, 1.2, 1.5, 2, 2, 2), P = cube.attributes.position;
+    for (var i = 0; i < P.count; i++) { var x = P.getX(i), y = P.getY(i), z = P.getZ(i); P.setXYZ(i, x * (1 - 0.04 * hash(i, 1, 81)), y + 0.6, z * (1 - 0.04 * hash(i, 2, 81))); }
+    cube.computeVertexNormals(); paint(cube, function (x, y) { return mixC(col('#7ab8e0'), col('#d8f0ff'), clamp(y / 1.2, 0, 1)); }); b.add('clearIce', cube, I);
+    var core = blob(0.42, 1, 83, 0.9, 0.3); core.translate(0, 0.6, 0); paint(core, col('#f0f8ff')); b.add('plain', core, I);
+    var top = box(1.38, 0.08, 1.38); top.translate(0, 1.2, 0); paint(top, SNOW); b.add('snowpack', top, I);
+    b.build(inner, { cast: true });
+    return function (hz, t) { inner.rotation.y = Math.sin(t * 1.3 + hz.s) * 0.12; };
+  };
+  UNTINTED.icerock = 1; UNTINTED.snowbush = 1; LOW.icerock = 1; LOW.snowbush = 1; SMALL.snowbush = 1;
+  LOOK.ice = { sunAz: -2.35, sunEl: 0.34, sun: '#fff1de', sunI: 2.7, hemiSky: '#cfe0ff', hemiGround: '#90a4c0', hemiI: 0.8,
+    zenith: '#2c64c8', horizon: '#dce8f4', fog: '#d6e4f0', fogD: 0.0026, cloudA: '#ffffff', cloudB: '#aab8cc', cover: 0.56, exposure: 1.0,
+    grass: ['#eef3fa', '#fbfdff', '#d4e0ee'], rough: '#c8d4e2', dry: '#e4ebf3', shoulder: '#a4acb6', bank: '#9ab4cc', water: '#3a7ab0',
+    mtn: ['#4a5668', '#8a96a8'], hill: 11, ground: 'snow',
+    hills: 'peaks', tex: 'snow', texN: 'snowN', normalScale: 0.6, tile: 6, dryPatch: false, patch: '#c2d2e6', roughMix: 0.5, cliff: '#5a626e',
+    mtnStyle: 'alps', mtnTint: null, mtnHaze: 0.3, mtnSnow: [52, '#f6f9ff'], roadTint: '#e8eef6', shoulderC: '#c4ccd8', shoulderTex: 'snow', wall: 'snowbank', bank: 'icerock',
+    kinds: ['chalet', 'lodge', 'chalet', 'chalet'], trackKinds: {}, farmHay: false,
+    species: [['fir', 0.42], ['snowfir', 0.82], ['icerock', 0.93], ['snowbush', 1]],
+    band: ['fir', 'snowfir', 'snowbush', 'fir', 'snowfir'], maxTrees: 560, treeDens: 1, treeScale: [0.9, 0.7],
+    roadside: 'snowman', palms: false, far: 'peaks', tuftN: 900, tuftC: '#d8dcc0', flowers: false, canyons: ['glacier'],
+    canyonC: '#3a8ed0', canyonWall: '#6ab2e6', canyonBank: 'icerock', dust: '#f2f7ff' };
+  // ---------- end of world 3 ----------
+  // ---------- world 4, Lava Lane ----------
+  // dark basalt and ash under an orange haze; lava fills the low land (a sea of it at LOOK.sea) and the jump gaps;
+  // basalt-column gorges, charred trees, obsidian, a forge and an observatory, basalt walls, smoking cones far off
+  // and lava hazards. Materials: basalt (columns, walls, rocks), obsidian (glassy black), magma (glowing cracks).
+  MAKE.ash = function () {
+    var N = 512, hf = new Float32Array(N * N);
+    var c = pix(N, N, function (x, y, o) {
+      var n = fbm(x / N * 6, y / N * 6, 4, 701, 6, 6), m = fbm(x / N * 28, y / N * 28, 2, 703, 28, 28), gr = hash(x, y, 17);
+      var grain = gr > 0.94 ? 0.55 : gr < 0.025 ? 1.3 : 1; // dark cinders and pale pumice grains
+      hf[y * N + x] = n * 0.6 + m * 0.4 + (gr > 0.94 ? 0.25 : 0);
+      var v = (0.6 + 0.24 * n + 0.14 * m) * grain;
+      o[0] = 214 * v; o[1] = 204 * v; o[2] = 196 * v;
+    });
+    TX.ashN = toTex(normalCanvas(hf, N, N, 3));
+    return toTex(c, true);
+  };
+  MAKE.ashN = function () { T('ash'); return TX.ashN; };
+  // basalt faces: dark vesicular rock with horizontal joints, for the columns, walls and rocks
+  MAKE.basalt = function () {
+    var N = 256, hf = new Float32Array(N * N);
+    var c = pix(N, N, function (x, y, o) {
+      var n = fbm(x / N * 8, y / N * 8, 4, 711, 8, 8), joint = Math.pow(Math.abs(Math.sin((y / N * 4 + n * 0.35) * Math.PI)), 24), ves = hash(x, y, 9) > 0.965 ? 0.55 : 1;
+      hf[y * N + x] = n - joint * 0.8 - (ves < 1 ? 0.3 : 0);
+      var v = (0.52 + 0.32 * n) * (1 - 0.55 * joint) * ves;
+      o[0] = 205 * v; o[1] = 200 * v; o[2] = 204 * v;
+    });
+    TX.basaltN = toTex(normalCanvas(hf, N, N, 4));
+    return toTex(c, true);
+  };
+  MAKE.basaltN = function () { T('basalt'); return TX.basaltN; };
+  // molten rock: dark crust plates split by glowing veins (used as colour and emissive map)
+  MAKE.lava = function () {
+    var N = 256;
+    return toTex(pix(N, N, function (x, y, o) {
+      var n = fbm(x / N * 6, y / N * 6, 4, 723, 6, 6), vein = Math.pow(1 - Math.abs(n * 2 - 1), 7), pool = smooth(0.6, 0.78, fbm(x / N * 3, y / N * 3, 3, 725, 3, 3));
+      var hot = clamp(vein * 1.5 + pool * 0.9, 0, 1);
+      o[0] = 34 + 221 * hot; o[1] = 14 + 160 * hot * hot; o[2] = 8 + 50 * hot * hot * hot;
+    }), true);
+  };
+  // a soft puff of smoke or steam (alpha)
+  MAKE.smoke = function () {
+    var N = 128, c = pix(N, N, function (x, y, o) {
+      var dx = x / N * 2 - 1, dy = y / N * 2 - 1, d = Math.sqrt(dx * dx + dy * dy), n = fbm(x / N * 5, y / N * 5, 4, 731);
+      var a = clamp((1 - d) * 1.7 * (0.5 + 0.7 * n), 0, 1); o[0] = o[1] = o[2] = 255 * (0.7 + 0.3 * n); o[3] = 255 * a * a;
+    });
+    var t = toTex(c, true); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; return t;
+  };
+  function lavaMats() {
+    if (MATS.basalt) return;
+    var m = std({ map: T('basalt'), normalMap: T('basaltN'), vertexColors: true, roughness: 0.86 }); m.name = 'basalt'; addHooks(m, [nearFade]); MATS.basalt = m;
+    m = std({ vertexColors: true, roughness: 0.1, metalness: 0.25, envMapIntensity: 1.4 }); m.name = 'obsidian'; addHooks(m, [nearFade]); MATS.obsidian = m;
+    m = std({ map: T('lava'), emissiveMap: T('lava'), emissive: col('#ffffff'), emissiveIntensity: 2.6, vertexColors: true, roughness: 0.7 }); m.name = 'magma'; MATS.magma = m;
+    SHADOW.basalt = 1; SHADOW.obsidian = 1;
+  }
+  // wrap a round geometry's uvs around it (k repeats round, half that up)
+  function roundUV(g, k) {
+    var p = g.attributes.position, uv = new Float32Array(p.count * 2);
+    for (var i = 0; i < p.count; i++) { var x = p.getX(i), y = p.getY(i), z = p.getZ(i), l = Math.hypot(x, y, z) || 1; uv[i * 2] = (Math.atan2(z, x) / (2 * Math.PI) + 0.5) * k; uv[i * 2 + 1] = (y / l * 0.5 + 0.5) * k * 0.5; }
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); return g;
+  }
+  PROTOS.charred = function () {
+    var p = []; trunk(p, 2.8, 0.22, 0.09, col('#3a302c'), 4, 31);
+    var r = prng(33);
+    for (var i = 0; i < 5; i++) { var tw = barkCyl(0.02, 0.05, 0.7 + r() * 0.5, 4); tw.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(0, r() * 6.3, 0.5 + r() * 0.6, 'YXZ'))); tw.translate(0, 2.0 + r() * 0.8, 0); paint(tw, col('#2a2220')); p.push({ mat: 'foliage', g: tw }); }
+    return p;
+  };
+  // a cluster of hexagonal basalt columns, flat tops at stepped heights
+  PROTOS.basaltcol = function () {
+    lavaMats();
+    var p = [], r = prng(41), R0 = 0.3, k = 0;
+    for (var q = -2; q <= 2; q++) for (var w = -2; w <= 2; w++) {
+      var x = (q + w * 0.5) * R0 * 1.75, z = w * R0 * 1.52, d = Math.hypot(x, z);
+      if (d > 1.1 + r() * 0.3) continue;
+      var h = (3.6 - d * 1.6) * (0.75 + r() * 0.4) + (k++ % 3 === 0 ? -0.5 : 0), g = new THREE.CylinderGeometry(R0 * 0.97, R0, Math.max(0.4, h), 6, 1);
+      g.rotateY(Math.PI / 6); g.translate(x, h / 2, z); scaleUV(g, 0.8, h / 2.6); g = g.toNonIndexed(); g.computeVertexNormals();
+      paint(g, function (px, py) { return mixC(col('#26222a'), col('#4e4a50'), clamp(py / h, 0, 1)).multiplyScalar(0.85 + 0.3 * hash(q + 3, w + 3, 5)); }); p.push({ mat: 'basalt', g: g });
+    }
+    return p;
+  };
+  PROTOS.obsidian = function () {
+    lavaMats();
+    var g = rockGeo(0.7, 7, 0.9).toNonIndexed(); g.computeVertexNormals();
+    paint(g, function (x, y) { return mixC(col('#0e0c12'), col('#2a2632'), clamp(y / 0.7 + 0.3, 0, 1)); });
+    return [{ mat: 'obsidian', g: g }];
+  };
+  PROTOS.ashshrub = function () { var p = []; canopy(p, [[0, 0.3, 0, 0.4], [0.32, 0.24, 0.14, 0.3], [-0.28, 0.26, -0.1, 0.32]], 43, col('#7a7458'), 2); return p; };
+  UNTINTED.obsidian = UNTINTED.basaltcol = 1; LOW.obsidian = LOW.ashshrub = 1; SMALL.ashshrub = 1;
+  // the land: rolling ash with lava basins dropping below LOOK.sea, and jagged ridges
+  HILLS.lava = function (x, z, amp) {
+    var n = fbm(x * 0.016, z * 0.016, 4, 741), ridge = 1 - Math.abs(fbm(x * 0.03, z * 0.03, 3, 743) * 2 - 1);
+    return amp * ((n - 0.5) * 3.2 + Math.pow(ridge, 3) * 0.6 - 0.25);
+  };
+  // the far ring: sharp, broken volcanic peaks
+  MTN.jag = function (a, f, n, seed) { var ridge = 1 - Math.abs(fbm(Math.cos(a) * 7 + seed, Math.sin(a) * 7 + f * 3, 4, 751) * 2 - 1); return 30 + 175 * n * Math.pow(ridge, 2.2); };
+  // smoke rising from (x, y, z): n puffs of the given size cycling up, drifting downwind (+x)
+  function plume(group, anim, x, y, z, size, n, colr, op, far) {
+    var base = new THREE.SpriteMaterial({ map: T('smoke'), color: col(colr), transparent: true, depthWrite: false, opacity: op || 0.7, fog: !far }), sp = [];
+    for (var i = 0; i < n; i++) { var s = new THREE.Sprite(base.clone()); s.renderOrder = 3; group.add(s); sp.push(s); }
+    anim.push(function (t) {
+      sp.forEach(function (s, i) {
+        var f = (t * 0.035 + i / n) % 1, sc = size * (0.7 + f * 2.6);
+        s.position.set(x + f * f * size * 5 + Math.sin(i * 2.3) * size * 0.4, y + f * size * 7, z + Math.cos(i * 1.7) * size * 0.5 * f);
+        s.scale.set(sc, sc, 1); s.material.rotation = i * 1.3 + t * 0.05; s.material.opacity = (op || 0.7) * Math.sin(Math.PI * Math.min(1, f * 1.15)) * (1 - f * 0.4);
+      });
+    });
+  }
+  // a volcanic cone: concave flanks with gullies up to a crater rim, the crater floor at 0.86 h
+  function coneGeo(R, H, seed) {
+    var A = 64, J = 22, pos = [], uv = [], idx = [], cl = [], lo = col('#24201f'), hi = col('#6a625e'), ash = col('#8a8480');
+    for (var j = 0; j <= J; j++) for (var i = 0; i <= A; i++) {
+      var a = i / A * Math.PI * 2, t = j / J, rr, y;
+      if (t < 0.82) { var q = t / 0.82; rr = R * (1 - q) * (1 - q * 0.15) + R * 0.13 * q; y = H * (1 - Math.pow(1 - q, 1.7)); }
+      else { var q2 = (t - 0.82) / 0.18; rr = R * 0.13 * (1 - q2 * 0.7); y = H * (1 - 0.14 * Math.sin(q2 * Math.PI / 2)); }
+      var gully = 1 + 0.07 * Math.sin(a * 17 + seed) * (1 - t) + 0.05 * (fbm(Math.cos(a) * 3 + seed, t * 4, 3, 761) - 0.5) * 2;
+      pos.push(Math.cos(a) * rr * gully, y, Math.sin(a) * rr * gully); uv.push(a * R / 12, y / 6);
+      var c = mixC(lo, hi, clamp(y / H, 0, 1)); if (t > 0.6 && t < 0.83) c.lerp(ash, 0.4); cl.push(c.r, c.g, c.b);
+      if (i < A && j < J) { var k = j * (A + 1) + i; idx.push(k, k + A + 1, k + 1, k + 1, k + A + 1, k + A + 2); }
+    }
+    var g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3)); g.setIndex(idx); g.computeVertexNormals();
+    return g;
+  }
+  // a lava flow down a cone's flank: a ribbon from the rim (angle a) down to the given fraction of its height
+  function flowGeo(R, H, a, to, w) {
+    var pos = [], uv = [], idx = [], n = 24;
+    for (var k = 0; k <= n; k++) {
+      var t = 0.81 - k / n * (0.81 - to), q = t / 0.82, rr = R * (1 - q) * (1 - q * 0.15) + R * 0.13 * q + 0.4, y = H * (1 - Math.pow(1 - q, 1.7)) + 0.15;
+      var aa = a + Math.sin(k * 0.7) * 0.02, ww = w * (0.6 + k / n * 0.8) / Math.max(rr, 1);
+      [-1, 1].forEach(function (sd) { pos.push(Math.cos(aa + sd * ww) * rr, y, Math.sin(aa + sd * ww) * rr); uv.push(sd * 0.5 + 0.5, k * 0.6); });
+      if (k) { var o = (k - 1) * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); }
+    }
+    var g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+    if (g.attributes.normal.getY(0) < 0) { for (var q3 = 0; q3 < idx.length; q3 += 3) { var tq = idx[q3 + 1]; idx[q3 + 1] = idx[q3 + 2]; idx[q3 + 2] = tq; } g.setIndex(idx); g.computeVertexNormals(); }
+    return g;
+  }
+  // a foundry of dark stone with a glowing furnace mouth and a smoking chimney
+  BUILD.forge = function (b, m, r, group, anim) {
+    lavaMats();
+    function put(mat, g, c) { b.add(mat, g, m, c); }
+    var W = 4.2, Dp = 3.2, H = 2.5;
+    put('basalt', box(W + 0.25, 0.3, Dp + 0.25), col('#3a3638'));
+    put('basalt', box(W, H, Dp).translate(0, 0.3, 0), col('#6a6264'));
+    put('basalt', gableEnds(W, Dp, 1.05).translate(0, H + 0.3, 0), col('#6a6264'));
+    put('corrugated', gable(W, Dp, 1.1, 0.25).translate(0, H + 0.25, 0), col('#7a4a34'));
+    put('brick', cyl(0.42, 0.6, 6.4, 10, 1).translate(-W * 0.3, 0, -Dp * 0.22), col('#6a3a30'));
+    put('magma', new THREE.CylinderGeometry(0.38, 0.38, 0.06, 10).translate(-W * 0.3, 6.42, -Dp * 0.22), col('#ffffff'));
+    put('magma', box(1.2, 1.0, 0.06).translate(0.7, 0.3, Dp / 2 + 0.01), col('#ffffff'));
+    put('metal', box(1.6, 0.2, 0.22).translate(0.7, 1.4, Dp / 2), col('#2a2a30'));
+    [-1, 1].forEach(function (sd) { put('metal', box(0.2, 1.3, 0.22).translate(0.7 + sd * 0.7, 0.2, Dp / 2), col('#2a2a30')); });
+    put('glass', box(0.6, 0.5, 0.06).translate(-1.3, 1.3, Dp / 2), col('#ff9a4a'));
+    // a crucible of glowing metal and an anvil out front
+    put('metal', cyl(0.4, 0.3, 0.55, 12, 1).translate(-1.0, 0, Dp / 2 + 1.1), col('#3a3a40'));
+    var melt = new THREE.CircleGeometry(0.36, 12); melt.rotateX(-Math.PI / 2); melt.translate(-1.0, 0.53, Dp / 2 + 1.1); put('magma', melt, col('#ffffff'));
+    put('metal', box(0.7, 0.25, 0.3).translate(1.6, 0.45, Dp / 2 + 1.0), col('#4a4a52')); put('metal', box(0.3, 0.45, 0.25).translate(1.6, 0, Dp / 2 + 1.0), col('#4a4a52'));
+    var top = new THREE.Vector3(-W * 0.3, 6.6, -Dp * 0.22).applyMatrix4(m);
+    plume(group, anim, top.x, top.y, top.z, 0.9, 8, '#4a4446', 0.55);
+  };
+  // a volcano observatory: a white drum and dome on a basalt plinth, a radio mast with a red light
+  BUILD.observatory = function (b, m) {
+    lavaMats();
+    function put(mat, g, c) { b.add(mat, g, m, c); }
+    put('basalt', cyl(2.1, 2.3, 0.5, 16, 1), col('#3a3638'));
+    put('stucco', cyl(1.6, 1.6, 2.3, 18, 1).translate(0, 0.5, 0), col('#ece8e0'));
+    var dome = new THREE.SphereGeometry(1.68, 22, 10, 0, Math.PI * 2, 0, Math.PI / 2); dome.translate(0, 2.8, 0); scaleUV(dome, 6, 2); put('metal', dome, col('#dfe3e8'));
+    var slit = box(0.5, 1.5, 0.2); slit.translate(0, -0.2, 0); slit.rotateX(-0.75); slit.translate(0, 3.9, 0.95); put('plain', slit, col('#1a1e26'));
+    put('plank', box(0.6, 1.1, 0.06).translate(0, 0.5, 1.6), col('#3a4a5a'));
+    [-0.9, 0.9].forEach(function (a) { put('glass', box(0.4, 0.35, 0.06).translate(0, 1.6, 0).applyMatrix4(new THREE.Matrix4().makeRotationY(a)).translate(Math.sin(a) * 1.6, 0, Math.cos(a) * 1.6), col('#2a3a4a')); });
+    put('metal', cyl(0.05, 0.08, 5.2, 6).translate(2.0, 0.4, -1.2), col('#c8ccd2'));
+    var lamp = new THREE.SphereGeometry(0.14, 8, 6); lamp.translate(2.0, 5.7, -1.2); put('glow', lamp, col('#ff3a2a'));
+    put('metal', box(1.4, 0.06, 0.9).translate(-2.4, 0.9, 0.4).rotateZ(0), col('#2a3a6a'));
+    put('metal', box(0.08, 0.9, 0.08).translate(-2.4, 0, 0.4), col('#8a9098'));
+  };
+  // basalt block walls with amber reflectors, following the ground
+  WALLS.basalt = function (b, g, run, wd, sd, GY) {
+    lavaMats();
+    var P = [], U = [], I = [], TH = 0.42, H = 0.78;
+    run.forEach(function (s, j) {
+      var gy = GY(s), a = D.pointAt(g, s, wd - sd * TH / 2), c = D.pointAt(g, s, wd + sd * TH / 2);
+      P.push(a.x, gy - 0.3, a.z, a.x, gy + H, a.z, c.x, gy + H, c.z, c.x, gy - 0.3, c.z);
+      U.push(s * 0.5, 0, s * 0.5, (H + 0.3) * 0.5, s * 0.5, (H + 0.3 + TH) * 0.5, s * 0.5, (2 * H + 0.6 + TH) * 0.5);
+      if (j) { var o = (j - 1) * 4; for (var q = 0; q < 3; q++) I.push(o + q, o + 4 + q, o + q + 1, o + q + 1, o + 4 + q, o + 5 + q); }
+    });
+    var wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); wg.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); wg.setIndex(I); wg.computeVertexNormals();
+    // the inner face must face the road
+    var p0 = D.pointAt(g, run[0], 0), n0 = wg.attributes.normal;
+    if ((n0.getX(0) * -p0.tz + n0.getZ(0) * p0.tx) * sd > 0) { for (var q2 = 0; q2 < I.length; q2 += 3) { var tq = I[q2 + 1]; I[q2 + 1] = I[q2 + 2]; I[q2 + 2] = tq; } wg.setIndex(I); wg.computeVertexNormals(); }
+    var pa = D.pointAt(g, run[0], wd); b.add('basalt', wg, new THREE.Matrix4(), col('#5a5456'), pa.x, pa.z);
+    for (var k = 2; k < run.length; k += 8) { var pr = D.pointAt(g, run[k], wd - sd * (TH / 2 + 0.01)); b.add('glow', box(0.16, 0.1, 0.03), mtx(pr.x, GY(run[k]) + H - 0.25, pr.z, -pr.h + Math.PI / 2), col('#ffae3a')); }
+  };
+  // far off: the lava sea in the low land, smoking cones with glowing flows, basalt gorges along the road
+  // (LOOK.gorges[track] = [[u0, u1], ...]) and steam rising from fumaroles
+  FAR.volcano = function (b, F, r, group, anim) {
+    lavaMats();
+    var L = F.L, g = F.g, cx = F.x0 + F.w / 2, cz = F.z0 + F.h / 2, diag = Math.hypot(F.w, F.h), k, s;
+    if (L.sea !== undefined) {
+      var lt = T('lava').clone(); lt.needsUpdate = true;
+      var size = diag + 1500; lt.repeat.set(size / 16, size / 16);
+      var sm = MATS.lavaSea || (MATS.lavaSea = std({ color: col('#ffffff'), map: lt, emissive: col('#ffffff'), emissiveMap: lt, emissiveIntensity: 1.9, roughness: 0.6 }));
+      var sg = new THREE.PlaneGeometry(size, size); sg.rotateX(-Math.PI / 2);
+      var sea = new THREE.Mesh(sg, sm); sea.position.set(cx, L.sea, cz); sea.receiveShadow = true; sea.name = 'lavaSea'; group.add(sea);
+      anim.push(function (t) { sm.map.offset.set(t * 0.003, t * 0.002); });
+    }
+    // smoking cones, unfogged with the haze baked in like the mountain ring, so they stand out against the sky
+    var a0 = r() * 6.3, hz = col(L.fog), tmp = new THREE.Color();
+    var coneMat = MATS.farCone || (MATS.farCone = new THREE.MeshLambertMaterial({ vertexColors: true, fog: false }));
+    var glowMat = MATS.farLava || (MATS.farLava = new THREE.MeshBasicMaterial({ map: T('lava'), color: new THREE.Color(1.7, 1.7, 1.7), fog: false }));
+    [[a0, 1], [a0 + 2.3 + r(), 0.6], [a0 + 4.1 + r() * 0.6, 0.75]].forEach(function (cn, i) {
+      var R = 110 * cn[1], H = 118 * cn[1], dist = diag * 0.5 + R + 70 + 50 * i, x = cx + Math.cos(cn[0]) * dist, z = cz + Math.sin(cn[0]) * dist;
+      var cg = coneGeo(R, H, i * 3.7), cc = cg.attributes.color;
+      for (k = 0; k < cc.count; k++) { tmp.setRGB(cc.getX(k), cc.getY(k), cc.getZ(k)).lerp(hz, 0.3 + 0.12 * i); cc.setXYZ(k, tmp.r, tmp.g, tmp.b); }
+      var cm = new THREE.Mesh(cg, coneMat); cm.position.set(x, -4, z); cm.rotation.y = r() * 6.3; cm.name = 'cone'; group.add(cm);
+      var pool = new THREE.CircleGeometry(R * 0.1, 24); pool.rotateX(-Math.PI / 2); pool.translate(0, H * 0.87, 0); cm.add(new THREE.Mesh(pool, glowMat));
+      for (k = 0; k < 2 + i % 2; k++) cm.add(new THREE.Mesh(flowGeo(R, H, r() * 6.3, 0.2 + r() * 0.35, 2.2 * cn[1] + 1), glowMat));
+      if (i < 2) plume(group, anim, x, H - 6, z, R * 0.1, 14, i ? '#8a6e66' : '#5a4440', 0.8, true);
+    });
+    // basalt columns lining the gorges
+    ((L.gorges || {})[g.id] || []).forEach(function (rg) {
+      for (s = rg[0] * g.L; s < rg[1] * g.L; s += 1.3) [-1, 1].forEach(function (sd) {
+        var p = D.pointAt(g, s + r(), sd * (F.lim + 1.4 + r() * 4));
+        if (!F.clear(p.x, p.z, 0.8)) return;
+        addProto(b, 'basaltcol', mtx(p.x, F.height(p.x, p.z) - 0.3, p.z, r() * 6.3, 1 + r() * 0.5, 1.6 + r() * 1.8, 1 + r() * 0.5), WHITE, p.x, p.z);
+      });
+    });
+    // fumaroles: steam out in the land
+    for (k = 0, s = 0; k < 60 && s < 5; k++) {
+      var fx = F.x0 + r() * F.w, fz = F.z0 + r() * F.h;
+      if (F.distAt(fx, fz) < F.lim + 10 || !F.clear(fx, fz, 2)) continue;
+      plume(group, anim, fx, F.height(fx, fz), fz, 0.8, 7, '#e8e2dc', 0.4); s++;
+    }
+  };
+  // hazards: a bouncing lava bomb, a rolling magma boulder, a steam vent that puffs (hz.puff)
+  HAZOBJ.bomb = function (grp, inner) {
+    lavaMats();
+    var g = roundUV(blob(0.72, 2, 13, 0.92, 0.3), 2); paint(g, WHITE);
+    var mesh = new THREE.Mesh(g, MATS.magma); mesh.castShadow = true; inner.add(mesh); inner.position.y = 0.66;
+    return function (hz, t) { inner.rotation.z = -hz.roll; inner.rotation.x = t * 2.5; var sq = hz.y < 0.3 ? 0.78 + hz.y * 0.7 : 1; inner.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq)); };
+  };
+  HAZOBJ.magma = function (grp, inner) {
+    lavaMats();
+    var g = roundUV(rockGeo(1.15, 11, 0.95), 3); paint(g, col('#b0a8a4'));
+    var mesh = new THREE.Mesh(g, MATS.magma); mesh.castShadow = true; inner.add(mesh); inner.position.y = 1.0;
+    return null;
+  };
+  HAZOBJ.vent = function (grp, inner) {
+    lavaMats();
+    var b = new Batch(0), I = new THREE.Matrix4();
+    for (var k = 0; k < 9; k++) { var a = k / 9 * 6.3, rk = rockGeo(0.26 + (k % 3) * 0.06, k + 3, 0.7); paint(rk, col('#3a3436')); b.add('basalt', rk, mtx(Math.cos(a) * 0.82, 0, Math.sin(a) * 0.82, a), WHITE, 0, 0); }
+    var hole = new THREE.CircleGeometry(0.62, 16); hole.rotateX(-Math.PI / 2); hole.translate(0, 0.03, 0); b.add('magma', hole, I, col('#c8c0bc'), 0, 0);
+    b.build(inner, { cast: true });
+    var sm = MATS.steam || (MATS.steam = std({ color: col('#f2eeec'), roughness: 1, transparent: true, opacity: 0.62, depthWrite: false })), puffs = [];
+    for (k = 0; k < 8; k++) { var pg = new THREE.Group(), pm = new THREE.Mesh(blob(0.55, 1, k * 3 + 1, 1, 0.35), sm); pm.renderOrder = 3; pg.add(pm); grp.add(pg); puffs.push(pg); }
+    return function (hz, t) {
+      var p = hz.puff || 0;
+      puffs.forEach(function (pg, i) {
+        var f = (t * 1.1 + i / puffs.length) % 1;
+        pg.position.set(Math.sin(i * 2.1) * 0.25 * f, 0.2 + f * 3.8 * (0.15 + 0.85 * p), Math.cos(i * 1.3) * 0.25 * f);
+        pg.scale.setScalar((0.3 + f * 1.1) * (0.18 + 0.82 * p));
+      });
+    };
+  };
+  // Lava Lane's look. New keys: sea (the lava sea's level; nothing is placed below it), slump (how far the land past
+  // the walls falls from the road's height, 0..1, so raised road stands on ridges and the cone has a crater), gorges
+  LOOK.volcano = { sunAz: -2.0, sunEl: 0.42, sun: '#ffc08a', sunI: 2.5, hemiSky: '#c89a88', hemiGround: '#5a2a18', hemiI: 0.6,
+    zenith: '#3a2c34', horizon: '#e0905a', fog: '#9a6a56', fogD: 0.0042, cloudA: '#d0a08a', cloudB: '#4a3436', cover: 0.38, exposure: 1.0,
+    grass: ['#2e2a2a', '#45403c', '#211d1d'], rough: '#55504c', dry: '#6a5a50', shoulder: '#4a4038', bank: '#2a2020', water: '#ff6a1a',
+    mtn: ['#1e1a1c', '#4a3c3a'], hill: 7, ground: 'ash',
+    hills: 'lava', tex: 'ash', texN: 'ashN', normalScale: 0.8, tile: 5, dryPatch: false, patch: '#5a3a2e', roughMix: 0.7, cliff: '#262022',
+    mtnStyle: 'jag', mtnTint: '#5a2a1e', mtnHaze: 0.42, roadTint: '#d8d0cc', shoulderC: '#7a6e64', wall: 'basalt', bank: 'obsidian',
+    kinds: ['forge', 'observatory', 'forge'], trackKinds: {}, farmHay: false,
+    species: [['charred', 0.45], ['basaltcol', 0.53], ['obsidian', 0.75], ['ashshrub', 1]],
+    band: ['charred', 'obsidian', 'basaltcol', 'charred', 'ashshrub'], maxTrees: 340, treeDens: 0.7, treeScale: [0.8, 0.6],
+    roadside: 'obsidian', palms: false, far: 'volcano', tuftN: 1400, tuftC: '#b8a888', flowers: false, canyons: [], waterGlow: '#ff4a0a',
+    sea: -1.3, slump: 0.85, gorges: { basalt: [[0.13, 0.28]], cinder: [[0.6, 0.64]], caldera: [[0.74, 0.84]] } };
+  // ---------- world 5, Moon Base ----------
+  // grey regolith pitted with craters under a black sky full of stars and a big blue planet, a hard white sun, a ring
+  // of rounded crater-rim mountains, dome habitats, landers, radio dishes and masts, light-strip barriers, rocks and
+  // solar panels, a glass tunnel over each track's dome-base run (TRACKS[id].base) and the rover, moon rock, meteorite
+  // and dish-robot hazards
+  MAKE.regolith = function () {
+    var N = 512, hf = new Float32Array(N * N), sh = new Float32Array(N * N), r = prng(501), x, y;
+    for (y = 0; y < N; y++) for (x = 0; x < N; x++) hf[y * N + x] = 0.35 * fbm(x / N * 8, y / N * 8, 4, 503, 8, 8) + 0.1 * hash(x, y, 5);
+    // craters, big and small: a bowl, a raised rim, and a bright splash of ejecta round the young ones
+    for (var k = 0; k < 150; k++) {
+      var cx = r() * N, cy = r() * N, R = 2 + Math.pow(r(), 3) * 40, young = r() < 0.3;
+      for (var dy = -Math.ceil(R * 2.2); dy <= R * 2.2; dy++) for (var dx = -Math.ceil(R * 2.2); dx <= R * 2.2; dx++) {
+        var t = Math.hypot(dx, dy) / R; if (t > 2.2) continue;
+        var px = ((Math.floor(cx + dx) % N) + N) % N, py = ((Math.floor(cy + dy) % N) + N) % N, i = py * N + px;
+        var h = t < 1 ? (t * t - 1) * 0.5 + 0.14 * t * t * t * t : 0.14 * Math.exp(-(t - 1) * (t - 1) / 0.08);
+        hf[i] += h * Math.min(1, R / 12);
+        sh[i] += (t < 1 ? -0.12 * (1 - t * t) : 0) + (young ? 0.22 * Math.exp(-(t - 1) * (t - 1) / 0.3) * (1 - t / 2.2) : 0);
+      }
+    }
+    var c = pix(N, N, function (px, py, o) {
+      var i = py * N + px, l = hf[py * N + (px - 1 + N) % N], rr = hf[py * N + (px + 1) % N];
+      var v = 0.62 + 0.22 * fbm(px / N * 5, py / N * 5, 3, 507, 5, 5) + 0.08 * (hash(px, py, 9) - 0.5) + sh[i] + (l - rr) * 1.2;
+      if (hash(px, py, 13) > 0.993) v += 0.25; // glints of glassy grains
+      o[0] = 236 * v; o[1] = 234 * v; o[2] = 228 * v;
+    });
+    TX.regolithN = toTex(normalCanvas(hf, N, N, 5));
+    return toTex(c, true);
+  };
+  MAKE.regolithN = function () { T('regolith'); return TX.regolithN; };
+  // solar cells: dark blue squares in a silver grid, a cell per 16 px
+  MAKE.solarcell = function () {
+    var N = 128, c = pix(N, N, function (x, y, o) {
+      var gx = x % 16, gy = y % 16, line = gx < 1 || gy < 1, bus = (gx === 8 || gy === 8) && hash(x >> 4, y >> 4, 3) > 0.2;
+      var v = 0.85 + 0.15 * fbm(x / N * 3, y / N * 3, 2, 511, 3, 3);
+      if (line) { o[0] = 190; o[1] = 196; o[2] = 204; } else if (bus) { o[0] = 70 * v; o[1] = 90 * v; o[2] = 150 * v; } else { o[0] = 26 * v; o[1] = 42 * v; o[2] = 96 * v; }
+    });
+    return toTex(c, true);
+  };
+  // crinkled foil (landers): a normal map only
+  MAKE.foilN = function () {
+    var N = 128, hf = new Float32Array(N * N);
+    for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) hf[y * N + x] = Math.abs(fbm(x / N * 6, y / N * 6, 4, 513, 6, 6) - 0.5) * 2;
+    return toTex(normalCanvas(hf, N, N, 6));
+  };
+  // the moon's materials, made on first use (each moon builder below is wrapped to call this first)
+  function moonMat(name, o, shadow) {
+    if (!MATS[name]) { var m = std(o); m.name = name; addHooks(m, [nearFade]); MATS[name] = m; }
+    if (shadow) SHADOW[name] = 1;
+  }
+  function moonMats() {
+    if (MATS.hull) return;
+    moonMat('solar', { map: T('solarcell'), vertexColors: true, roughness: 0.22, metalness: 0.55, envMapIntensity: 1.3 }, true);
+    moonMat('foil', { normalMap: T('foilN'), vertexColors: true, roughness: 0.28, metalness: 0.9, envMapIntensity: 1.4 }, true);
+    moonMat('domeGlass', { vertexColors: true, roughness: 0.06, metalness: 0.3, envMapIntensity: 1.8, emissive: col('#1a2a3a'), emissiveIntensity: 0.6 }, true);
+    moonMat('panelDS', { vertexColors: true, roughness: 0.45, metalness: 0.35, side: THREE.DoubleSide }, true);
+    moonMat('meteorCore', { vertexColors: true, roughness: 0.8, emissive: col('#ff6a1a'), emissiveIntensity: 0.55 }, true);
+    MATS.glowDS = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, side: THREE.DoubleSide }); MATS.glowDS.name = 'glowDS';
+    MATS.tunnelGlass = new THREE.MeshStandardMaterial({ color: col('#b8d4f0'), transparent: true, opacity: 0.13, roughness: 0.04, metalness: 0, envMapIntensity: 2, side: THREE.DoubleSide, depthWrite: false }); MATS.tunnelGlass.name = 'tunnelGlass';
+    MATS.meteorHalo = new THREE.MeshBasicMaterial({ color: col('#ffb060'), transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+    moonMat('hull', { vertexColors: true, roughness: 0.55, metalness: 0.15 }, true);
+  }
+  // the land: gentle swells pocked with craters (a bowl, a raised rim) on two scales, from a hashed grid
+  HILLS.crater = function (x, z, amp) {
+    var y = amp * 0.35 * fbm(x * 0.012, z * 0.012, 3, 521);
+    [[38, 523, 0.55], [13, 527, 0.4]].forEach(function (L) {
+      var cs = L[0], ix = Math.floor(x / cs), iz = Math.floor(z / cs);
+      for (var j = -1; j <= 1; j++) for (var i = -1; i <= 1; i++) {
+        var hx = ix + i, hz = iz + j; if (hash(hx, hz, L[1]) > L[2]) continue;
+        var R = cs * (0.18 + 0.32 * hash(hx, hz, L[1] + 1)), cx = (hx + 0.2 + 0.6 * hash(hx, hz, L[1] + 2)) * cs, cz = (hz + 0.2 + 0.6 * hash(hx, hz, L[1] + 3)) * cs;
+        var t = Math.hypot(x - cx, z - cz) / R; if (t > 2.2) continue;
+        y += amp / 5 * R * (t < 1 ? 0.24 * (t * t - 1) + 0.09 * t * t * t * t : 0.09 * Math.exp(-(t - 1) * (t - 1) / 0.12));
+      }
+    });
+    return y;
+  };
+  // the far ring: broad, rounded massifs like the wall of a huge crater
+  MTN.craterRim = function (a, f, n, seed) { var m = fbm(Math.cos(a) * 2 + seed, Math.sin(a) * 2 + f, 3, 531); return 30 + 120 * Math.pow(n, 1.4) * (0.6 + 0.6 * m); };
+  // scenery
+  PROTOS.mrock = function () { var g = rockGeo(0.7, 31, 0.6); paint(g, function (x, y) { return mixC(col('#4e4d49'), col('#aeaca5'), clamp(y / 0.6 + 0.45, 0, 1)); }); return [{ mat: 'stone', g: g }]; };
+  PROTOS.mboulder = function () { var g = rockGeo(1.7, 37, 0.5); paint(g, function (x, y) { return mixC(col('#45443f'), col('#a19f98'), clamp(y / 1.0 + 0.4, 0, 1)); }); return [{ mat: 'stone', g: g }]; };
+  PROTOS.solar = function () {
+    var p = [], frame = col('#c8ccd2');
+    p.push({ mat: 'metal', g: cyl(0.07, 0.09, 1.1, 8).translate(0, 0, 0) });
+    paint(p[0].g, col('#9aa0a8'));
+    var panel = box(2.4, 0.05, 1.3, 1 / 1.2); panel.translate(0, -0.025, 0); panel.rotateX(-0.55); panel.translate(0, 1.15, 0); paint(panel, WHITE); p.push({ mat: 'solar', g: panel });
+    var rim = box(2.5, 0.04, 1.4); rim.translate(0, -0.07, 0); rim.rotateX(-0.55); rim.translate(0, 1.15, 0); paint(rim, frame); p.push({ mat: 'metal', g: rim });
+    return p;
+  };
+  PROTOS.beacon = function () {
+    var post = cyl(0.06, 0.08, 1.2, 8); paint(post, col('#d8d8d4'));
+    var cap = new THREE.SphereGeometry(0.11, 10, 6); cap.translate(0, 1.25, 0); paint(cap, col('#ffb03a'));
+    var foot = cyl(0.22, 0.26, 0.12, 10); paint(foot, col('#6a6a68'));
+    return [{ mat: 'metal', g: post }, { mat: 'glow', g: cap }, { mat: 'plain', g: foot }];
+  };
+  UNTINTED.mrock = UNTINTED.mboulder = UNTINTED.solar = UNTINTED.beacon = 1;
+  LOW.mrock = LOW.mboulder = LOW.solar = LOW.beacon = 1;
+  SMALL.beacon = 1;
+  // buildings (local +z faces the road)
+  function blinker(group, anim, x, y, z, hex, rate, ph) {
+    var m = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), MAT('glow')); paint(m.geometry, col(hex));
+    m.position.set(x, y, z); group.add(m); anim.push(function (t) { m.visible = Math.sin(t * rate + ph) > 0.55; });
+  }
+  function worldPt(m, x, y, z) { return new THREE.Vector3(x, y, z).applyMatrix4(m); }
+  BUILD.dome = function (b, m, r) {
+    var R0 = 2.6 + r() * 1.4, white = col('#dcdcd8');
+    function put(mat, g, c) { b.add(mat, g, m, c); }
+    put('hull', cyl(R0 + 0.3, R0 + 0.45, 0.55, 32), white);
+    var dg = new THREE.SphereGeometry(R0, 32, 14, 0, Math.PI * 2, 0, Math.PI / 2); dg.translate(0, 0.55, 0); put('domeGlass', dg, col('#8ea6bc'));
+    for (var k = 0; k < 6; k++) { var tg = new THREE.TorusGeometry(R0 + 0.04, 0.07, 6, 28, Math.PI); tg.rotateY(k * Math.PI / 6); tg.translate(0, 0.55, 0); put('metal', tg, col('#eceef0')); }
+    var ring = new THREE.TorusGeometry(R0 + 0.33, 0.06, 4, 48); ring.rotateX(Math.PI / 2); ring.translate(0, 0.45, 0); put('glow', ring, col('#ffd38a'));
+    // an airlock toward the road with a lit door
+    put('hull', box(1.4, 1.3, 1.8).translate(0, 0, R0 + 0.6), white);
+    put('hull', cyl(0.75, 0.75, 1.8, 16).rotateX(Math.PI / 2).translate(0, 1.3, R0 + 0.6), white);
+    put('glow', box(0.7, 0.9, 0.05).translate(0, 0.05, R0 + 1.52), col('#9fe8ff'));
+  };
+  BUILD.hab = function (b, m, r, group, anim) {
+    var white = col('#e2e2de'), band = col('#c8502a');
+    function put(mat, g, c) { b.add(mat, g, m, c); }
+    [-2.1, 2.1].forEach(function (x) {
+      put('hull', cyl(0.95, 0.95, 3.2, 18).rotateZ(Math.PI / 2).translate(x + 1.6, 1.1, 0), white);
+      put('hull', cyl(0.97, 0.97, 0.25, 18).rotateZ(Math.PI / 2).translate(x + 0.2, 1.1, 0), band);
+      for (var w = 0; w < 3; w++) put('glow', box(0.35, 0.22, 0.05).translate(x - 0.9 + w * 0.9, 1.25, 0.94), col('#ffd38a'));
+      [-0.6, 0.6].forEach(function (z) { put('metal', box(0.12, 0.6, 0.12).translate(x, 0, z), col('#8a9098')); });
+    });
+    var node = new THREE.SphereGeometry(1.15, 18, 12); node.translate(0, 1.1, 0); put('hull', node, white);
+    put('metal', cyl(0.05, 0.05, 2.2, 6).translate(0, 2.1, 0), col('#c8ccd2'));
+    [-1, 1].forEach(function (sd) { var wing = box(1.4, 0.04, 3.2, 1 / 1.2); wing.rotateX(-0.4); wing.translate(0, 3.0, sd * 1.7); put('solar', wing, WHITE); });
+    var top = worldPt(m, 0, 4.4, 0); blinker(group, anim, top.x, top.y, top.z, '#ff4a3a', 2.4, r() * 6);
+  };
+  BUILD.lander = function (b, m, r) {
+    var gold = col('#d8a640'), white = col('#e8e8e4');
+    function put(mat, g, c) { b.add(mat, g, m, c); }
+    for (var k = 0; k < 4; k++) {
+      var a = k * Math.PI / 2 + Math.PI / 4, lx = Math.cos(a), lz = Math.sin(a);
+      var leg = cyl(0.06, 0.06, 1.9, 6); leg.rotateZ(0.5); leg.rotateY(-a); leg.translate(lx * 1.25, 0.1, lz * 1.25); put('metal', leg, col('#b8bcc2'));
+      put('metal', cyl(0.28, 0.32, 0.1, 10).translate(lx * 1.95, 0, lz * 1.95), col('#c8ccd2'));
+    }
+    put('foil', cyl(1.1, 1.1, 1.0, 8).translate(0, 1.0, 0), gold);
+    put('hull', box(1.4, 1.1, 1.3).translate(0, 2.0, 0), white);
+    put('hull', cyl(0.5, 0.6, 0.5, 8).translate(0, 3.1, 0), white);
+    put('glass', box(0.5, 0.35, 0.06).translate(0.25, 2.55, 0.66), col('#2a3a4a'));
+    var dish = new THREE.SphereGeometry(0.55, 14, 6, 0, Math.PI * 2, 0, 0.9); dish.rotateX(Math.PI); dish.rotateZ(0.8); dish.translate(-0.7, 3.6, -0.3); put('metal', dish, col('#eceef0'));
+    put('plank', box(0.5, 1.3, 0.05).translate(0, 0.1, 1.15), col('#8a8a86'));
+  };
+  BUILD.dishB = function (b, m, r, group, anim) {
+    var white = col('#e8eaec');
+    function put(mat, g, c) { b.add(mat, g, m, c); }
+    put('hull', box(1.6, 0.5, 1.6), col('#9a9894'));
+    put('metal', box(0.5, 3.0, 0.5).translate(0, 0.5, 0), col('#c8ccd2'));
+    var dish = new THREE.SphereGeometry(3.0, 28, 8, 0, Math.PI * 2, 0, 0.85); dish.translate(0, -3.0, 0); dish.rotateX(Math.PI - 0.7); dish.translate(0, 4.6, 0);
+    put('metal', dish, white);
+    var feed = cyl(0.05, 0.05, 2.4, 6); feed.rotateX(0.7); feed.translate(0, 4.0, 0.3); put('metal', feed, col('#b8bcc2'));
+    var tip = worldPt(m, 0, 5.8, 1.1); blinker(group, anim, tip.x, tip.y, tip.z, '#ff4a3a', 1.9, r() * 6);
+  };
+  BUILD.mast = function (b, m, r, group, anim) {
+    function put(mat, g, c) { b.add(mat, g, m, c); }
+    put('hull', box(1.0, 0.3, 1.0), col('#8a8884'));
+    [[-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]].forEach(function (p) { put('metal', box(0.07, 7.5, 0.07).translate(p[0], 0.3, p[1]), col('#c8ccd2')); });
+    for (var y = 0.8; y < 7.5; y += 0.9) { put('metal', box(0.66, 0.05, 0.05).translate(0, y, -0.3), col('#b0b4ba')); put('metal', box(0.66, 0.05, 0.05).translate(0, y, 0.3), col('#b0b4ba')); put('metal', box(0.05, 0.05, 0.66).translate(-0.3, y, 0), col('#b0b4ba')); put('metal', box(0.05, 0.05, 0.66).translate(0.3, y, 0), col('#b0b4ba')); }
+    var d = new THREE.SphereGeometry(0.7, 14, 6, 0, Math.PI * 2, 0, 0.9); d.rotateX(Math.PI / 2 + 0.3); d.translate(0, 6.4, 0.4); put('metal', d, col('#eceef0'));
+    var tip = worldPt(m, 0, 8.0, 0); blinker(group, anim, tip.x, tip.y, tip.z, '#ff4a3a', 2.8, r() * 6);
+  };
+  // the barrier: a low pale panel with a glowing strip along its top, on dark posts
+  WALLS.lightstrip = function (b, g, run, wd, sd, GY) {
+    function ribbon(y0, y1, off, mat, c) {
+      var P = [], I = [], U = [];
+      run.forEach(function (s, j) { var gy = GY(s), pp = D.pointAt(g, s, wd + off); P.push(pp.x, gy + y0, pp.z, pp.x, gy + y1, pp.z); U.push(s * 0.5, 0, s * 0.5, y1 - y0); if (j) { var a = (j - 1) * 2; I.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); } });
+      var geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); geo.setIndex(I); geo.computeVertexNormals();
+      var p0 = D.pointAt(g, run[0], wd); b.add(mat, geo, new THREE.Matrix4(), c, p0.x, p0.z);
+    }
+    ribbon(-0.15, 0.5, 0, 'panelDS', col('#c4c6ca'));
+    ribbon(0.5, 0.6, -sd * 0.03, 'glowDS', col('#4fdcff'));
+    for (var q = 0; q < run.length; q += 5) { var pp = D.pointAt(g, run[q], wd + sd * 0.1); b.add('metal', box(0.14, 0.72, 0.18), mtx(pp.x, GY(run[q]) - 0.1, pp.z, -pp.h), col('#3a3e46')); }
+  };
+  // the sky's stars and planet, the far domes, and the dome base's glass tunnel over the road
+  var PLANET_VS = 'varying vec3 vObj; varying vec3 vN; varying vec3 vV; void main() { vObj = normalize(position); vN = normalize(mat3(modelMatrix) * normal); vec4 w = modelMatrix * vec4(position, 1.0); vV = normalize(cameraPosition - w.xyz); gl_Position = projectionMatrix * viewMatrix * w; }';
+  var PLANET_FS = [
+    'uniform vec3 uSunDir; varying vec3 vObj; varying vec3 vN; varying vec3 vV;',
+    'float h31(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }',
+    'float vn3(vec3 x) { vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);',
+    '  return mix(mix(mix(h31(i), h31(i + vec3(1, 0, 0)), f.x), mix(h31(i + vec3(0, 1, 0)), h31(i + vec3(1, 1, 0)), f.x), f.y),',
+    '             mix(mix(h31(i + vec3(0, 0, 1)), h31(i + vec3(1, 0, 1)), f.x), mix(h31(i + vec3(0, 1, 1)), h31(i + vec3(1, 1, 1)), f.x), f.y), f.z); }',
+    'float fb3(vec3 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * vn3(p); p = p * 2.02 + 3.1; a *= 0.5; } return s; }',
+    'void main() {',
+    '  float land = smoothstep(0.5, 0.54, fb3(vObj * 2.6 + 4.0));',
+    '  float ice = smoothstep(0.78, 0.86, abs(vObj.y));',
+    '  vec3 sea = mix(vec3(0.03, 0.12, 0.34), vec3(0.06, 0.24, 0.5), fb3(vObj * 6.0));',
+    '  vec3 ground = mix(vec3(0.2, 0.32, 0.12), vec3(0.52, 0.45, 0.3), fb3(vObj * 5.0 + 2.0));',
+    '  vec3 c = mix(mix(sea, ground, land), vec3(0.92), ice);',
+    '  float cl = smoothstep(0.5, 0.72, fb3(vObj * 4.0 + vec3(9.0, 1.0, 3.0)));',
+    '  float ndl = dot(normalize(vN), uSunDir);',
+    '  c = mix(c * (0.02 + 1.25 * max(ndl, 0.0)), vec3(1.0) * (0.03 + 1.3 * max(ndl, 0.0)), cl * 0.85);',
+    '  float rim = pow(1.0 - max(dot(normalize(vN), vV), 0.0), 2.5);',
+    '  c += vec3(0.3, 0.55, 1.0) * rim * smoothstep(-0.3, 0.4, ndl) * 1.4;',
+    '  gl_FragColor = vec4(c, 1.0);',
+    '  #include <tonemapping_fragment>',
+    '  #include <colorspace_fragment>',
+    '}'].join('\n');
+  FAR.lunar = function (b, F, r, group, anim) {
+    var L = LOOK.moon, cx = F.x0 + F.w / 2, cz = F.z0 + F.h / 2, g = F.g, lim = F.lim;
+    // stars: two layers of points on a far dome, faint and bright
+    [[2600, 1.3, 0.55], [260, 2.4, 1.0]].forEach(function (layer, li) {
+      var n = layer[0], pos = new Float32Array(n * 3), cl = new Float32Array(n * 3);
+      for (var i = 0; i < n; i++) {
+        var y = 0.03 + 0.97 * r(), a = r() * Math.PI * 2, rr = Math.sqrt(1 - y * y), v = layer[2] * (0.4 + 0.6 * r()), tint = r();
+        pos[i * 3] = cx + Math.cos(a) * rr * 1700; pos[i * 3 + 1] = y * 1700; pos[i * 3 + 2] = cz + Math.sin(a) * rr * 1700;
+        cl[i * 3] = v * (tint < 0.2 ? 0.8 : 1); cl[i * 3 + 1] = v * 0.95; cl[i * 3 + 2] = v * (tint > 0.8 ? 0.75 : 1.05);
+      }
+      var sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(pos, 3)); sg.setAttribute('color', new THREE.BufferAttribute(cl, 3));
+      var pts = new THREE.Points(sg, new THREE.PointsMaterial({ size: layer[1], sizeAttenuation: false, vertexColors: true, fog: false, toneMapped: false, depthWrite: false }));
+      pts.frustumCulled = false; pts.renderOrder = -9; group.add(pts);
+    });
+    // the planet, lit from the sun's side, turning slowly
+    var pd = new THREE.Vector3(Math.cos(-0.35) * Math.cos(0.3), Math.sin(0.3), Math.sin(-0.35) * Math.cos(0.3));
+    var planet = new THREE.Mesh(new THREE.SphereGeometry(130, 64, 32), new THREE.ShaderMaterial({ uniforms: { uSunDir: { value: sunDir(L) } }, vertexShader: PLANET_VS, fragmentShader: PLANET_FS, fog: false }));
+    planet.position.set(cx + pd.x * 1500, pd.y * 1500, cz + pd.z * 1500); planet.rotation.z = 0.4; planet.renderOrder = -8; group.add(planet);
+    anim.push(function (t) { planet.rotation.y = t * 0.01; planet.updateMatrix(); });
+    // a few big habitats out on the plain
+    for (var k = 0; k < 7; k++) {
+      var a = r() * 6.3, d = 0.5 * Math.hypot(F.w, F.h) + 20 + r() * 90, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
+      if (F.distAt(x, z) < 30) continue;
+      var dr = Math.hypot(x - cx, z - cz) / 420, inside = x > F.x0 && z > F.z0 && x < F.x0 + F.w && z < F.z0 + F.h;
+      var kind = ['dome', 'mast', 'dome', 'dishB', 'hab'][k % 5], sc = 1.6 + r() * 1.2, y = (inside ? F.height(x, z) : F.hillAt(x, z) * (1 + dr * 1.5) + smooth(0.55, 1, dr) * L.hill * 3) - 0.2;
+      BUILD[kind](b, mtx(x, y, z, r() * 6.3, sc), r, group, anim);
+    }
+    // the dome base: a glass tunnel on arched ribs over the road, lit strips along its floor and a portal at each end
+    var base = g.def.base; if (!base) return;
+    var s0 = base[0] * g.L, s1 = base[1] * g.L, Rt = lim + 0.9, SY = 0.72, A = 18;
+    function frame(s) { var p = D.pointAt(g, s, 0); return { p: p, y: D.groundAt(g, s), ry: -p.h - Math.PI / 2 }; }
+    for (var s = s0; s <= s1 + 0.01; s += 3) {
+      var f = frame(s), portal = s === s0 || s + 3 > s1;
+      var rib = new THREE.TorusGeometry(Rt, portal ? 0.32 : 0.12, 6, 36, Math.PI);
+      b.add('hull', rib, mtx(f.p.x, f.y, f.p.z, f.ry, 1, SY, 1), col(portal ? '#e6e6e2' : '#cfd2d6'), f.p.x, f.p.z);
+      if (!portal && Math.round((s - s0) / 3) % 2 === 0) b.add('glow', new THREE.TorusGeometry(Rt - 0.14, 0.035, 4, 36, Math.PI), mtx(f.p.x, f.y, f.p.z, f.ry, 1, SY, 1), col('#7fe4ff'), f.p.x, f.p.z);
+      [-1, 1].forEach(function (sd) { var q = D.pointAt(g, s, sd * (g.hw + 0.75)); b.add('glow', box(1.1, 0.04, 0.14), mtx(q.x, D.groundAt(g, s) + 0.02, q.z, -q.h), col('#5fd8ff'), q.x, q.z); });
+    }
+    // the glass skin between the ribs
+    var P = [], I = [], U = [], n = 0;
+    for (s = s0; s <= s1 + 0.01; s += 1) {
+      var fr = frame(Math.min(s, s1)), nx = -fr.p.tz, nz = fr.p.tx;
+      for (var k2 = 0; k2 <= A; k2++) { var an = k2 / A * Math.PI; P.push(fr.p.x + nx * Math.cos(an) * Rt, fr.y + Math.sin(an) * Rt * SY, fr.p.z + nz * Math.cos(an) * Rt); U.push(k2 / A, s); }
+      if (n) for (k2 = 0; k2 < A; k2++) { var a0 = (n - 1) * (A + 1) + k2, b0 = a0 + A + 1; I.push(a0, b0, a0 + 1, a0 + 1, b0, b0 + 1); }
+      n++;
+    }
+    var gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); gg.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); gg.setIndex(I); gg.computeVertexNormals();
+    var glass = new THREE.Mesh(gg, MATS.tunnelGlass); glass.renderOrder = 3; group.add(glass);
+    // a sign over the way in
+    var st = signTex('MOON BASE', '#14202e', '#9fe8ff', 1024, 160), f0 = frame(s0 - 0.4), sign = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.1), std({ map: st, emissive: col('#ffffff'), emissiveMap: st, emissiveIntensity: 0.6, roughness: 0.5 }));
+    sign.position.set(f0.p.x, f0.y + Rt * SY + 0.4, f0.p.z); sign.rotation.y = Math.atan2(-Math.cos(f0.p.h), -Math.sin(f0.p.h)); group.add(sign);
+  };
+  // hazards (facing +x, the way they cross)
+  HAZOBJ.rover = function (grp, inner) {
+    var b = new Batch(0), I = new THREE.Matrix4(), wheels = [], white = col('#e6e6e2');
+    b.add('hull', box(1.6, 0.36, 1.0).translate(0, 0.5, 0), I, white);
+    b.add('solar', box(1.4, 0.05, 0.95, 1 / 1.2).translate(-0.05, 0.86, 0), I, WHITE);
+    b.add('foil', box(0.5, 0.3, 0.6).translate(-0.55, 0.9, 0), I, col('#d8a640'));
+    b.add('metal', cyl(0.05, 0.05, 0.8, 6).translate(0.55, 0.86, 0), I, col('#c8ccd2'));
+    b.add('hull', box(0.3, 0.2, 0.42).translate(0.55, 1.62, 0), I, white);
+    [-0.1, 0.1].forEach(function (z) { b.add('glass', new THREE.SphereGeometry(0.06, 8, 6).translate(0.71, 1.73, z), I, col('#1a2a40')); });
+    var dish = new THREE.SphereGeometry(0.3, 12, 5, 0, Math.PI * 2, 0, 0.9); dish.rotateZ(0.6); dish.translate(-0.55, 1.25, 0.25); b.add('metal', dish, I, col('#eceef0'));
+    b.add('metal', box(1.8, 0.06, 0.06).translate(0, 0.32, 0.55), I, col('#9aa0a8')); b.add('metal', box(1.8, 0.06, 0.06).translate(0, 0.32, -0.55), I, col('#9aa0a8'));
+    b.build(inner, { cast: true });
+    [-0.62, 0, 0.62].forEach(function (x) { [-0.62, 0.62].forEach(function (z) {
+      var wg = cyl(0.27, 0.27, 0.2, 14, 1); wg.translate(0, -0.1, 0); wg.rotateX(Math.PI / 2); paint(wg, col('#5a5c60'));
+      var w = new THREE.Mesh(wg, MAT('tyre')); w.castShadow = true; w.position.set(x, 0.27, z); inner.add(w); wheels.push(w);
+    }); });
+    var lamp = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), MAT('glow')); paint(lamp.geometry, col('#ffb03a')); lamp.position.set(0.55, 1.78, 0); inner.add(lamp);
+    return function (hz, t) { wheels.forEach(function (w) { w.rotation.z = -hz.roll * hz.r / 0.27; }); inner.position.y = 0.015 * Math.sin(t * 14); lamp.visible = Math.sin(t * 5) > 0; };
+  };
+  HAZOBJ.moonrock = function (grp, inner) {
+    var b = new Batch(0), rk = rockGeo(0.95, 41, 0.85); paint(rk, function (x, y) { return mixC(col('#5a5954'), col('#b4b2ab'), clamp(y + 0.5, 0, 1)); });
+    b.add('stone', rk, new THREE.Matrix4()); b.build(inner, { cast: true }); inner.position.y = 0.8;
+    return function (hz) { inner.rotation.z = -hz.roll; inner.rotation.x = hz.roll * 0.35; };
+  };
+  HAZOBJ.meteor = function (grp, inner) {
+    var b = new Batch(0), rk = rockGeo(0.55, 43, 0.9); paint(rk, col('#5a4a44'));
+    b.add('meteorCore', rk, new THREE.Matrix4()); b.build(inner, { cast: true }); inner.position.y = 0.5;
+    var halo = new THREE.Mesh(new THREE.SphereGeometry(0.62, 12, 8), MATS.meteorHalo);
+    inner.add(halo);
+    return function (hz, t) { inner.rotation.z = -hz.roll * 1.5; inner.rotation.y = t * 2; halo.scale.setScalar(1 + 0.12 * Math.sin(t * 9)); };
+  };
+  HAZOBJ.dish = function (grp, inner) {
+    var b = new Batch(0), I = new THREE.Matrix4(), white = col('#e6e6e2');
+    [-0.5, 0.5].forEach(function (z) { b.add('tyre', box(1.5, 0.4, 0.32).translate(0, 0.02, z), I, col('#4a4c50')); });
+    b.add('hull', box(1.2, 0.35, 0.8).translate(0, 0.35, 0), I, white);
+    b.add('foil', box(0.5, 0.3, 0.5).translate(-0.35, 0.7, 0), I, col('#d8a640'));
+    b.build(inner, { cast: true });
+    // the turret turns slowly, swinging the arm and its dish round
+    var tur = new THREE.Group(), tb = new Batch(0);
+    tb.add('hull', cyl(0.3, 0.35, 0.3, 14), I, white);
+    var arm = box(0.14, 1.3, 0.14); arm.rotateZ(-0.7); arm.translate(0.05, 0.2, 0); tb.add('metal', arm, I, col('#c8ccd2'));
+    var dish = new THREE.SphereGeometry(0.62, 18, 6, 0, Math.PI * 2, 0, 0.95); dish.translate(0, -0.62, 0); dish.rotateZ(-1.0); dish.translate(0.95, 1.35, 0); tb.add('metal', dish, I, col('#f2f2f0'));
+    var feed = cyl(0.03, 0.03, 0.5, 6); feed.rotateZ(-1.0 - Math.PI / 2); feed.translate(1.05, 1.42, 0); tb.add('metal', feed, I, col('#9aa0a8'));
+    tb.build(tur, { cast: true }); tur.position.y = 0.7; inner.add(tur);
+    var lamp = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), MAT('glow')); paint(lamp.geometry, col('#ff4a3a')); lamp.position.set(0, 0.55, 0); tur.add(lamp);
+    return function (hz, t) { tur.rotation.y = t * 0.6; lamp.visible = Math.sin(t * 4) > 0.2; inner.position.y = 0.01 * Math.sin(t * 10); };
+  };
+  [[BUILD, ['dome', 'hab', 'lander', 'dishB', 'mast']], [PROTOS, ['mrock', 'mboulder', 'solar', 'beacon']], [WALLS, ['lightstrip']], [FAR, ['lunar']],
+    [HAZOBJ, ['rover', 'moonrock', 'meteor', 'dish']]].forEach(function (e) { e[1].forEach(function (k) { var f = e[0][k]; e[0][k] = function () { moonMats(); return f.apply(this, arguments); }; }); });
+  LOOK.moon = { sunAz: -1.25, sunEl: 0.42, sun: '#ffffff', sunI: 3.2, hemiSky: '#3a4458', hemiGround: '#6a6964', hemiI: 0.3,
+    zenith: '#000000', horizon: '#05060a', fog: '#0a0b10', fogD: 0.0012, cloudA: '#000000', cloudB: '#000000', cover: 2, exposure: 1.0,
+    grass: ['#6f6e6a', '#85837e', '#575653'], rough: '#4c4b48', dry: '#6f6e6a', shoulder: '#7a7872', bank: '#3e3d3a', water: '#08090c',
+    mtn: ['#4a4a48', '#a09e98'], hill: 5, ground: 'regolith',
+    hills: 'crater', tex: 'regolith', texN: 'regolithN', normalScale: 0.9, tile: 6, dryPatch: false, patch: '#9e9c95', roughMix: 0.5, cliff: '#55544f',
+    mtnStyle: 'craterRim', mtnTint: '#c8c6c0', mtnHaze: 0.06, roadTint: '#e8eaee', shoulderC: '#8e9cb0', wall: 'lightstrip',
+    kinds: ['dome', 'hab', 'lander', 'dome', 'dishB', 'mast'], trackKinds: {}, farmHay: false,
+    species: [['mrock', 0.5], ['mboulder', 0.68], ['solar', 0.9], ['beacon', 1]],
+    band: ['mrock', 'mrock', 'solar', 'mboulder', 'beacon'], maxTrees: 300, treeDens: 0.55, treeScale: [0.7, 0.8],
+    roadside: 'beacon', palms: false, far: 'lunar', tuftN: 0, tuftC: '#a6a49e', flowers: false,
+    canyons: ['rimhop', 'rille', 'starfall'], canyonC: '#060709', canyonDepth: 7, canyonBank: 'mrock', dust: '#b4b2ac' };
+
   // ---------- race ----------
   function race(trackId, g, worldId) {
     g = g || D.track(trackId);
-    var t0 = performance.now(), desert = worldId === 'desert', L = lookOf(worldId), group = new THREE.Group(), r = prng(g.n * 13 + 7), lim = g.hw + D.RUNOFF;
+    var t0 = performance.now(), L = lookOf(worldId), group = new THREE.Group(), r = prng(g.n * 13 + 7), lim = g.hw + D.RUNOFF;
     var F = new Field(g, L, worldId, trackId), info = { tris: 0 }, anim = [];
     function GY(s) { return D.groundAt ? D.groundAt(g, s) : 0; } // the road's height at arc length s
     group.add(makeSky(L)); var lt = lights(group, L);
-    info.tris += buildTerrain(group, F, L, desert);
-    info.tris += mountains(group, F.x0 + F.w / 2, F.z0 + F.h / 2, L, desert, g.n % 17);
+    info.tris += buildTerrain(group, F, L);
+    info.tris += mountains(group, F.x0 + F.w / 2, F.z0 + F.h / 2, L, g.n % 17);
     var b = new Batch(), hw = g.hw;
 
     // road, shoulder strips and the start checker
     var rt = roadTex(hw), reps = Math.max(1, Math.round(g.L / rt.cells)), vk = reps / g.L;
-    var roadMat = MATS['road' + hw] || (MATS['road' + hw] = polyMat(std({ map: rt.map, roughnessMap: rt.rough, normalMap: rt.normal, roughness: 1, metalness: 0, color: desert ? col('#f4e4d8') : col('#ffffff') }), -2));
-    var shoulderMat = MATS.shoulder || (MATS.shoulder = polyMat(std({ map: T('dirt'), vertexColors: true, roughness: 1 }), -1));
+    var roadKey = 'road' + hw + (L.roadTint || '#ffffff');
+    var roadMat = MATS[roadKey] || (MATS[roadKey] = polyMat(std({ map: rt.map, roughnessMap: rt.rough, normalMap: rt.normal, roughness: 1, metalness: 0, color: col(L.roadTint || '#ffffff') }), -2));
+    var shKey = 'shoulder' + (L.shoulderTex ? '_' + L.shoulderTex : '');
+    var shoulderMat = MATS[shKey] || (MATS[shKey] = polyMat(std({ map: T(L.shoulderTex || 'dirt'), vertexColors: true, roughness: 1 }), -1));
     var b0 = new Batch(0);
-    MATS['road' + hw].name = 'road' + hw; shoulderMat.name = 'shoulder';
+    roadMat.name = roadKey; shoulderMat.name = shKey;
     dryRuns(g).forEach(function (run) {
       var list = sRange(run[0], run[1], 0.5);
-      b0.add('road' + hw, strip(g, list, -hw, hw, 0.012, null, function (s) { return s * vk; }), new THREE.Matrix4());
+      b0.add(roadKey, strip(g, list, -hw, hw, 0.012, null, function (s) { return s * vk; }), new THREE.Matrix4());
       [-1, 1].forEach(function (sd) {
-        b0.add('shoulder', strip(g, list, sd * (hw - 0.05), sd * (hw + 0.55), 0.008, function (d) { return d * 0.5; }, function (s) { return s * 0.5; }, function () { return desert ? col('#e0b890') : col('#c8b8a0'); }), new THREE.Matrix4());
+        b0.add(shKey, strip(g, list, sd * (hw - 0.05), sd * (hw + 0.55), 0.008, function (d) { return d * 0.5; }, function (s) { return s * 0.5; }, function () { return col(L.shoulderC || '#c8b8a0'); }), new THREE.Matrix4());
       });
       info.tris += (list.length - 1) * 6;
     });
@@ -1198,7 +2054,7 @@ var RB3DWorld = (function () {
       var wm = MATS['water' + worldId + (c.canyon ? 'c' : '')];
       if (!wm) {
         var nt = T('waterN').clone(); nt.needsUpdate = true; nt.repeat.set(1, 1);
-        wm = MATS['water' + worldId + (c.canyon ? 'c' : '')] = std({ color: col(c.canyon ? '#4a7a6a' : L.water), roughness: 0.12, metalness: 0.0, normalMap: nt, normalScale: new THREE.Vector2(0.3, 0.3), transparent: true, opacity: 0.9, envMapIntensity: 0.55 });
+        wm = MATS['water' + worldId + (c.canyon ? 'c' : '')] = std({ color: col(c.canyon ? L.canyonC || '#4a7a6a' : L.water), emissive: col(!c.canyon && L.waterGlow || '#000000'), emissiveIntensity: L.waterGlow ? 1.4 : 0, roughness: 0.12, metalness: 0.0, normalMap: nt, normalScale: new THREE.Vector2(0.3, 0.3), transparent: true, opacity: 0.9, envMapIntensity: 0.55 });
         anim.push(function (t) { nt.offset.set(t * 0.02, t * 0.035); });
       }
       var w = new THREE.Mesh(wg, wm); w.receiveShadow = true; w.renderOrder = 2; group.add(w);
@@ -1207,7 +2063,8 @@ var RB3DWorld = (function () {
         var nn2 = lerp(-c.ext[0], c.ext[1], r()), side = r() < 0.5 ? -1 : 1;
         if (Math.abs(nn2) < lim + 1) continue;
         var tt2 = side * (c.half + 0.6 + r() * 1.2), x = c.x + c.nx * nn2 + c.tx * tt2, z = c.z + c.nz * nn2 + c.tz * tt2, y = F.height(x, z);
-        if (c.canyon || desert) addProto(b, 'redrock', mtx(x, y - 0.1, z, r() * 6.3, 0.4 + r() * 0.5), WHITE);
+        if (c.canyon || L.bank === 'redrock') addProto(b, c.canyon && L.canyonBank || 'redrock', mtx(x, y - 0.1, z, r() * 6.3, 0.4 + r() * 0.5), WHITE);
+        else if (L.bank && L.bank !== 'reeds') addProto(b, L.bank, mtx(x, y - 0.1, z, r() * 6.3, 0.4 + r() * 0.5), WHITE);
         else if (r() < 0.6) addProto(b, 'tuftReed', mtx(x, y, z, r() * 6.3, 1), WHITE); else addProto(b, 'rock', mtx(x, y - 0.1, z, r() * 6.3, 0.3 + r() * 0.4), WHITE);
       }
     });
@@ -1220,7 +2077,8 @@ var RB3DWorld = (function () {
       var wd = sd * (lim + 0.62), run = [];
       function flush() {
         if (run.length < 2) { run = []; return; }
-        if (desert) {
+        if (WALLS[L.wall]) WALLS[L.wall](b, g, run, wd, sd, GY);
+        else if (L.wall === 'armco') {
           // armco: a W-section beam on posts
           var ag = strip(g, run, 0, 0, 0, null, null, null, 1), P = [], I = [], U = [], k = 0;
           run.forEach(function (s, j) { var p = D.pointAt(g, s, wd), gy = GY(s); [0.32, 0.47, 0.62].forEach(function (y, q) { var o = q === 1 ? -sd * 0.05 : 0; var pp = D.pointAt(g, s, wd + o); P.push(pp.x, y + gy, pp.z); U.push(s, y); }); if (j) { var a0 = (j - 1) * 3; I.push(a0, a0 + 3, a0 + 1, a0 + 1, a0 + 3, a0 + 4, a0 + 1, a0 + 4, a0 + 2, a0 + 2, a0 + 4, a0 + 5); } });
@@ -1253,7 +2111,7 @@ var RB3DWorld = (function () {
     // scenery: buildings set well back, woods in clumps, a band of trees past the fences, rocks, hay
     var placed = [];
     function farFrom(x, z, m) { return !placed.some(function (p) { return Math.hypot(p[0] - x, p[1] - z) < m + p[2]; }); }
-    var kinds = trackId === 'windmill' && !desert ? ['windmill', 'barn', 'house', 'windmill', 'house2'] : desert ? ['adobe', 'butte', 'adobe', 'butte', 'butte'] : ['barn', 'house', 'house2', 'house'];
+    var kinds = (L.trackKinds && L.trackKinds[trackId]) || L.kinds;
     var mills = [];
     for (i = 0; i < 500 && placed.length < 10; i++) {
       var x = g.x0 + 8 + r() * (g.w - 16), z = g.z0 + 8 + r() * (g.h - 16);
@@ -1265,47 +2123,49 @@ var RB3DWorld = (function () {
       if (kd === 'windmill') { windmillTower(b, m); var sails = windmillSails(); sails.position.set(x + Math.cos(face) * 1.25, y + 4.1, z + Math.sin(face) * 1.25); sails.rotation.y = Math.PI / 2 - face; group.add(sails); mills.push(sails); }
       else if (kd === 'barn') barn(b, m);
       else if (kd === 'adobe') adobe(b, m);
+      else if (BUILD[kd]) BUILD[kd](b, m, r, group, anim);
       else if (kd === 'butte') { var bg2 = butteGeo(2.2 + r() * 1.6, 5 + r() * 5, r() * 9); b.add('strata', bg2, m, WHITE); }
       else house(b, m, kd, r);
       // a few hay bales or a fence round farms
-      if (!desert && (kd === 'barn' || kd === 'windmill')) for (var hb = 0; hb < 4; hb++) { var hx = x + (r() - 0.5) * 9, hz = z + (r() - 0.5) * 9; if (F.clear(hx, hz, 2) && farFrom(hx, hz, 0.6)) addProto(b, 'hay', mtx(hx, F.height(hx, hz) - 0.05, hz, r() * 6.3), WHITE); }
+      if (L.farmHay && (kd === 'barn' || kd === 'windmill')) for (var hb = 0; hb < 4; hb++) { var hx = x + (r() - 0.5) * 9, hz = z + (r() - 0.5) * 9; if (F.clear(hx, hz, 2) && farFrom(hx, hz, 0.6)) addProto(b, 'hay', mtx(hx, F.height(hx, hz) - 0.05, hz, r() * 6.3), WHITE); }
     }
     anim.push(function (t) { mills.forEach(function (s, k) { s.rotation.z = t * 0.9 + k; }); });
     // the grandstand by the start, facing the road
     var st = D.pointAt(g, -6, -(lim + 3.4)); grandstand(b, mtx(st.x, F.height(st.x, st.z), st.z, -st.h), r); placed.push([st.x, st.z, 5]);
     // trees
-    var species = desert ? [['cactus', 0.4], ['shrub', 0.65], ['redrock', 0.82], ['pillar', 1]] : [['oak', 0.32], ['elm', 0.5], ['pine', 0.74], ['birch', 0.84], ['bush', 0.95], ['rock', 1]];
+    var species = L.species;
     function pick(v) { for (var k = 0; k < species.length; k++) if (v < species[k][1]) return species[k][0]; return species[0][0]; }
-    var trees = 0, maxTrees = desert ? 380 : 520;
+    var trees = 0, maxTrees = L.maxTrees || 520;
     function tree(x, z, name, scale) {
       var y = F.height(x, z), ry = r() * 6.3, tint = new THREE.Color().setHSL(0, 0, 1);
-      if (name !== 'rock' && name !== 'redrock' && name !== 'pillar') tint.setRGB(0.85 + r() * 0.3, 0.85 + r() * 0.3, 0.8 + r() * 0.25);
+      if (!UNTINTED[name]) tint.setRGB(0.85 + r() * 0.3, 0.85 + r() * 0.3, 0.8 + r() * 0.25);
       addProto(b, name, mtx(x, y - 0.05, z, ry, scale, scale * (0.9 + r() * 0.2), scale), tint, x, z); trees++;
     }
     for (i = 0; i < 20000 && trees < maxTrees; i++) {
       var tx = F.x0 + r() * F.w, tz = F.z0 + r() * F.h, dd = F.distAt(tx, tz);
-      var dens = smooth(0.42, 0.62, fbm(tx * 0.03, tz * 0.03, 3, 601)) * (desert ? 0.6 : 1) + (dd < lim + 14 ? 0.15 : 0);
+      var dens = smooth(0.42, 0.62, fbm(tx * 0.03, tz * 0.03, 3, 601)) * (L.treeDens || 1) + (dd < lim + 14 ? 0.15 : 0);
       if (r() > dens) continue;
       if (!F.clear(tx, tz, 1.8) || !farFrom(tx, tz, 1.2)) continue;
-      var nm = pick(r()), sc = (desert ? 0.8 + r() * 0.6 : 0.85 + r() * 0.75) * (nm === 'bush' || nm === 'rock' || nm === 'shrub' ? 1 : 1.25);
-      tree(tx, tz, nm, sc); if (nm !== 'bush' && nm !== 'shrub') placed.push([tx, tz, 0.8]);
+      var ts = L.treeScale || [0.85, 0.75], nm = pick(r()), sc = (ts[0] + r() * ts[1]) * (LOW[nm] ? 1 : 1.25);
+      tree(tx, tz, nm, sc); if (!SMALL[nm]) placed.push([tx, tz, 0.8]);
     }
     // a band just past the fences (thinner so the view stays open)
     for (var bs = 0; bs < g.L; bs += 3.2) [-1, 1].forEach(function (sd) {
       if (r() < 0.45) return;
       var bp = D.pointAt(g, bs + r() * 2, sd * (lim + 2.6 + r() * 7));
       if (!F.clear(bp.x, bp.z, 1.8) || !farFrom(bp.x, bp.z, 1.4)) return;
-      var nm2 = desert ? ['cactus', 'shrub', 'redrock', 'shrub', 'pillar'][Math.floor(r() * 5)] : ['oak', 'bush', 'elm', 'bush', 'pine', 'birch'][Math.floor(r() * 6)];
+      var nm2 = L.band[Math.floor(r() * L.band.length)];
       tree(bp.x, bp.z, nm2, 0.8 + r() * 0.5); placed.push([bp.x, bp.z, 0.6]);
     });
     // palms round the water at the jumps (canyon oasis)
-    if (desert && trackId !== 'mesa') F.creeks.forEach(function (c) {
+    if (L.palms && (L.canyons || []).indexOf(trackId) < 0) F.creeks.forEach(function (c) {
       for (var k = 0; k < 14; k++) { var nn = lerp(-c.ext[0], c.ext[1], r()), side = r() < 0.5 ? -1 : 1, x2 = c.x + c.nx * nn + c.tx * side * (c.half + 1.4 + r() * 3), z2 = c.z + c.nz * nn + c.tz * side * (c.half + 1.4 + r() * 3); if (F.clear(x2, z2, 0.6)) { addProto(b, 'palm', mtx(x2, F.height(x2, z2) - 0.05, z2, r() * 6.3, 0.9 + r() * 0.4), WHITE); } }
     });
     // hay bales (or desert shrubs) by the road here and there
-    for (var hs = 8; hs < g.L; hs += 23 + r() * 20) { var sd2 = r() < 0.5 ? -1 : 1, hp = D.pointAt(g, hs, sd2 * (lim + 1.5)); if (F.clear(hp.x, hp.z, 1) && farFrom(hp.x, hp.z, 0.5)) addProto(b, desert ? 'shrub' : 'hay', mtx(hp.x, F.height(hp.x, hp.z) - 0.03, hp.z, r() * 6.3), WHITE); }
+    for (var hs = 8; hs < g.L; hs += 23 + r() * 20) { var sd2 = r() < 0.5 ? -1 : 1, hp = D.pointAt(g, hs, sd2 * (lim + 1.5)); if (F.clear(hp.x, hp.z, 1) && farFrom(hp.x, hp.z, 0.5)) addProto(b, L.roadside || 'hay', mtx(hp.x, F.height(hp.x, hp.z) - 0.03, hp.z, r() * 6.3), WHITE); }
     // desert: big mesas out in the far land
-    if (desert) for (var mi = 0; mi < 14; mi++) {
+    if (FAR[L.far]) FAR[L.far](b, F, r, group, anim);
+    else if (L.far === 'mesas') for (var mi = 0; mi < 14; mi++) {
       var ma = r() * 6.3, mr = 0.5 * Math.hypot(F.w, F.h) + 30 + r() * 140, mx = F.x0 + F.w / 2 + Math.cos(ma) * mr, mz = F.z0 + F.h / 2 + Math.sin(ma) * mr;
       if (F.distAt(mx, mz) < 40) continue;
       b.add('strata', butteGeo(10 + r() * 16, 14 + r() * 22, r() * 9), mtx(mx, -1, mz, r() * 6.3), WHITE, mx, mz);
@@ -1315,7 +2175,7 @@ var RB3DWorld = (function () {
     // hazards: posed by the renderer each frame from the race time
     var hazards = (g.hazards || []).map(function (hz) { var o = hazardObj(hz.kind); group.add(o); return o; });
     // grass tufts and flowers, instanced, thick in the runoff and along the fences
-    info.tris += tufts(group, F, g, desert, r);
+    info.tris += tufts(group, F, g, L, r);
     info.build = Math.round(performance.now() - t0);
     group.traverse(function (o) { if (o.isMesh && o.name !== 'sky') o.matrixAutoUpdate = false, o.updateMatrix(); });
     return {
@@ -1325,20 +2185,21 @@ var RB3DWorld = (function () {
     };
   }
   PROTOS.tuftReed = function () { var p = []; for (var i = 0; i < 6; i++) { var g = cyl(0.015, 0.025, 0.7 + i * 0.08, 4); g.rotateZ((i - 3) * 0.08); g.rotateY(i); paint(g, col('#6a8a3a')); p.push({ mat: 'plain', g: g }); } return p; };
-  function tufts(group, F, g, desert, r) {
+  function tufts(group, F, g, L, r) {
     var tg = proto('tuft'), lim = F.lim, list = [], i;
-    var mat = MATS['tuft' + desert] || (MATS['tuft' + desert] = (function () {
-      var m = std({ map: T('tuft'), alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: false, roughness: 0.9, color: desert ? col('#ffd890') : col('#e8ffd0') });
-      addHooks(m, [function (sh) { sway(sh, { k: '0.12', inst: true }); }]); m.name = 'tuft' + desert; return m;
+    var tk = 'tuft' + L.tuftC;
+    var mat = MATS[tk] || (MATS[tk] = (function () {
+      var m = std({ map: T('tuft'), alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: false, roughness: 0.9, color: col(L.tuftC || '#e8ffd0') });
+      addHooks(m, [function (sh) { sway(sh, { k: '0.12', inst: true }); }]); m.name = tk; return m;
     })());
-    var N = desert ? 2000 : 4500, m4 = new THREE.Matrix4();
+    var N = L.tuftN != null ? L.tuftN : 4500, m4 = new THREE.Matrix4();
     for (i = 0; i < N * 4 && list.length < N; i++) {
       var s = r() * g.L, side = r() < 0.5 ? -1 : 1, off = g.hw + 0.5 + Math.pow(r(), 1.6) * (D.RUNOFF + 12), p = D.pointAt(g, s, side * off);
       var x = p.x + (r() - 0.5) * 0.5, z = p.z + (r() - 0.5) * 0.5, d = F.distAt(x, z);
       if (d < g.hw + 0.5) continue;
       var ck = F.creekAt(x, z); if (ck && ck.p > 0.02) continue;
       if (Math.abs(d - (lim + 0.62)) < 0.15) continue;
-      var sc = (desert ? 0.35 : 0.35) + r() * 0.35 + (d > lim ? 0.15 : 0);
+      var sc = 0.35 + r() * 0.35 + (d > lim ? 0.15 : 0);
       list.push([x, F.height(x, z), z, r() * 6.3, sc]);
     }
     // a scatter further out too
@@ -1350,7 +2211,7 @@ var RB3DWorld = (function () {
     });
     im.receiveShadow = true; im.castShadow = false; im.frustumCulled = false; group.add(im);
     var tris = list.length * 6;
-    if (!desert) {
+    if (L.flowers) {
       var fl = [];
       for (i = 0; i < 3000 && fl.length < 1400; i++) { var s2 = r() * g.L, sd = r() < 0.5 ? -1 : 1, pf = D.pointAt(g, s2, sd * (lim + 1 + r() * 14)); if (F.clear(pf.x, pf.z, 0.8)) fl.push([pf.x, F.height(pf.x, pf.z), pf.z, r() * 6.3, 0.25 + r() * 0.2]); }
       var fm = MATS.flowers || (MATS.flowers = (function () { var m = std({ map: T('flowers'), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.8 }); addHooks(m, [function (sh) { sway(sh, { k: '0.1', inst: true }); }]); m.name = 'flowers'; return m; })());

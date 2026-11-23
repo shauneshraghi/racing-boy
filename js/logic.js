@@ -58,8 +58,24 @@ var RB = (function () {
     sheep: { r: 0.65, h: 1.0, period: 9, gap: 2.6 },
     bale: { r: 0.85, h: 1.3, period: 5, gap: 4 },
     tumble: { r: 0.6, h: 0.9, period: 4, gap: 5, bounce: 0.9 },
-    boulder: { r: 1.0, h: 1.6, period: 7, gap: 5 }
+    boulder: { r: 1.0, h: 1.6, period: 7, gap: 5 },
+    // world 4, Lava Lane: a lava bomb hops high enough to drive under at the top of a hop, a magma boulder rolls
+    // across; a steam vent stays put in its lane (hazard off, or spread across the road in a row) and puffs for the
+    // vent share of each period, harmless while it rests
+    bomb: { r: 0.7, h: 1.1, period: 5, gap: 6, bounce: 2.4 },
+    magma: { r: 1.15, h: 1.9, period: 7.5, gap: 7 },
+    vent: { r: 0.95, h: 3.5, period: 3.4, gap: 6, vent: 0.4 },
+    // world 5, Moon Base: a six-wheeled rover, moon rocks bouncing high in the low gravity (a car slips under one
+    // at the top of its bounce), little meteorites skipping low, and a tracked robot with a slowly turning dish
+    rover: { r: 0.95, h: 1.2, period: 10, gap: 4 },
+    moonrock: { r: 0.8, h: 1.3, period: 6, gap: 6, bounce: 2.2 },
+    meteor: { r: 0.55, h: 0.8, period: 3.6, gap: 4.5, bounce: 0.7 },
+    dish: { r: 1.0, h: 1.5, period: 12, gap: 5 }
   };
+  // world 3, Snowcap Peaks: snowballs rolling across, a waddling penguin flock, ice blocks sliding over the ice
+  HAZ.snowball = { r: 0.95, h: 1.7, period: 6, gap: 5 };
+  HAZ.penguin = { r: 0.5, h: 0.9, period: 10, gap: 2.2 };
+  HAZ.iceblock = { r: 0.9, h: 1.2, period: 4.5, gap: 5 };
   var HAZ_OVER = 1.2, HAZ_SLOW = 0.8, HAZ_COOL = 1;
   var BEE_SPEED = 21, BEE_TURN = 6, BEE_LIFE = 6;
   var GOO_LIFE = 25;
@@ -275,15 +291,143 @@ var RB = (function () {
       ramps: [{ u: 0.06, gap: 3.8 }, { u: 0.5, gap: 0 }, { u: 0.73, gap: 3.8 }],
       boxes: [0.16, 0.6],
       coins: [{ u: 0.09, off: -1.5, n: 6 }, { u: 0.3, off: 0, n: 6 }, { u: 0.42, off: 1.5, n: 6 }, { u: 0.53, off: -1.4, n: 5 }, { u: 0.77, off: 0, n: 6 }, { u: 0.86, off: 1.5, n: 6 }, { u: 0.96, off: 0, n: 5 }]
+    },
+    // world 3, Snowcap Peaks: icy roads (WORLDS grip), mountains two to three times the height of the hills; a ramp's
+    // gap is a crevasse in the glacier
+    // a switchback climb up the ridge to the summit pass (penguins waddle across it), a hop off the pass, the plunging
+    // downhill run to the valley, snowballs at its foot and a pad into the moguls
+    pines: {
+      name: 'Pine Ridge Pass', world: 2, laps: 3, hw: 4.2, scale: 0.76,
+      pts: [[30, 210], [100, 214], [170, 206], [226, 186], [236, 150], [200, 130], [140, 128], [108, 104], [128, 78], [190, 74], [236, 56], [232, 22], [180, 12], [110, 14], [56, 30], [24, 70], [12, 130], [14, 180]],
+      elev: [[0, 0], [0.2, 0], [0.4, 5.5], [0.55, 10], [0.645, 10], [0.655, 7.5], [0.75, 0], [0.84, 0], [0.853, 1.6], [0.866, 0], [0.879, 1.6], [0.892, 0]],
+      hazards: [{ u: 0.52, kind: 'penguin', n: 4 }, { u: 0.77, kind: 'snowball' }],
+      pads: [{ u: 0.05, off: 0 }, { u: 0.17, off: 1.5 }, { u: 0.49, off: -1.4 }, { u: 0.63, off: 0 }, { u: 0.825, off: 0 }],
+      ramps: [],
+      boxes: [0.13, 0.67],
+      coins: [{ u: 0.09, off: -1.5, n: 6 }, { u: 0.3, off: 0, n: 6 }, { u: 0.46, off: 1.4, n: 6 }, { u: 0.64, off: 0, n: 6 }, { u: 0.78, off: -1.5, n: 6 }, { u: 0.93, off: 1.4, n: 5 }]
+    },
+    // the long sweeping climb to the summit at 14, the in-run with a pad, the ski jump off the top with huge air
+    // down the landing hill, snowballs rolling across the S-curve descent and ice blocks sliding on the flats
+    skijump: {
+      name: 'Ski Jump Summit', world: 2, laps: 3, hw: 4.2, scale: 0.88, ai: 1.015,
+      pts: [[30, 200], [100, 208], [160, 200], [206, 178], [222, 136], [196, 104], [206, 64], [186, 26], [146, 12], [100, 12], [56, 20], [34, 50], [62, 80], [106, 92], [126, 118], [104, 148], [36, 150], [16, 178]],
+      elev: [[0, 0], [0.12, 0], [0.42, 14], [0.47, 14], [0.5, 11.5], [0.505, 11.5], [0.58, 4], [0.64, 4], [0.8, 0]],
+      hazards: [{ u: 0.73, kind: 'snowball', n: 2 }, { u: 0.875, kind: 'iceblock', n: 2 }],
+      pads: [{ u: 0.05, off: 0 }, { u: 0.24, off: -1.5 }, { u: 0.36, off: 1.4 }, { u: 0.48, off: 0 }, { u: 0.95, off: 0 }],
+      ramps: [{ u: 0.4965, gap: 0 }],
+      boxes: [0.15, 0.67],
+      coins: [{ u: 0.09, off: 1.5, n: 6 }, { u: 0.3, off: 0, n: 6 }, { u: 0.47, off: -1.4, n: 6 }, { u: 0.6, off: 0, n: 5 }, { u: 0.8, off: 1.4, n: 6 }, { u: 0.92, off: -1.4, n: 6 }]
+    },
+    // the long tour: a crevasse leap on the glacier tongue, moguls, the icefall climb round a hairpin to the plateau at
+    // 12, penguins and a second crevasse up top, a hop off its edge, a snowball and ice blocks on the way down and the
+    // S-curve descent home
+    glacier: {
+      name: 'Icefall Glacier', world: 2, laps: 2, hw: 4.2, scale: 0.9, ai: 1.02,
+      pts: [[30, 230], [100, 238], [170, 232], [230, 214], [266, 180], [250, 140], [200, 140], [150, 152], [104, 140], [102, 108], [140, 98], [190, 96], [250, 90], [280, 56], [250, 22], [190, 14], [130, 22], [80, 14], [36, 34], [24, 80], [56, 110], [44, 150], [14, 188]],
+      elev: [[0, 0], [0.16, 0], [0.17, 1.4], [0.18, 0], [0.19, 1.4], [0.2, 0], [0.25, 0], [0.45, 12], [0.605, 12], [0.61, 10], [0.74, 5], [0.79, 5], [0.93, 0]],
+      hazards: [{ u: 0.465, kind: 'penguin', n: 4 }, { u: 0.67, kind: 'snowball' }, { u: 0.765, kind: 'iceblock', n: 2 }],
+      pads: [{ u: 0.04, off: 0 }, { u: 0.15, off: 0 }, { u: 0.31, off: 1.4 }, { u: 0.495, off: 0 }, { u: 0.7, off: -1.4 }, { u: 0.96, off: 0 }],
+      ramps: [{ u: 0.1, gap: 3.8 }, { u: 0.515, gap: 3.8 }],
+      boxes: [0.07, 0.55],
+      coins: [{ u: 0.12, off: 1.5, n: 6 }, { u: 0.27, off: 0, n: 6 }, { u: 0.42, off: -1.4, n: 6 }, { u: 0.6, off: 0, n: 6 }, { u: 0.72, off: 1.4, n: 5 }, { u: 0.82, off: 0, n: 6 }, { u: 0.9, off: -1.4, n: 6 }]
+    },
+
+    // world 4, Lava Lane: every ramp gap is a glowing lava river; the hills are far bigger than worlds 1-2 (10-16 cells)
+    // round the foot of the cone over cooled-lava whoops, a lava river jump, lava bombs, then a spiral climb round the
+    // cone (a magma boulder rolls across it) to the crater rim at 14.5 and a plunge off the rim with big air
+    cinder: {
+      name: 'Cinder Cone', world: 3, laps: 3, hw: 3.7, scale: 1, ai: 0.96,
+      pts: [[186, 59], [124, 70], [84, 119], [84, 181], [113, 222], [143, 225], [159, 211], [122, 178], [124, 133], [156, 111], [188, 119], [198, 145], [187, 168], [186, 194], [203, 223], [242, 212], [262, 158], [240, 91]],
+      elev: [[0, 0], [0.06, 0], [0.07, 1.3], [0.08, 0.2], [0.09, 1.3], [0.1, 0.2], [0.11, 1.3], [0.12, 0], [0.36, 0], [0.42, 4], [0.45, 5],
+        [0.51, 10], [0.54, 11], [0.595, 14.5], [0.635, 14.5], [0.655, 5], [0.71, 0]],
+      hazards: [{ u: 0.28, kind: 'bomb', n: 2 }, { u: 0.48, kind: 'magma' }],
+      pads: [{ u: 0.03, off: 0 }, { u: 0.17, off: 0 }, { u: 0.4, off: 1.4 }, { u: 0.62, off: 0 }, { u: 0.85, off: -1.4 }],
+      ramps: [{ u: 0.2, gap: 4 }],
+      boxes: [0.25, 0.75],
+      coins: [{ u: 0.05, off: 1.5, n: 6 }, { u: 0.14, off: 0, n: 5 }, { u: 0.38, off: -1.5, n: 6 }, { u: 0.56, off: 0, n: 5 }, { u: 0.8, off: 1.5, n: 6 }, { u: 0.93, off: 0, n: 5 }]
+    },
+    // a lava river jump on the start straight, steam vents in a basalt-column gorge, a switchback climb (a magma
+    // boulder on the middle leg) to a plateau at 12.5, a hop off its edge and whoops down the cooled flow
+    basalt: {
+      name: 'Basalt Gorge', world: 3, laps: 3, hw: 3.6, scale: 0.82, ai: 0.98,
+      pts: [[70, 224], [130, 226], [180, 220], [214, 200], [232, 170], [262, 160], [284, 134], [288, 100], [268, 74], [220, 74], [176, 78], [150, 64], [160, 44], [204, 42], [246, 34], [262, 14], [236, -2], [180, -6], [120, 0], [84, 24], [62, 66], [56, 110], [50, 150], [40, 192]],
+      elev: [[0, 0], [0.32, 0], [0.44, 4.5], [0.47, 5], [0.57, 9], [0.62, 9.5], [0.7, 12.5], [0.765, 12.5], [0.78, 6], [0.83, 3], [0.84, 2.6], [0.85, 3.8], [0.86, 1.8],
+        [0.87, 3], [0.88, 1], [0.89, 2.2], [0.9, 0.4], [0.95, 0]],
+      hazards: [{ u: 0.2, kind: 'vent', n: 3 }, { u: 0.52, kind: 'magma' }],
+      pads: [{ u: 0.03, off: 0 }, { u: 0.07, off: 0 }, { u: 0.25, off: 0 }, { u: 0.4, off: 1.4 }, { u: 0.66, off: -1.4 }, { u: 0.755, off: 0 }, { u: 0.97, off: 1.4 }],
+      ramps: [{ u: 0.085, gap: 4.2 }],
+      boxes: [0.12, 0.6],
+      coins: [{ u: 0.07, off: -1.5, n: 6 }, { u: 0.24, off: 1.5, n: 5 }, { u: 0.36, off: 0, n: 6 }, { u: 0.5, off: -1.4, n: 6 }, { u: 0.72, off: 0, n: 6 }, { u: 0.92, off: 0, n: 5 }]
+    },
+    // the long one: a lava river jump, a long climb past rolling magma, the ridge between two lava lakes with lava bombs,
+    // up to the summit at 16 and a plunge off it, steam vents on the flats and a second lava river
+    caldera: {
+      name: 'Caldera Ridge', world: 3, laps: 2, hw: 3.6, scale: 1.1, ai: 0.995,
+      pts: [[40, 260], [110, 268], [180, 262], [240, 240], [290, 200], [318, 150], [320, 100], [296, 62], [240, 50], [180, 46], [136, 42], [104, 56], [84, 86], [100, 118], [150, 132], [196, 160], [196, 200], [150, 214], [96, 206], [48, 222]],
+      elev: [[0, 0], [0.2, 0], [0.29, 5], [0.32, 6], [0.4, 10], [0.53, 10.5], [0.575, 16], [0.59, 16], [0.605, 7], [0.67, 2], [0.74, 0]],
+      hazards: [{ u: 0.31, kind: 'magma', n: 2 }, { u: 0.47, kind: 'bomb', n: 3 }, { u: 0.78, kind: 'vent', n: 3 }, { u: 0.95, kind: 'bomb' }],
+      pads: [{ u: 0.03, off: 0 }, { u: 0.085, off: 0 }, { u: 0.17, off: -1.4 }, { u: 0.25, off: 1.4 }, { u: 0.34, off: 0 }, { u: 0.44, off: -1.4 }, { u: 0.52, off: 1.4 },
+        { u: 0.585, off: 0 }, { u: 0.7, off: 1.4 }, { u: 0.74, off: -1.4 }, { u: 0.865, off: 0 }, { u: 0.96, off: 1.4 }],
+      ramps: [{ u: 0.1, gap: 4.2 }, { u: 0.88, gap: 4.2 }],
+      boxes: [0.16, 0.66],
+      coins: [{ u: 0.05, off: 1.5, n: 6 }, { u: 0.22, off: 0, n: 6 }, { u: 0.36, off: -1.5, n: 6 }, { u: 0.5, off: 0, n: 6 }, { u: 0.63, off: 1.4, n: 5 }, { u: 0.75, off: 0, n: 6 }, { u: 0.92, off: -1.5, n: 6 }]
+    },
+
+    // world 5, Moon Base: low gravity (WORLDS grav), so crests launch easily and every jump floats; the gaps are
+    // chasms. Each track has a dome-base run (base: [u0, u1], drawn as a glass tunnel) and gets harder (ai)
+    // a chasm leap off the start straight, up the crater wall to the rim, a pad and a big floaty dive into a small
+    // crater, across its floor, a hop off the far rim, a rover crossing, the dome base S-bends, meteorites skipping
+    // across and the rim whoops
+    rimhop: {
+      name: 'Rim Hopper', world: 4, laps: 3, hw: 4.2, scale: 1, ai: 1.03,
+      pts: [[30, 40], [100, 24], [180, 22], [250, 30], [296, 60], [290, 108], [250, 124], [200, 116], [160, 132], [150, 176], [110, 204], [60, 200], [30, 170], [40, 130], [18, 90]],
+      elev: [[0, 0], [0.1, 0], [0.16, 10], [0.17, 10], [0.19, 4], [0.25, 4], [0.27, 8], [0.28, 8], [0.295, 3], [0.33, 0], [0.71, 0], [0.722, 2.4], [0.734, 0.4], [0.746, 2.6], [0.758, 0.4], [0.77, 2.4], [0.782, 0]],
+      hazards: [{ u: 0.49, kind: 'rover' }, { u: 0.665, kind: 'meteor', n: 3 }],
+      pads: [{ u: 0.06, off: 0 }, { u: 0.167, off: 0 }, { u: 0.7, off: 0 }, { u: 0.9, off: -1.5 }],
+      ramps: [{ u: 0.07, gap: 7 }],
+      base: [0.53, 0.62],
+      boxes: [0.12, 0.56],
+      coins: [{ u: 0.04, off: 1.6, n: 6 }, { u: 0.22, off: -1.5, n: 6 }, { u: 0.4, off: 0, n: 6 }, { u: 0.6, off: 1.4, n: 5 }, { u: 0.8, off: -1.4, n: 6 }, { u: 0.95, off: 0, n: 5 }]
+    },
+    // the climb to the highland, a rim crest into the head of the rille, the winding valley down with moon rocks
+    // bouncing across, the dome base on the valley floor, a chasm leap over the rille, the hairpin climb out and a
+    // hop off the last crest
+    rille: {
+      name: 'Rille Run', world: 4, laps: 3, hw: 4.2, scale: 0.9, ai: 1.01,
+      pts: [[30, 50], [100, 26], [170, 30], [230, 20], [290, 40], [300, 90], [260, 110], [270, 150], [230, 176], [240, 220], [190, 240], [140, 220], [100, 240], [50, 222], [40, 180], [70, 140], [30, 110]],
+      elev: [[0, 0], [0.03, 0], [0.15, 12], [0.235, 12], [0.25, 8.5], [0.33, 7], [0.55, 2], [0.8, 2], [0.88, 9], [0.94, 9], [0.955, 5], [0.995, 0]],
+      hazards: [{ u: 0.19, kind: 'dish' }, { u: 0.42, kind: 'moonrock', n: 2 }, { u: 0.64, kind: 'rover' }],
+      pads: [{ u: 0.17, off: 1.5 }, { u: 0.225, off: 0 }, { u: 0.5, off: -1.4 }, { u: 0.715, off: 0 }, { u: 0.93, off: 0 }],
+      ramps: [{ u: 0.725, gap: 8 }],
+      base: [0.6, 0.7],
+      boxes: [0.1, 0.58],
+      coins: [{ u: 0.07, off: -1.5, n: 6 }, { u: 0.2, off: 0, n: 6 }, { u: 0.36, off: 1.4, n: 5 }, { u: 0.52, off: 0, n: 5 }, { u: 0.78, off: -1.4, n: 6 }, { u: 0.9, off: 1.4, n: 5 }]
+    },
+    // the finale: the long climb up the outer crater wall to the rim, a pad and a huge dive into the bowl, a chasm
+    // leap on the bowl floor, meteorites and a satellite-dish rover, the climb out and a hop off the rim, a second
+    // chasm on the plain, the rim whoops, bouncing moon rocks, the dome base and a ramp to the line
+    starfall: {
+      name: 'Starfall Crater', world: 4, laps: 2, hw: 4.2, scale: 0.9, ai: 1.06,
+      pts: [[30, 60], [120, 28], [220, 24], [320, 34], [390, 70], [396, 140], [350, 170], [300, 160], [250, 180], [240, 230], [290, 260], [330, 300], [290, 340], [200, 340], [140, 310], [90, 330], [40, 300], [30, 240], [70, 190], [40, 140]],
+      elev: [[0, 0], [0.02, 0], [0.13, 16], [0.14, 16], [0.165, 4], [0.44, 4], [0.5, 13], [0.505, 13], [0.518, 9.5], [0.6, 0], [0.655, 0], [0.665, 2.6], [0.675, 0.4], [0.685, 2.8], [0.695, 0]],
+      hazards: [{ u: 0.3, kind: 'meteor', n: 3 }, { u: 0.42, kind: 'dish' }, { u: 0.71, kind: 'rover' }, { u: 0.8, kind: 'moonrock', n: 2 }],
+      pads: [{ u: 0.02, off: 0 }, { u: 0.1, off: -1.5 }, { u: 0.135, off: 0 }, { u: 0.198, off: 0 }, { u: 0.36, off: 1.4 }, { u: 0.495, off: 0 }, { u: 0.618, off: 0 }, { u: 0.78, off: -1.4 }, { u: 0.955, off: 0 }],
+      ramps: [{ u: 0.205, gap: 8.5 }, { u: 0.625, gap: 8.5 }, { u: 0.965, gap: 0 }],
+      base: [0.84, 0.93],
+      boxes: [0.07, 0.32, 0.74],
+      coins: [{ u: 0.05, off: 1.5, n: 6 }, { u: 0.18, off: 0, n: 6 }, { u: 0.27, off: -1.5, n: 6 }, { u: 0.4, off: 1.4, n: 5 }, { u: 0.56, off: 0, n: 6 }, { u: 0.73, off: 1.5, n: 6 }, { u: 0.88, off: 0, n: 6 }]
     }
   };
-  // aiSpeed is the rivals' top speed in cells/s before PACE; pay multiplies the place money
+  // aiSpeed is the rivals' top speed in cells/s before PACE; pay multiplies the place money. Optional environment
+  // factors (default 1): grip × every car's turn rate and tyre bite (ice < 1), grav × gravity in the air (the moon < 1),
+  // rough × the off-road speed factor. A track's optional ai multiplies aiSpeed there, so a world can get harder
+  // track by track.
   var WORLDS = [
     { id: 'hills', name: 'Grassy Hills Town', tracks: ['meadow', 'creek', 'windmill'], aiSpeed: 8.8, pay: 1, skill: [0.93, 0.91, 0.89, 0.87, 0.85] },
     { id: 'desert', name: 'Sunbaked Canyon', tracks: ['dune', 'mesa', 'oasis'], aiSpeed: 9.6, pay: 1.6, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
-    { id: 'ice', name: 'Snowcap Peaks', tracks: [], aiSpeed: 11, pay: 2.4, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
-    { id: 'volcano', name: 'Lava Lane', tracks: [], aiSpeed: 12, pay: 3.4, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
-    { id: 'moon', name: 'Moon Base', tracks: [], aiSpeed: 13, pay: 4.8, skill: [0.95, 0.93, 0.91, 0.89, 0.87] }
+    { id: 'ice', name: 'Snowcap Peaks', tracks: ['pines', 'skijump', 'glacier'], aiSpeed: 10.6, grip: 0.85, pay: 2.4, skill: [0.95, 0.93, 0.91, 0.89, 0.87] },
+    { id: 'volcano', name: 'Lava Lane', tracks: ['cinder', 'basalt', 'caldera'], aiSpeed: 11.7, pay: 3.4, skill: [0.96, 0.94, 0.92, 0.9, 0.88], rough: 0.85 },
+    { id: 'moon', name: 'Moon Base', tracks: ['rimhop', 'rille', 'starfall'], aiSpeed: 12, pay: 4.8, skill: [0.95, 0.93, 0.91, 0.89, 0.87], grav: 0.55 }
   ];
   var RIVALS = ['Mia', 'Rocco', 'Juno', 'Theo', 'Pia', 'Bram', 'Lulu', 'Kai', 'Nell', 'Otto'];
 
@@ -347,6 +491,7 @@ var RB = (function () {
       var K = HAZ[hz.kind], n = hz.n || 1;
       for (var m = 0; m < n; m++) g.hazards.push({ s: wrapS({ L: L }, hz.u * L + m * K.gap), kind: hz.kind, r: K.r, h: K.h, bounce: K.bounce || 0,
         period: hz.period || K.period, phase: (hz.phase !== undefined ? hz.phase : k * 0.37) + m * 0.11, amp: T.hw + HAZ_OVER });
+      if (K.vent) for (var vi = 0; vi < n; vi++) { var vt = g.hazards[g.hazards.length - n + vi]; vt.vent = K.vent; vt.off = hz.off !== undefined ? hz.off : [-0.5, 0.5, 0][vi % 3] * T.hw; vt.phase += vi * 0.34; }
     });
     g.ramps = T.ramps.map(function (m) { return { s: m.u * L, len: RAMP_LEN, gap: m.gap, h: RAMP_H }; });
     g.boxes = [];
@@ -484,7 +629,9 @@ var RB = (function () {
   }
   // a press is latched until a fixed step uses it, so a frame too short for a step cannot drop it
   function input(r, inp) { var p = r.cars[0]; p.inp = inp || {}; if (p.inp.item) p.itemQueued = true; }
-  function surfaceSpeed(r, car, d) { return Math.abs(d) <= r.g.hw ? 1 : car.stats.grass; }
+  function surfaceSpeed(r, car, d) { return Math.abs(d) <= r.g.hw ? 1 : Math.min(1, car.stats.grass * envOf(r).rough); }
+  // the world's environment factors (see WORLDS)
+  function envOf(r) { var W = WORLDS[r.world]; return { grip: W.grip || 1, grav: W.grav || 1, rough: W.rough || 1 }; }
   function ev(r, type, car, extra) { var e = { type: type, car: car ? car.i : -1 }; if (extra) for (var k in extra) e[k] = extra[k]; r.events.push(e); if (r.events.length > 200) r.events.shift(); }
 
   function hit(r, car, kind, extra) {
@@ -515,9 +662,15 @@ var RB = (function () {
 
   // where hazard i is at the race time: x, z, arc s, offset d, the heading it walks or rolls, its hop y and roll angle
   function hazardAt(r, i, t) {
+    if (r.g.hazards[i].vent) return ventAt(r, i, t);
     var hz = r.g.hazards[i], ph = TAU * ((t === undefined ? r.t : t) / hz.period + hz.phase), d = hz.amp * Math.sin(ph), p = pointAt(r.g, hz.s, d);
     var dir = Math.cos(ph) >= 0 ? 1 : -1;
     return { x: p.x, z: p.z, s: hz.s, d: d, h: p.h + dir * Math.PI / 2, y: hz.bounce * Math.abs(Math.sin(ph * 3)), roll: d / hz.r, kind: hz.kind, r: hz.r };
+  }
+  // a steam vent (world 4): fixed in its lane; puff runs 0..1..0 while it is on, and it only hits while on
+  function ventAt(r, i, t) {
+    var hz = r.g.hazards[i], c = (t === undefined ? r.t : t) / hz.period + hz.phase, f = c - Math.floor(c), on = f < hz.vent, p = pointAt(r.g, hz.s, hz.off);
+    return { x: p.x, z: p.z, s: hz.s, d: hz.off, h: p.h, y: 0, roll: 0, kind: hz.kind, r: hz.r, on: on, puff: on ? Math.max(0, Math.sin(Math.PI * f / hz.vent)) : 0 };
   }
   // the lane a car should take past hazards it will reach in the next few cells, or lane if none is in the way
   function dodge(r, car, lane) {
@@ -527,7 +680,7 @@ var RB = (function () {
       if (ahead < 0.5 || ahead > 12) continue;
       if (car.ai && (car.i * 7 + i * 3 + car.lap) % 4 === 0) continue; // rivals miss one now and then
       var hz = hazardAt(r, i, r.t + ahead / Math.max(4, car.v)), room = hz.r + CAR_R + 0.9;
-      if (Math.abs(hz.d - lane) < room) {
+      if (hz.on !== false && Math.abs(hz.d - lane) < room) {
         var side = Math.abs(hz.d) > g.hw - room ? -Math.sign(hz.d) : lane >= hz.d ? 1 : -1;
         lane = clamp(hz.d + side * room, -g.hw + 0.6, g.hw - 0.6);
       }
@@ -645,7 +798,7 @@ var RB = (function () {
     if (car.driftDir) car.v *= 1 - 0.12 * DT;
     var accel = (car.v - v0) / DT;
     // turning
-    var rate = st.grip * Math.min(1, car.v / 4) * (car.air ? 0.3 + 0.1 * (st.glide || 0) : car.hopT > 0 ? HOP_STEER : 1);
+    var env = envOf(r), rate = st.grip * env.grip * Math.min(1, car.v / 4) * (car.air ? 0.3 + 0.1 * (st.glide || 0) : car.hopT > 0 ? HOP_STEER : 1);
     // in a drift the car always turns its own way: steering in tightens it, steering against widens it
     var shaped = aimed ? steer : STEER_LIN * steer + (1 - STEER_LIN) * steer * steer * steer;
     var yawWant = car.driftDir ? car.driftDir * rate * (DRIFT_WIDE + (DRIFT_TURN - DRIFT_WIDE) * (1 + steer * car.driftDir) / 2) : shaped * rate;
@@ -653,7 +806,7 @@ var RB = (function () {
     car.yawV += (yawWant - car.yawV) * Math.min(1, DT / (YAW_LAG * wt * (car.driftDir ? DRIFT_LAG : 1)));
     car.h += car.yawV * DT;
     // move along the direction of travel, which swings toward the heading as the tyres bite
-    var bite = GRIP_BITE * st.grip / wt * (car.air ? AIR_BITE : car.driftDir ? DRIFT_BITE : 1);
+    var bite = GRIP_BITE * st.grip * env.grip / wt * (car.air ? AIR_BITE : car.driftDir ? DRIFT_BITE : 1);
     car.vh += angDiff(car.h, car.vh) * Math.min(1, bite * DT);
     car.x += Math.cos(car.vh) * car.v * DT; car.z += Math.sin(car.vh) * car.v * DT;
     // a drift slides the car toward the outside of the turn (the left of a right-hand drift)
@@ -696,14 +849,14 @@ var RB = (function () {
     // rides the hills (gvy); where the ground falls away faster than gravity pulls, it flies off the crest
     var gNew = groundAt(g, q.s), gvyNew = (gNew - car.gy) / DT;
     if (!car.air && car.onRamp < 0) {
-      if (car.gvyOk && car.v > DRIFT_MIN_V && car.gvy - gvyNew > G * DT * 1.05) {
+      if (car.gvyOk && car.v > DRIFT_MIN_V && car.gvy - gvyNew > G * env.grav * DT * 1.05) {
         car.air = true; car.trick = false; car.vy = car.gvy; car.y = car.gy + car.gvy * DT - gNew; ev(r, 'jump', car, { crest: true });
       }
       car.gvyOk = true;
     }
     if (car.air) {
       // the glider opens on the way down and slows the fall
-      car.vy -= G * DT * (car.vy < 0 && st.glide ? Math.max(0.25, 1 - 0.22 * st.glide) : 1);
+      car.vy -= G * env.grav * DT * (car.vy < 0 && st.glide ? Math.max(0.25, 1 - 0.22 * st.glide) : 1);
       car.y += car.gy - gNew + car.vy * DT;
       if (car.y <= 0) {
         car.dipV += DIP_K * Math.max(0, gvyNew - car.vy);
@@ -752,7 +905,7 @@ var RB = (function () {
   // the rivals' top speed: their skill, slowed in sharp bends, and pulled toward the player (rubber band)
   function aiTop(r, car) {
     var W = WORLDS[r.world], p = r.cars[0], g = r.g;
-    var top = W.aiSpeed * PACE * car.skill;
+    var top = W.aiSpeed * (TRACKS[r.id].ai || 1) * PACE * car.skill;
     if (!p.done) {
       var gap = car.prog - p.prog;
       top *= 1 + clamp(-gap * (gap > 0 ? 0.011 : 0.004), -0.25, 0.06);
@@ -796,7 +949,7 @@ var RB = (function () {
         if (Math.abs(dS(g, hc.s, g.hazards[i].s)) > 3) continue;
         hz = hz || hazardAt(r, i);
         var rr = hz.r + CAR_R;
-        if (hc.y > hz.h - hz.y || (hc.x - hz.x) * (hc.x - hz.x) + (hc.z - hz.z) * (hc.z - hz.z) > rr * rr) continue;
+        if (hz.on === false || hc.y > g.hazards[i].h - hz.y || (hc.x - hz.x) * (hc.x - hz.x) + (hc.z - hz.z) * (hc.z - hz.z) > rr * rr) continue;
         hc.hazT = r.t + HAZ_COOL;
         hit(r, hc, 'hazard', { hazard: hz.kind });
       }
@@ -864,7 +1017,7 @@ var RB = (function () {
       // finish the field at its present pace so the result table is complete
       r.cars.forEach(function (c) {
         if (c.done) return;
-        c.done = true; c.finishT = r.t + (r.laps * L - c.prog) / Math.max(1, WORLDS[r.world].aiSpeed * c.skill * 0.9);
+        c.done = true; c.finishT = r.t + (r.laps * L - c.prog) / Math.max(1, WORLDS[r.world].aiSpeed * (TRACKS[r.id].ai || 1) * c.skill * 0.9);
       });
       updateOrder(r);
       r.phase = 'done'; ev(r, 'raceOver', p, { place: p.place });
@@ -1071,7 +1224,7 @@ var RB = (function () {
     PLACE_PAY: PLACE_PAY, PART_PAY: PART_PAY, PARTS: PARTS, ITEMS: ITEMS, ITEM_KEYS: ITEM_KEYS, UPGRADES: UPGRADES, UP_KEYS: UP_KEYS,
     PERKS: PERKS, CARS: CARS, LOOKS: LOOKS, LOOK_KEYS: LOOK_KEYS, TRACKS: TRACKS, WORLDS: WORLDS, HUB: HUB,
     rng: rng, angDiff: angDiff, clamp: clamp, track: track, pointAt: pointAt, groundAt: groundAt, slopeAt: slopeAt, headingAt: headingAt, lookOpt: lookOpt,
-    rollItem: rollItem, hazardAt: hazardAt, HAZ: HAZ, carStats: carStats, statsFor: statsFor, startRace: startRace, input: input, stepRace: stepRace,
+    rollItem: rollItem, hazardAt: hazardAt, HAZ: HAZ, envOf: envOf, carStats: carStats, statsFor: statsFor, startRace: startRace, input: input, stepRace: stepRace,
     surfaceSpeed: surfaceSpeed, hit: hit, botInput: botInput, finishRace: finishRace, trackUnlocked: trackUnlocked,
     worldUnlocked: worldUnlocked, canAfford: canAfford, upgradeCost: upgradeCost, buyUpgrade: buyUpgrade, buyCar: buyCar,
     selectCar: selectCar, carUnlocked: carUnlocked, carLockReason: carLockReason, buyLook: buyLook, equip: equip, newState: newState, serialize: serialize, deserialize: deserialize,
