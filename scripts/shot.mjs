@@ -7,6 +7,7 @@
 // --out    PNG path, default output/shot.png (output/ is git-ignored)
 // --size   viewport, default 1280x720 (use 390x844 for an upright phone)
 // --wait   seconds to let the page run before the shot, default 2
+// --timeout seconds allowed for loading and the shot, default 300
 // --step   seconds of game time to advance with window.__game.step first
 // --at     u[,off]: put the player's car at lap fraction u (offset off) and start racing there, before --step
 // --look   u,side,dist,height: a fixed camera beside the road at u, dist cells out on side (1 right, -1 left),
@@ -31,6 +32,7 @@ const out = opt('--out', 'output/shot.png');
 const [w, h] = opt('--size', '1280x720').split('x').map(Number);
 const wait = Number(opt('--wait', '2'));
 const step = Number(opt('--step', '0'));
+const timeout = Number(opt('--timeout', '300')); // seconds for page load and the screenshot (software WebGL on a busy machine is slow)
 const query = (args[0] || 'race=meadow&dev=1&fresh=1&nosplash=1').replace(/^\?/, '');
 
 let chromium;
@@ -60,6 +62,7 @@ try {
   const page = await browser.newPage({ viewport: { width: w, height: h } });
   page.on('pageerror', (e) => { threw = true; console.error('pageerror:', e.message); });
   page.on('console', (m) => { if (m.type() === 'error') console.error('console:', m.text()); });
+  page.setDefaultTimeout(timeout * 1000);
   await page.goto(`http://127.0.0.1:${port}/?${query}`, { waitUntil: 'load' });
   const at = opt('--at', ''), look = opt('--look', ''), cam = opt('--cam', '');
   if (at) await page.evaluate((a) => { const G = window.__game, r = G.race, [u, off] = a.split(',').map(Number); G.D._place(r, r.cars[0], u * r.g.L, off || 0); r.phase = 'race'; r.cd = 0; }, at);
