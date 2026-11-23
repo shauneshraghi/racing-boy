@@ -769,7 +769,9 @@ var RB3DWorld = (function () {
   // built-ins) and trackKinds (per track), farmHay, species ([proto, cumulative chance]) and band (protos just past the
   // walls), maxTrees, treeDens, treeScale [min, spread], roadside (a proto here and there by the road), palms (round
   // water), far ('mesas' or a FAR entry: big things in the far land), tuftN and tuftC (grass tufts), canyons (track ids
-  // whose gaps are dry canyons rather than water), flowers, waterGlow (an emissive colour for the gap fluid: lava)
+  // whose gaps are dry canyons rather than water), flowers, waterGlow (an emissive colour for the gap fluid: lava),
+  // canyonDepth, canyonWater and canyonBank (a canyon's depth, the colour of its floor pool and the proto on its rims),
+  // dust (the colour of landing and wall dust)
   var LOOK = {
     hills: { sunAz: -2.2, sunEl: 0.72, sun: '#fff0d8', sunI: 2.5, hemiSky: '#cfe3ff', hemiGround: '#6a5a3a', hemiI: 0.6,
       zenith: '#2a66c4', horizon: '#bcd4e6', fog: '#c4d6e2', fogD: 0.0034, cloudA: '#ffffff', cloudB: '#a8b4c8', cover: 0.5, exposure: 1.0,
@@ -892,7 +894,7 @@ var RB3DWorld = (function () {
         ext[k] = e - 4;
       });
       var canyon = (L.canyons || []).indexOf(trackId) >= 0;
-      self.creeks.push({ y0: D.groundAt ? D.groundAt(g, (a + b) / 2) : 0, x: mid.x, z: mid.z, tx: mid.tx, tz: mid.tz, nx: nx, nz: nz, half: m.gap / 2, ext: ext, a: a, b: b, depth: canyon ? 3.2 : 1.1, water: canyon ? -2.7 : -0.32, canyon: canyon });
+      self.creeks.push({ y0: D.groundAt ? D.groundAt(g, (a + b) / 2) : 0, x: mid.x, z: mid.z, tx: mid.tx, tz: mid.tz, nx: nx, nz: nz, half: m.gap / 2, ext: ext, a: a, b: b, depth: canyon ? L.canyonDepth || 3.2 : 1.1, water: canyon ? 0.5 - (L.canyonDepth || 3.2) : -0.32, canyon: canyon });
     });
     var amp = L.hill, shape = HILLS[L.hills] || HILLS.roll;
     this.hillAt = function (x, z) { return shape(x, z, amp); };
@@ -1143,6 +1145,317 @@ var RB3DWorld = (function () {
   var BUILD = {}, WALLS = {}, FAR = {};
   var UNTINTED = { rock: 1, redrock: 1, pillar: 1 }, LOW = { bush: 1, rock: 1, shrub: 1 }, SMALL = { bush: 1, shrub: 1 };
 
+  // ---------- world 5, Moon Base ----------
+  // grey regolith pitted with craters under a black sky full of stars and a big blue planet, a hard white sun, a ring
+  // of rounded crater-rim mountains, dome habitats, landers, radio dishes and masts, light-strip barriers, rocks and
+  // solar panels, a glass tunnel over each track's dome-base run (TRACKS[id].base) and the rover, moon rock, meteorite
+  // and dish-robot hazards
+  MAKE.regolith = function () {
+    var N = 512, hf = new Float32Array(N * N), sh = new Float32Array(N * N), r = prng(501), x, y;
+    for (y = 0; y < N; y++) for (x = 0; x < N; x++) hf[y * N + x] = 0.35 * fbm(x / N * 8, y / N * 8, 4, 503, 8, 8) + 0.1 * hash(x, y, 5);
+    // craters, big and small: a bowl, a raised rim, and a bright splash of ejecta round the young ones
+    for (var k = 0; k < 150; k++) {
+      var cx = r() * N, cy = r() * N, R = 2 + Math.pow(r(), 3) * 40, young = r() < 0.3;
+      for (var dy = -Math.ceil(R * 2.2); dy <= R * 2.2; dy++) for (var dx = -Math.ceil(R * 2.2); dx <= R * 2.2; dx++) {
+        var t = Math.hypot(dx, dy) / R; if (t > 2.2) continue;
+        var px = ((Math.floor(cx + dx) % N) + N) % N, py = ((Math.floor(cy + dy) % N) + N) % N, i = py * N + px;
+        var h = t < 1 ? (t * t - 1) * 0.5 + 0.14 * t * t * t * t : 0.14 * Math.exp(-(t - 1) * (t - 1) / 0.08);
+        hf[i] += h * Math.min(1, R / 12);
+        sh[i] += (t < 1 ? -0.12 * (1 - t * t) : 0) + (young ? 0.22 * Math.exp(-(t - 1) * (t - 1) / 0.3) * (1 - t / 2.2) : 0);
+      }
+    }
+    var c = pix(N, N, function (px, py, o) {
+      var i = py * N + px, l = hf[py * N + (px - 1 + N) % N], rr = hf[py * N + (px + 1) % N];
+      var v = 0.62 + 0.22 * fbm(px / N * 5, py / N * 5, 3, 507, 5, 5) + 0.08 * (hash(px, py, 9) - 0.5) + sh[i] + (l - rr) * 1.2;
+      if (hash(px, py, 13) > 0.993) v += 0.25; // glints of glassy grains
+      o[0] = 236 * v; o[1] = 234 * v; o[2] = 228 * v;
+    });
+    TX.regolithN = toTex(normalCanvas(hf, N, N, 5));
+    return toTex(c, true);
+  };
+  MAKE.regolithN = function () { T('regolith'); return TX.regolithN; };
+  // solar cells: dark blue squares in a silver grid, a cell per 16 px
+  MAKE.solarcell = function () {
+    var N = 128, c = pix(N, N, function (x, y, o) {
+      var gx = x % 16, gy = y % 16, line = gx < 1 || gy < 1, bus = (gx === 8 || gy === 8) && hash(x >> 4, y >> 4, 3) > 0.2;
+      var v = 0.85 + 0.15 * fbm(x / N * 3, y / N * 3, 2, 511, 3, 3);
+      if (line) { o[0] = 190; o[1] = 196; o[2] = 204; } else if (bus) { o[0] = 70 * v; o[1] = 90 * v; o[2] = 150 * v; } else { o[0] = 26 * v; o[1] = 42 * v; o[2] = 96 * v; }
+    });
+    return toTex(c, true);
+  };
+  // crinkled foil (landers): a normal map only
+  MAKE.foilN = function () {
+    var N = 128, hf = new Float32Array(N * N);
+    for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) hf[y * N + x] = Math.abs(fbm(x / N * 6, y / N * 6, 4, 513, 6, 6) - 0.5) * 2;
+    return toTex(normalCanvas(hf, N, N, 6));
+  };
+  // the moon's materials, made on first use (each moon builder below is wrapped to call this first)
+  function moonMat(name, o, shadow) {
+    if (!MATS[name]) { var m = std(o); m.name = name; addHooks(m, [nearFade]); MATS[name] = m; }
+    if (shadow) SHADOW[name] = 1;
+  }
+  function moonMats() {
+    if (MATS.hull) return;
+    moonMat('solar', { map: T('solarcell'), vertexColors: true, roughness: 0.22, metalness: 0.55, envMapIntensity: 1.3 }, true);
+    moonMat('foil', { normalMap: T('foilN'), vertexColors: true, roughness: 0.28, metalness: 0.9, envMapIntensity: 1.4 }, true);
+    moonMat('domeGlass', { vertexColors: true, roughness: 0.06, metalness: 0.3, envMapIntensity: 1.8, emissive: col('#1a2a3a'), emissiveIntensity: 0.6 }, true);
+    moonMat('panelDS', { vertexColors: true, roughness: 0.45, metalness: 0.35, side: THREE.DoubleSide }, true);
+    moonMat('meteorCore', { vertexColors: true, roughness: 0.8, emissive: col('#ff6a1a'), emissiveIntensity: 0.55 }, true);
+    MATS.glowDS = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, side: THREE.DoubleSide }); MATS.glowDS.name = 'glowDS';
+    MATS.tunnelGlass = new THREE.MeshStandardMaterial({ color: col('#b8d4f0'), transparent: true, opacity: 0.13, roughness: 0.04, metalness: 0, envMapIntensity: 2, side: THREE.DoubleSide, depthWrite: false }); MATS.tunnelGlass.name = 'tunnelGlass';
+    MATS.meteorHalo = new THREE.MeshBasicMaterial({ color: col('#ffb060'), transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+    moonMat('hull', { vertexColors: true, roughness: 0.55, metalness: 0.15 }, true);
+  }
+  // the land: gentle swells pocked with craters (a bowl, a raised rim) on two scales, from a hashed grid
+  HILLS.crater = function (x, z, amp) {
+    var y = amp * 0.35 * fbm(x * 0.012, z * 0.012, 3, 521);
+    [[38, 523, 0.55], [13, 527, 0.4]].forEach(function (L) {
+      var cs = L[0], ix = Math.floor(x / cs), iz = Math.floor(z / cs);
+      for (var j = -1; j <= 1; j++) for (var i = -1; i <= 1; i++) {
+        var hx = ix + i, hz = iz + j; if (hash(hx, hz, L[1]) > L[2]) continue;
+        var R = cs * (0.18 + 0.32 * hash(hx, hz, L[1] + 1)), cx = (hx + 0.2 + 0.6 * hash(hx, hz, L[1] + 2)) * cs, cz = (hz + 0.2 + 0.6 * hash(hx, hz, L[1] + 3)) * cs;
+        var t = Math.hypot(x - cx, z - cz) / R; if (t > 2.2) continue;
+        y += amp / 5 * R * (t < 1 ? 0.24 * (t * t - 1) + 0.09 * t * t * t * t : 0.09 * Math.exp(-(t - 1) * (t - 1) / 0.12));
+      }
+    });
+    return y;
+  };
+  // the far ring: broad, rounded massifs like the wall of a huge crater
+  MTN.craterRim = function (a, f, n, seed) { var m = fbm(Math.cos(a) * 2 + seed, Math.sin(a) * 2 + f, 3, 531); return 30 + 120 * Math.pow(n, 1.4) * (0.6 + 0.6 * m); };
+  // scenery
+  PROTOS.mrock = function () { var g = rockGeo(0.7, 31, 0.6); paint(g, function (x, y) { return mixC(col('#4e4d49'), col('#aeaca5'), clamp(y / 0.6 + 0.45, 0, 1)); }); return [{ mat: 'stone', g: g }]; };
+  PROTOS.mboulder = function () { var g = rockGeo(1.7, 37, 0.5); paint(g, function (x, y) { return mixC(col('#45443f'), col('#a19f98'), clamp(y / 1.0 + 0.4, 0, 1)); }); return [{ mat: 'stone', g: g }]; };
+  PROTOS.solar = function () {
+    var p = [], frame = col('#c8ccd2');
+    p.push({ mat: 'metal', g: cyl(0.07, 0.09, 1.1, 8).translate(0, 0, 0) });
+    paint(p[0].g, col('#9aa0a8'));
+    var panel = box(2.4, 0.05, 1.3, 1 / 1.2); panel.translate(0, -0.025, 0); panel.rotateX(-0.55); panel.translate(0, 1.15, 0); paint(panel, WHITE); p.push({ mat: 'solar', g: panel });
+    var rim = box(2.5, 0.04, 1.4); rim.translate(0, -0.07, 0); rim.rotateX(-0.55); rim.translate(0, 1.15, 0); paint(rim, frame); p.push({ mat: 'metal', g: rim });
+    return p;
+  };
+  PROTOS.beacon = function () {
+    var post = cyl(0.06, 0.08, 1.2, 8); paint(post, col('#d8d8d4'));
+    var cap = new THREE.SphereGeometry(0.11, 10, 6); cap.translate(0, 1.25, 0); paint(cap, col('#ffb03a'));
+    var foot = cyl(0.22, 0.26, 0.12, 10); paint(foot, col('#6a6a68'));
+    return [{ mat: 'metal', g: post }, { mat: 'glow', g: cap }, { mat: 'plain', g: foot }];
+  };
+  UNTINTED.mrock = UNTINTED.mboulder = UNTINTED.solar = UNTINTED.beacon = 1;
+  LOW.mrock = LOW.mboulder = LOW.solar = LOW.beacon = 1;
+  SMALL.beacon = 1;
+  // buildings (local +z faces the road)
+  function blinker(group, anim, x, y, z, hex, rate, ph) {
+    var m = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), MAT('glow')); paint(m.geometry, col(hex));
+    m.position.set(x, y, z); group.add(m); anim.push(function (t) { m.visible = Math.sin(t * rate + ph) > 0.55; });
+  }
+  function worldPt(m, x, y, z) { return new THREE.Vector3(x, y, z).applyMatrix4(m); }
+  BUILD.dome = function (b, m, r) {
+    var R0 = 2.6 + r() * 1.4, white = col('#dcdcd8');
+    function put(mat, g, c) { b.add(mat, g, m, c); }
+    put('hull', cyl(R0 + 0.3, R0 + 0.45, 0.55, 32), white);
+    var dg = new THREE.SphereGeometry(R0, 32, 14, 0, Math.PI * 2, 0, Math.PI / 2); dg.translate(0, 0.55, 0); put('domeGlass', dg, col('#8ea6bc'));
+    for (var k = 0; k < 6; k++) { var tg = new THREE.TorusGeometry(R0 + 0.04, 0.07, 6, 28, Math.PI); tg.rotateY(k * Math.PI / 6); tg.translate(0, 0.55, 0); put('metal', tg, col('#eceef0')); }
+    var ring = new THREE.TorusGeometry(R0 + 0.33, 0.06, 4, 48); ring.rotateX(Math.PI / 2); ring.translate(0, 0.45, 0); put('glow', ring, col('#ffd38a'));
+    // an airlock toward the road with a lit door
+    put('hull', box(1.4, 1.3, 1.8).translate(0, 0, R0 + 0.6), white);
+    put('hull', cyl(0.75, 0.75, 1.8, 16).rotateX(Math.PI / 2).translate(0, 1.3, R0 + 0.6), white);
+    put('glow', box(0.7, 0.9, 0.05).translate(0, 0.05, R0 + 1.52), col('#9fe8ff'));
+  };
+  BUILD.hab = function (b, m, r, group, anim) {
+    var white = col('#e2e2de'), band = col('#c8502a');
+    function put(mat, g, c) { b.add(mat, g, m, c); }
+    [-2.1, 2.1].forEach(function (x) {
+      put('hull', cyl(0.95, 0.95, 3.2, 18).rotateZ(Math.PI / 2).translate(x + 1.6, 1.1, 0), white);
+      put('hull', cyl(0.97, 0.97, 0.25, 18).rotateZ(Math.PI / 2).translate(x + 0.2, 1.1, 0), band);
+      for (var w = 0; w < 3; w++) put('glow', box(0.35, 0.22, 0.05).translate(x - 0.9 + w * 0.9, 1.25, 0.94), col('#ffd38a'));
+      [-0.6, 0.6].forEach(function (z) { put('metal', box(0.12, 0.6, 0.12).translate(x, 0, z), col('#8a9098')); });
+    });
+    var node = new THREE.SphereGeometry(1.15, 18, 12); node.translate(0, 1.1, 0); put('hull', node, white);
+    put('metal', cyl(0.05, 0.05, 2.2, 6).translate(0, 2.1, 0), col('#c8ccd2'));
+    [-1, 1].forEach(function (sd) { var wing = box(1.4, 0.04, 3.2, 1 / 1.2); wing.rotateX(-0.4); wing.translate(0, 3.0, sd * 1.7); put('solar', wing, WHITE); });
+    var top = worldPt(m, 0, 4.4, 0); blinker(group, anim, top.x, top.y, top.z, '#ff4a3a', 2.4, r() * 6);
+  };
+  BUILD.lander = function (b, m, r) {
+    var gold = col('#d8a640'), white = col('#e8e8e4');
+    function put(mat, g, c) { b.add(mat, g, m, c); }
+    for (var k = 0; k < 4; k++) {
+      var a = k * Math.PI / 2 + Math.PI / 4, lx = Math.cos(a), lz = Math.sin(a);
+      var leg = cyl(0.06, 0.06, 1.9, 6); leg.rotateZ(0.5); leg.rotateY(-a); leg.translate(lx * 1.25, 0.1, lz * 1.25); put('metal', leg, col('#b8bcc2'));
+      put('metal', cyl(0.28, 0.32, 0.1, 10).translate(lx * 1.95, 0, lz * 1.95), col('#c8ccd2'));
+    }
+    put('foil', cyl(1.1, 1.1, 1.0, 8).translate(0, 1.0, 0), gold);
+    put('hull', box(1.4, 1.1, 1.3).translate(0, 2.0, 0), white);
+    put('hull', cyl(0.5, 0.6, 0.5, 8).translate(0, 3.1, 0), white);
+    put('glass', box(0.5, 0.35, 0.06).translate(0.25, 2.55, 0.66), col('#2a3a4a'));
+    var dish = new THREE.SphereGeometry(0.55, 14, 6, 0, Math.PI * 2, 0, 0.9); dish.rotateX(Math.PI); dish.rotateZ(0.8); dish.translate(-0.7, 3.6, -0.3); put('metal', dish, col('#eceef0'));
+    put('plank', box(0.5, 1.3, 0.05).translate(0, 0.1, 1.15), col('#8a8a86'));
+  };
+  BUILD.dishB = function (b, m, r, group, anim) {
+    var white = col('#e8eaec');
+    function put(mat, g, c) { b.add(mat, g, m, c); }
+    put('hull', box(1.6, 0.5, 1.6), col('#9a9894'));
+    put('metal', box(0.5, 3.0, 0.5).translate(0, 0.5, 0), col('#c8ccd2'));
+    var dish = new THREE.SphereGeometry(3.0, 28, 8, 0, Math.PI * 2, 0, 0.85); dish.translate(0, -3.0, 0); dish.rotateX(Math.PI - 0.7); dish.translate(0, 4.6, 0);
+    put('metal', dish, white);
+    var feed = cyl(0.05, 0.05, 2.4, 6); feed.rotateX(0.7); feed.translate(0, 4.0, 0.3); put('metal', feed, col('#b8bcc2'));
+    var tip = worldPt(m, 0, 5.8, 1.1); blinker(group, anim, tip.x, tip.y, tip.z, '#ff4a3a', 1.9, r() * 6);
+  };
+  BUILD.mast = function (b, m, r, group, anim) {
+    function put(mat, g, c) { b.add(mat, g, m, c); }
+    put('hull', box(1.0, 0.3, 1.0), col('#8a8884'));
+    [[-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]].forEach(function (p) { put('metal', box(0.07, 7.5, 0.07).translate(p[0], 0.3, p[1]), col('#c8ccd2')); });
+    for (var y = 0.8; y < 7.5; y += 0.9) { put('metal', box(0.66, 0.05, 0.05).translate(0, y, -0.3), col('#b0b4ba')); put('metal', box(0.66, 0.05, 0.05).translate(0, y, 0.3), col('#b0b4ba')); put('metal', box(0.05, 0.05, 0.66).translate(-0.3, y, 0), col('#b0b4ba')); put('metal', box(0.05, 0.05, 0.66).translate(0.3, y, 0), col('#b0b4ba')); }
+    var d = new THREE.SphereGeometry(0.7, 14, 6, 0, Math.PI * 2, 0, 0.9); d.rotateX(Math.PI / 2 + 0.3); d.translate(0, 6.4, 0.4); put('metal', d, col('#eceef0'));
+    var tip = worldPt(m, 0, 8.0, 0); blinker(group, anim, tip.x, tip.y, tip.z, '#ff4a3a', 2.8, r() * 6);
+  };
+  // the barrier: a low pale panel with a glowing strip along its top, on dark posts
+  WALLS.lightstrip = function (b, g, run, wd, sd, GY) {
+    function ribbon(y0, y1, off, mat, c) {
+      var P = [], I = [], U = [];
+      run.forEach(function (s, j) { var gy = GY(s), pp = D.pointAt(g, s, wd + off); P.push(pp.x, gy + y0, pp.z, pp.x, gy + y1, pp.z); U.push(s * 0.5, 0, s * 0.5, y1 - y0); if (j) { var a = (j - 1) * 2; I.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); } });
+      var geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); geo.setIndex(I); geo.computeVertexNormals();
+      var p0 = D.pointAt(g, run[0], wd); b.add(mat, geo, new THREE.Matrix4(), c, p0.x, p0.z);
+    }
+    ribbon(-0.15, 0.5, 0, 'panelDS', col('#c4c6ca'));
+    ribbon(0.5, 0.6, -sd * 0.03, 'glowDS', col('#4fdcff'));
+    for (var q = 0; q < run.length; q += 5) { var pp = D.pointAt(g, run[q], wd + sd * 0.1); b.add('metal', box(0.14, 0.72, 0.18), mtx(pp.x, GY(run[q]) - 0.1, pp.z, -pp.h), col('#3a3e46')); }
+  };
+  // the sky's stars and planet, the far domes, and the dome base's glass tunnel over the road
+  var PLANET_VS = 'varying vec3 vObj; varying vec3 vN; varying vec3 vV; void main() { vObj = normalize(position); vN = normalize(mat3(modelMatrix) * normal); vec4 w = modelMatrix * vec4(position, 1.0); vV = normalize(cameraPosition - w.xyz); gl_Position = projectionMatrix * viewMatrix * w; }';
+  var PLANET_FS = [
+    'uniform vec3 uSunDir; varying vec3 vObj; varying vec3 vN; varying vec3 vV;',
+    'float h31(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }',
+    'float vn3(vec3 x) { vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);',
+    '  return mix(mix(mix(h31(i), h31(i + vec3(1, 0, 0)), f.x), mix(h31(i + vec3(0, 1, 0)), h31(i + vec3(1, 1, 0)), f.x), f.y),',
+    '             mix(mix(h31(i + vec3(0, 0, 1)), h31(i + vec3(1, 0, 1)), f.x), mix(h31(i + vec3(0, 1, 1)), h31(i + vec3(1, 1, 1)), f.x), f.y), f.z); }',
+    'float fb3(vec3 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * vn3(p); p = p * 2.02 + 3.1; a *= 0.5; } return s; }',
+    'void main() {',
+    '  float land = smoothstep(0.5, 0.54, fb3(vObj * 2.6 + 4.0));',
+    '  float ice = smoothstep(0.78, 0.86, abs(vObj.y));',
+    '  vec3 sea = mix(vec3(0.03, 0.12, 0.34), vec3(0.06, 0.24, 0.5), fb3(vObj * 6.0));',
+    '  vec3 ground = mix(vec3(0.2, 0.32, 0.12), vec3(0.52, 0.45, 0.3), fb3(vObj * 5.0 + 2.0));',
+    '  vec3 c = mix(mix(sea, ground, land), vec3(0.92), ice);',
+    '  float cl = smoothstep(0.5, 0.72, fb3(vObj * 4.0 + vec3(9.0, 1.0, 3.0)));',
+    '  float ndl = dot(normalize(vN), uSunDir);',
+    '  c = mix(c * (0.02 + 1.25 * max(ndl, 0.0)), vec3(1.0) * (0.03 + 1.3 * max(ndl, 0.0)), cl * 0.85);',
+    '  float rim = pow(1.0 - max(dot(normalize(vN), vV), 0.0), 2.5);',
+    '  c += vec3(0.3, 0.55, 1.0) * rim * smoothstep(-0.3, 0.4, ndl) * 1.4;',
+    '  gl_FragColor = vec4(c, 1.0);',
+    '  #include <tonemapping_fragment>',
+    '  #include <colorspace_fragment>',
+    '}'].join('\n');
+  FAR.lunar = function (b, F, r, group, anim) {
+    var L = LOOK.moon, cx = F.x0 + F.w / 2, cz = F.z0 + F.h / 2, g = F.g, lim = F.lim;
+    // stars: two layers of points on a far dome, faint and bright
+    [[2600, 1.3, 0.55], [260, 2.4, 1.0]].forEach(function (layer, li) {
+      var n = layer[0], pos = new Float32Array(n * 3), cl = new Float32Array(n * 3);
+      for (var i = 0; i < n; i++) {
+        var y = 0.03 + 0.97 * r(), a = r() * Math.PI * 2, rr = Math.sqrt(1 - y * y), v = layer[2] * (0.4 + 0.6 * r()), tint = r();
+        pos[i * 3] = cx + Math.cos(a) * rr * 1700; pos[i * 3 + 1] = y * 1700; pos[i * 3 + 2] = cz + Math.sin(a) * rr * 1700;
+        cl[i * 3] = v * (tint < 0.2 ? 0.8 : 1); cl[i * 3 + 1] = v * 0.95; cl[i * 3 + 2] = v * (tint > 0.8 ? 0.75 : 1.05);
+      }
+      var sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(pos, 3)); sg.setAttribute('color', new THREE.BufferAttribute(cl, 3));
+      var pts = new THREE.Points(sg, new THREE.PointsMaterial({ size: layer[1], sizeAttenuation: false, vertexColors: true, fog: false, toneMapped: false, depthWrite: false }));
+      pts.frustumCulled = false; pts.renderOrder = -9; group.add(pts);
+    });
+    // the planet, lit from the sun's side, turning slowly
+    var pd = new THREE.Vector3(Math.cos(-0.35) * Math.cos(0.3), Math.sin(0.3), Math.sin(-0.35) * Math.cos(0.3));
+    var planet = new THREE.Mesh(new THREE.SphereGeometry(130, 64, 32), new THREE.ShaderMaterial({ uniforms: { uSunDir: { value: sunDir(L) } }, vertexShader: PLANET_VS, fragmentShader: PLANET_FS, fog: false }));
+    planet.position.set(cx + pd.x * 1500, pd.y * 1500, cz + pd.z * 1500); planet.rotation.z = 0.4; planet.renderOrder = -8; group.add(planet);
+    anim.push(function (t) { planet.rotation.y = t * 0.01; planet.updateMatrix(); });
+    // a few big habitats out on the plain
+    for (var k = 0; k < 7; k++) {
+      var a = r() * 6.3, d = 0.5 * Math.hypot(F.w, F.h) + 20 + r() * 90, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
+      if (F.distAt(x, z) < 30) continue;
+      var dr = Math.hypot(x - cx, z - cz) / 420, inside = x > F.x0 && z > F.z0 && x < F.x0 + F.w && z < F.z0 + F.h;
+      var kind = ['dome', 'mast', 'dome', 'dishB', 'hab'][k % 5], sc = 1.6 + r() * 1.2, y = (inside ? F.height(x, z) : F.hillAt(x, z) * (1 + dr * 1.5) + smooth(0.55, 1, dr) * L.hill * 3) - 0.2;
+      BUILD[kind](b, mtx(x, y, z, r() * 6.3, sc), r, group, anim);
+    }
+    // the dome base: a glass tunnel on arched ribs over the road, lit strips along its floor and a portal at each end
+    var base = g.def.base; if (!base) return;
+    var s0 = base[0] * g.L, s1 = base[1] * g.L, Rt = lim + 0.9, SY = 0.72, A = 18;
+    function frame(s) { var p = D.pointAt(g, s, 0); return { p: p, y: D.groundAt(g, s), ry: -p.h - Math.PI / 2 }; }
+    for (var s = s0; s <= s1 + 0.01; s += 3) {
+      var f = frame(s), portal = s === s0 || s + 3 > s1;
+      var rib = new THREE.TorusGeometry(Rt, portal ? 0.32 : 0.12, 6, 36, Math.PI);
+      b.add('hull', rib, mtx(f.p.x, f.y, f.p.z, f.ry, 1, SY, 1), col(portal ? '#e6e6e2' : '#cfd2d6'), f.p.x, f.p.z);
+      if (!portal && Math.round((s - s0) / 3) % 2 === 0) b.add('glow', new THREE.TorusGeometry(Rt - 0.14, 0.035, 4, 36, Math.PI), mtx(f.p.x, f.y, f.p.z, f.ry, 1, SY, 1), col('#7fe4ff'), f.p.x, f.p.z);
+      [-1, 1].forEach(function (sd) { var q = D.pointAt(g, s, sd * (g.hw + 0.75)); b.add('glow', box(1.1, 0.04, 0.14), mtx(q.x, D.groundAt(g, s) + 0.02, q.z, -q.h), col('#5fd8ff'), q.x, q.z); });
+    }
+    // the glass skin between the ribs
+    var P = [], I = [], U = [], n = 0;
+    for (s = s0; s <= s1 + 0.01; s += 1) {
+      var fr = frame(Math.min(s, s1)), nx = -fr.p.tz, nz = fr.p.tx;
+      for (var k2 = 0; k2 <= A; k2++) { var an = k2 / A * Math.PI; P.push(fr.p.x + nx * Math.cos(an) * Rt, fr.y + Math.sin(an) * Rt * SY, fr.p.z + nz * Math.cos(an) * Rt); U.push(k2 / A, s); }
+      if (n) for (k2 = 0; k2 < A; k2++) { var a0 = (n - 1) * (A + 1) + k2, b0 = a0 + A + 1; I.push(a0, b0, a0 + 1, a0 + 1, b0, b0 + 1); }
+      n++;
+    }
+    var gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); gg.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); gg.setIndex(I); gg.computeVertexNormals();
+    var glass = new THREE.Mesh(gg, MATS.tunnelGlass); glass.renderOrder = 3; group.add(glass);
+    // a sign over the way in
+    var st = signTex('MOON BASE', '#14202e', '#9fe8ff', 1024, 160), f0 = frame(s0 - 0.4), sign = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.1), std({ map: st, emissive: col('#ffffff'), emissiveMap: st, emissiveIntensity: 0.6, roughness: 0.5 }));
+    sign.position.set(f0.p.x, f0.y + Rt * SY + 0.4, f0.p.z); sign.rotation.y = Math.atan2(-Math.cos(f0.p.h), -Math.sin(f0.p.h)); group.add(sign);
+  };
+  // hazards (facing +x, the way they cross)
+  HAZOBJ.rover = function (grp, inner) {
+    var b = new Batch(0), I = new THREE.Matrix4(), wheels = [], white = col('#e6e6e2');
+    b.add('hull', box(1.6, 0.36, 1.0).translate(0, 0.5, 0), I, white);
+    b.add('solar', box(1.4, 0.05, 0.95, 1 / 1.2).translate(-0.05, 0.86, 0), I, WHITE);
+    b.add('foil', box(0.5, 0.3, 0.6).translate(-0.55, 0.9, 0), I, col('#d8a640'));
+    b.add('metal', cyl(0.05, 0.05, 0.8, 6).translate(0.55, 0.86, 0), I, col('#c8ccd2'));
+    b.add('hull', box(0.3, 0.2, 0.42).translate(0.55, 1.62, 0), I, white);
+    [-0.1, 0.1].forEach(function (z) { b.add('glass', new THREE.SphereGeometry(0.06, 8, 6).translate(0.71, 1.73, z), I, col('#1a2a40')); });
+    var dish = new THREE.SphereGeometry(0.3, 12, 5, 0, Math.PI * 2, 0, 0.9); dish.rotateZ(0.6); dish.translate(-0.55, 1.25, 0.25); b.add('metal', dish, I, col('#eceef0'));
+    b.add('metal', box(1.8, 0.06, 0.06).translate(0, 0.32, 0.55), I, col('#9aa0a8')); b.add('metal', box(1.8, 0.06, 0.06).translate(0, 0.32, -0.55), I, col('#9aa0a8'));
+    b.build(inner, { cast: true });
+    [-0.62, 0, 0.62].forEach(function (x) { [-0.62, 0.62].forEach(function (z) {
+      var wg = cyl(0.27, 0.27, 0.2, 14, 1); wg.translate(0, -0.1, 0); wg.rotateX(Math.PI / 2); paint(wg, col('#5a5c60'));
+      var w = new THREE.Mesh(wg, MAT('tyre')); w.castShadow = true; w.position.set(x, 0.27, z); inner.add(w); wheels.push(w);
+    }); });
+    var lamp = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), MAT('glow')); paint(lamp.geometry, col('#ffb03a')); lamp.position.set(0.55, 1.78, 0); inner.add(lamp);
+    return function (hz, t) { wheels.forEach(function (w) { w.rotation.z = -hz.roll * hz.r / 0.27; }); inner.position.y = 0.015 * Math.sin(t * 14); lamp.visible = Math.sin(t * 5) > 0; };
+  };
+  HAZOBJ.moonrock = function (grp, inner) {
+    var b = new Batch(0), rk = rockGeo(0.95, 41, 0.85); paint(rk, function (x, y) { return mixC(col('#5a5954'), col('#b4b2ab'), clamp(y + 0.5, 0, 1)); });
+    b.add('stone', rk, new THREE.Matrix4()); b.build(inner, { cast: true }); inner.position.y = 0.8;
+    return function (hz) { inner.rotation.z = -hz.roll; inner.rotation.x = hz.roll * 0.35; };
+  };
+  HAZOBJ.meteor = function (grp, inner) {
+    var b = new Batch(0), rk = rockGeo(0.55, 43, 0.9); paint(rk, col('#5a4a44'));
+    b.add('meteorCore', rk, new THREE.Matrix4()); b.build(inner, { cast: true }); inner.position.y = 0.5;
+    var halo = new THREE.Mesh(new THREE.SphereGeometry(0.62, 12, 8), MATS.meteorHalo);
+    inner.add(halo);
+    return function (hz, t) { inner.rotation.z = -hz.roll * 1.5; inner.rotation.y = t * 2; halo.scale.setScalar(1 + 0.12 * Math.sin(t * 9)); };
+  };
+  HAZOBJ.dish = function (grp, inner) {
+    var b = new Batch(0), I = new THREE.Matrix4(), white = col('#e6e6e2');
+    [-0.5, 0.5].forEach(function (z) { b.add('tyre', box(1.5, 0.4, 0.32).translate(0, 0.02, z), I, col('#4a4c50')); });
+    b.add('hull', box(1.2, 0.35, 0.8).translate(0, 0.35, 0), I, white);
+    b.add('foil', box(0.5, 0.3, 0.5).translate(-0.35, 0.7, 0), I, col('#d8a640'));
+    b.build(inner, { cast: true });
+    // the turret turns slowly, swinging the arm and its dish round
+    var tur = new THREE.Group(), tb = new Batch(0);
+    tb.add('hull', cyl(0.3, 0.35, 0.3, 14), I, white);
+    var arm = box(0.14, 1.3, 0.14); arm.rotateZ(-0.7); arm.translate(0.05, 0.2, 0); tb.add('metal', arm, I, col('#c8ccd2'));
+    var dish = new THREE.SphereGeometry(0.62, 18, 6, 0, Math.PI * 2, 0, 0.95); dish.translate(0, -0.62, 0); dish.rotateZ(-1.0); dish.translate(0.95, 1.35, 0); tb.add('metal', dish, I, col('#f2f2f0'));
+    var feed = cyl(0.03, 0.03, 0.5, 6); feed.rotateZ(-1.0 - Math.PI / 2); feed.translate(1.05, 1.42, 0); tb.add('metal', feed, I, col('#9aa0a8'));
+    tb.build(tur, { cast: true }); tur.position.y = 0.7; inner.add(tur);
+    var lamp = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), MAT('glow')); paint(lamp.geometry, col('#ff4a3a')); lamp.position.set(0, 0.55, 0); tur.add(lamp);
+    return function (hz, t) { tur.rotation.y = t * 0.6; lamp.visible = Math.sin(t * 4) > 0.2; inner.position.y = 0.01 * Math.sin(t * 10); };
+  };
+  [[BUILD, ['dome', 'hab', 'lander', 'dishB', 'mast']], [PROTOS, ['mrock', 'mboulder', 'solar', 'beacon']], [WALLS, ['lightstrip']], [FAR, ['lunar']],
+    [HAZOBJ, ['rover', 'moonrock', 'meteor', 'dish']]].forEach(function (e) { e[1].forEach(function (k) { var f = e[0][k]; e[0][k] = function () { moonMats(); return f.apply(this, arguments); }; }); });
+  LOOK.moon = { sunAz: -1.25, sunEl: 0.42, sun: '#ffffff', sunI: 3.2, hemiSky: '#3a4458', hemiGround: '#6a6964', hemiI: 0.3,
+    zenith: '#000000', horizon: '#05060a', fog: '#0a0b10', fogD: 0.0012, cloudA: '#000000', cloudB: '#000000', cover: 2, exposure: 1.0,
+    grass: ['#6f6e6a', '#85837e', '#575653'], rough: '#4c4b48', dry: '#6f6e6a', shoulder: '#7a7872', bank: '#3e3d3a', water: '#08090c',
+    mtn: ['#4a4a48', '#a09e98'], hill: 5, ground: 'regolith',
+    hills: 'crater', tex: 'regolith', texN: 'regolithN', normalScale: 0.9, tile: 6, dryPatch: false, patch: '#9e9c95', roughMix: 0.5, cliff: '#55544f',
+    mtnStyle: 'craterRim', mtnTint: '#c8c6c0', mtnHaze: 0.06, roadTint: '#e8eaee', shoulderC: '#8e9cb0', wall: 'lightstrip',
+    kinds: ['dome', 'hab', 'lander', 'dome', 'dishB', 'mast'], trackKinds: {}, farmHay: false,
+    species: [['mrock', 0.5], ['mboulder', 0.68], ['solar', 0.9], ['beacon', 1]],
+    band: ['mrock', 'mrock', 'solar', 'mboulder', 'beacon'], maxTrees: 300, treeDens: 0.55, treeScale: [0.7, 0.8],
+    roadside: 'beacon', palms: false, far: 'lunar', tuftN: 0, tuftC: '#a6a49e', flowers: false,
+    canyons: ['rimhop', 'rille', 'starfall'], canyonWater: '#060709', canyonDepth: 7, canyonBank: 'mrock', dust: '#b4b2ac' };
+
   // ---------- race ----------
   function race(trackId, g, worldId) {
     g = g || D.track(trackId);
@@ -1245,7 +1558,7 @@ var RB3DWorld = (function () {
       var wm = MATS['water' + worldId + (c.canyon ? 'c' : '')];
       if (!wm) {
         var nt = T('waterN').clone(); nt.needsUpdate = true; nt.repeat.set(1, 1);
-        wm = MATS['water' + worldId + (c.canyon ? 'c' : '')] = std({ color: col(c.canyon ? '#4a7a6a' : L.water), emissive: col(!c.canyon && L.waterGlow || '#000000'), emissiveIntensity: L.waterGlow ? 1.4 : 0, roughness: 0.12, metalness: 0.0, normalMap: nt, normalScale: new THREE.Vector2(0.3, 0.3), transparent: true, opacity: 0.9, envMapIntensity: 0.55 });
+        wm = MATS['water' + worldId + (c.canyon ? 'c' : '')] = std({ color: col(c.canyon ? L.canyonWater || '#4a7a6a' : L.water), emissive: col(!c.canyon && L.waterGlow || '#000000'), emissiveIntensity: L.waterGlow ? 1.4 : 0, roughness: 0.12, metalness: 0.0, normalMap: nt, normalScale: new THREE.Vector2(0.3, 0.3), transparent: true, opacity: 0.9, envMapIntensity: 0.55 });
         anim.push(function (t) { nt.offset.set(t * 0.02, t * 0.035); });
       }
       var w = new THREE.Mesh(wg, wm); w.receiveShadow = true; w.renderOrder = 2; group.add(w);
@@ -1254,7 +1567,7 @@ var RB3DWorld = (function () {
         var nn2 = lerp(-c.ext[0], c.ext[1], r()), side = r() < 0.5 ? -1 : 1;
         if (Math.abs(nn2) < lim + 1) continue;
         var tt2 = side * (c.half + 0.6 + r() * 1.2), x = c.x + c.nx * nn2 + c.tx * tt2, z = c.z + c.nz * nn2 + c.tz * tt2, y = F.height(x, z);
-        if (c.canyon || L.bank === 'redrock') addProto(b, 'redrock', mtx(x, y - 0.1, z, r() * 6.3, 0.4 + r() * 0.5), WHITE);
+        if (c.canyon || L.bank === 'redrock') addProto(b, c.canyon && L.canyonBank || 'redrock', mtx(x, y - 0.1, z, r() * 6.3, 0.4 + r() * 0.5), WHITE);
         else if (L.bank && L.bank !== 'reeds') addProto(b, L.bank, mtx(x, y - 0.1, z, r() * 6.3, 0.4 + r() * 0.5), WHITE);
         else if (r() < 0.6) addProto(b, 'tuftReed', mtx(x, y, z, r() * 6.3, 1), WHITE); else addProto(b, 'rock', mtx(x, y - 0.1, z, r() * 6.3, 0.3 + r() * 0.4), WHITE);
       }
