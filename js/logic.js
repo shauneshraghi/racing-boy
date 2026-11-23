@@ -271,40 +271,49 @@ var RB = (function () {
       coins: [{ u: 0.08, off: 1.5, n: 6 }, { u: 0.24, off: 0, n: 6 }, { u: 0.4, off: -1.5, n: 6 }, { u: 0.53, off: 1.4, n: 5 }, { u: 0.75, off: 0, n: 6 }, { u: 0.86, off: -1.5, n: 6 }, { u: 0.95, off: 0, n: 5 }]
     },
     // world 2, Sunbaked Canyon: a ramp's gap is a canyon on mesa and a water creek on oasis
-    // dune hopping along the top, a ramp at the bend, tumbleweeds, up the big dune and off its lip
+    // a figure 8 over the dunes: the start straight runs under the sand bridge, a ramp at the east bend, dune
+    // hopping along the top, the long climb up the big dune onto the bridge (open edges, dead straight) high over the
+    // start straight, off the big dune's lip at the far end, round the south loop past the tumbleweeds and home
     dune: {
-      name: 'Dune Sweep', world: 1, laps: 3, hw: 3.8, scale: 1,
-      pts: [[30, 60], [70, 26], [130, 18], [190, 30], [218, 70], [200, 110], [160, 116], [128, 100], [96, 118], [90, 154], [56, 174], [24, 150], [20, 104]],
-      elev: [[0, 0], [0.07, 0], [0.084, 2.4], [0.098, 0.4], [0.112, 2.6], [0.126, 0.4], [0.14, 2.4], [0.154, 0], [0.58, 0], [0.7, 4], [0.74, 4], [0.752, 2], [0.84, 0]],
-      hazards: [{ u: 0.52, kind: 'tumble', n: 2 }, { u: 0.88, kind: 'tumble', n: 3 }],
-      pads: [{ u: 0.05, off: 0 }, { u: 0.3, off: 1.5 }, { u: 0.62, off: -1.5 }, { u: 0.72, off: 0 }],
-      ramps: [{ u: 0.43, gap: 0 }],
-      boxes: [0.2, 0.66],
-      coins: [{ u: 0.18, off: -1.5, n: 6 }, { u: 0.25, off: 0, n: 6 }, { u: 0.48, off: 1.5, n: 6 }, { u: 0.8, off: 0, n: 5 }, { u: 0.94, off: -1.4, n: 6 }]
+      name: 'Dune Sweep', world: 1, laps: 3, hw: 3.8, scale: 0.78,
+      pts: [[80, 110], [115, 110], [150, 110], [185, 110], [222, 102], [244, 74], [238, 40], [210, 20], [170, 16], [130, 18], [98, 28], [90, 52], [112, 72], [150, 110], [188, 148], [206, 178], [184, 206], [136, 210], [90, 196], [56, 172], [44, 140], [54, 116]],
+      elev: [[0, 0], [0.3, 0], [0.315, 2.4], [0.33, 0.4], [0.345, 2.6], [0.36, 0.4], [0.375, 2.4], [0.39, 0], [0.5, 6.25], [0.618, 6.25], [0.626, 3.2], [0.69, 0]],
+      bridges: [[0.53, 0.614]],
+      hazards: [{ u: 0.75, kind: 'tumble', n: 2 }, { u: 0.92, kind: 'tumble', n: 3 }],
+      pads: [{ u: 0.03, off: 0 }, { u: 0.2, off: 1.5 }, { u: 0.45, off: -1.5 }, { u: 0.6, off: 0 }],
+      ramps: [{ u: 0.15, gap: 0 }],
+      boxes: [0.25, 0.8],
+      coins: [{ u: 0.1, off: -1.5, n: 6 }, { u: 0.28, off: 0, n: 6 }, { u: 0.47, off: 1.5, n: 6 }, { u: 0.56, off: 0, n: 5 }, { u: 0.86, off: -1.4, n: 6 }]
     },
-    // up onto the mesa, a canyon leap across its top, a hop off the edge, down the switchbacks into boulder alley,
-    // a second canyon in the gulch and over the ridge home
+    // up the start straight on the canyon floor, round the butte climbing a full turn to its top and over the road
+    // just driven on a bridge (open edges, straight), the canyon leap across the mesa top, round the rim onto the long
+    // railed bridge that slopes down high over the start straight, boulder alley, a second canyon in the gulch and
+    // over the ridge home
     mesa: {
-      name: 'Mesa Leap', world: 1, laps: 3, hw: 3.5, scale: 1,
-      pts: [[24, 40], [74, 18], [130, 20], [170, 36], [160, 62], [120, 62], [96, 80], [118, 100], [160, 100], [184, 124], [166, 154], [118, 162], [80, 150], [48, 164], [20, 136], [14, 90]],
-      elev: [[0, 0], [0.02, 0], [0.08, 4], [0.28, 4], [0.285, 2.4], [0.45, 0], [0.84, 0], [0.9, 1.5], [0.93, 1.5], [0.94, 0.3], [0.99, 0]],
-      hazards: [{ u: 0.48, kind: 'boulder', n: 2 }, { u: 0.6, kind: 'tumble' }],
-      pads: [{ u: 0.03, off: 0 }, { u: 0.2, off: -1.4 }, { u: 0.55, off: 1.4 }, { u: 0.68, off: 0 }, { u: 0.88, off: 0 }],
-      ramps: [{ u: 0.12, gap: 3.8 }, { u: 0.72, gap: 3.8 }],
-      boxes: [0.22, 0.52],
-      coins: [{ u: 0.07, off: 1.5, n: 6 }, { u: 0.26, off: 0, n: 5 }, { u: 0.4, off: -1.5, n: 6 }, { u: 0.64, off: 0, n: 5 }, { u: 0.92, off: 1.5, n: 6 }]
+      name: 'Mesa Leap', world: 1, laps: 3, hw: 3.5, scale: 0.75,
+      pts: [[100, 225], [100, 185], [100, 150], [100, 120], [101, 92], [110, 70], [130, 60], [151, 69], [160, 90], [151, 111], [130, 120], [100, 120], [70, 120], [40, 120], [15, 130], [8, 155], [25, 172], [60, 183], [100, 195], [140, 207], [180, 215], [220, 218], [250, 235], [252, 265], [220, 280], [170, 282], [130, 278], [105, 262]],
+      elev: [[0, 0], [0.125, 0], [0.29, 6.25], [0.47, 6.25], [0.53, 5.3], [0.61, 4.9], [0.68, 0], [0.89, 0], [0.925, 1.8], [0.94, 1.8], [0.948, 0.4], [0.985, 0]],
+      bridges: [[0.309, 0.362], [0.52, 0.65, 'rail']],
+      hazards: [{ u: 0.71, kind: 'boulder', n: 2 }, { u: 0.8, kind: 'tumble' }],
+      pads: [{ u: 0.03, off: 0 }, { u: 0.2, off: -1.4 }, { u: 0.375, off: 0 }, { u: 0.7, off: 1.4 }, { u: 0.9, off: 0 }],
+      ramps: [{ u: 0.392, gap: 3.8 }, { u: 0.845, gap: 3.8 }],
+      boxes: [0.25, 0.75],
+      coins: [{ u: 0.07, off: 1.5, n: 6 }, { u: 0.23, off: 0, n: 5 }, { u: 0.34, off: 0, n: 5 }, { u: 0.55, off: -1.5, n: 6 }, { u: 0.78, off: 0, n: 5 }, { u: 0.93, off: 1.5, n: 6 }]
     },
-    // the long tour: the oasis creek, up the dunes and over the whoops, a ramp, tumbleweeds and a boulder on the
-    // flats, the second creek and a hop off the last ridge
+    // the long tour, a figure 8: the oasis creek, up the dunes and over the whoops, down under the ridge bridge, a
+    // ramp, tumbleweeds and a boulder on the flats and the second creek, the long climb up the big ridge with a cliff
+    // on the left, over the bridge (open edges, straight) across the middle of the course, down the ridge and a hop off
+    // its last crest
     oasis: {
-      name: 'Oasis Run', world: 1, laps: 2, hw: 3.6, scale: 1,
-      pts: [[30, 50], [90, 22], [160, 28], [230, 20], [272, 50], [262, 94], [220, 104], [196, 134], [230, 160], [246, 206], [206, 236], [150, 228], [120, 200], [88, 222], [48, 212], [22, 176], [44, 140], [26, 100]],
-      elev: [[0, 0], [0.12, 0], [0.24, 3], [0.25, 3], [0.257, 4.4], [0.264, 3], [0.271, 4.4], [0.278, 3], [0.32, 3], [0.42, 0], [0.8, 0], [0.9, 2.5], [0.93, 2.5], [0.94, 0.8], [0.99, 0]],
-      hazards: [{ u: 0.56, kind: 'tumble', n: 2 }, { u: 0.64, kind: 'boulder' }, { u: 0.84, kind: 'tumble' }],
-      pads: [{ u: 0.03, off: 0 }, { u: 0.2, off: 1.5 }, { u: 0.245, off: 0 }, { u: 0.47, off: -1.5 }, { u: 0.68, off: 1.5 }, { u: 0.9, off: -1.4 }],
-      ramps: [{ u: 0.06, gap: 3.8 }, { u: 0.5, gap: 0 }, { u: 0.73, gap: 3.8 }],
-      boxes: [0.16, 0.6],
-      coins: [{ u: 0.09, off: -1.5, n: 6 }, { u: 0.3, off: 0, n: 6 }, { u: 0.42, off: 1.5, n: 6 }, { u: 0.53, off: -1.4, n: 5 }, { u: 0.77, off: 0, n: 6 }, { u: 0.86, off: 1.5, n: 6 }, { u: 0.96, off: 0, n: 5 }]
+      name: 'Oasis Run', world: 1, laps: 2, hw: 3.6, scale: 0.82,
+      pts: [[110, 25], [170, 24], [225, 28], [262, 48], [268, 84], [240, 104], [200, 108], [172, 118], [156, 140], [150, 175], [135, 205], [100, 215], [60, 220], [35, 245], [60, 275], [130, 282], [200, 280], [250, 268], [272, 235], [255, 200], [215, 185], [152, 150], [100, 120], [60, 90], [45, 55], [70, 30]],
+      elev: [[0, 0], [0.12, 0], [0.18, 3], [0.19, 3], [0.197, 4.4], [0.204, 3], [0.211, 4.4], [0.218, 3], [0.225, 4.4], [0.232, 3], [0.245, 3], [0.272, 0], [0.64, 0], [0.75, 6.25], [0.835, 6.25], [0.9, 3.4], [0.915, 3.4], [0.922, 1.2], [0.96, 0]],
+      bridges: [[0.78, 0.832]], drops: [[0.745, 0.78, -1]],
+      hazards: [{ u: 0.1, kind: 'tumble' }, { u: 0.49, kind: 'tumble', n: 2 }, { u: 0.6, kind: 'boulder' }],
+      pads: [{ u: 0.02, off: 0 }, { u: 0.17, off: 0 }, { u: 0.36, off: 1.5 }, { u: 0.52, off: 0 }, { u: 0.7, off: -1.5 }, { u: 0.86, off: 0 }],
+      ramps: [{ u: 0.05, gap: 3.8 }, { u: 0.4, gap: 0 }, { u: 0.55, gap: 3.8 }],
+      boxes: [0.14, 0.62],
+      coins: [{ u: 0.09, off: -1.5, n: 6 }, { u: 0.26, off: 0, n: 6 }, { u: 0.43, off: 1.5, n: 6 }, { u: 0.5, off: -1.4, n: 5 }, { u: 0.73, off: 0, n: 6 }, { u: 0.8, off: 0, n: 5 }, { u: 0.95, off: 0, n: 5 }]
     },
     // world 3, Snowcap Peaks: icy roads (WORLDS grip), mountains two to three times the height of the hills; a ramp's
     // gap is a crevasse in the glacier
