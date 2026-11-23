@@ -639,9 +639,11 @@ test('on/off steering (keys and buttons) eases in to full lock instead of snappi
   r.phase = 'race';
   const p = r.cars[0]; p.v = 8;
   R.input(r, { steer: 1, ease: true }); R.stepRace(r, 1 / 60);
-  assert.ok(p.steerOut > 0 && p.steerOut < 0.5, 'first step ' + p.steerOut);
-  for (let i = 0; i < 11; i++) { R.input(r, { steer: 1, ease: true }); R.stepRace(r, 1 / 60); }
+  assert.ok(p.steerOut > 0 && p.steerOut < 0.1, 'first step ' + p.steerOut);
+  let n = 1;
+  while (p.steerOut < 1 && n < 60) { R.input(r, { steer: 1, ease: true }); R.stepRace(r, 1 / 60); n++; }
   assert.equal(p.steerOut, 1);
+  assert.ok(n >= 15 && n <= 24, 'frames to full lock ' + n);
   // the stick and the bots steer directly
   R.input(r, { steer: -0.6 }); R.stepRace(r, 1 / 60);
   assert.equal(p.steerOut, -0.6);
@@ -655,4 +657,28 @@ test('the stock car feels quick from the first race: over 11 cells/s, and 10 cel
   let t = 0;
   while (p.v < 10 && t < 5) { R.input(r, { steer: 0 }); R.stepRace(r, 1 / 60); t += 1 / 60; }
   assert.ok(t <= 1.6, 'took ' + t.toFixed(2) + ' s to reach 10');
+});
+
+// heading change (degrees) from holding a steering key for tap seconds at top speed on a straight, 1.2 s later
+function tapTurn(tap) {
+  const { r } = freshRace(W1[0]);
+  r.phase = 'race'; r.cars.length = 1;
+  const p = r.cars[0];
+  for (let i = 0; i < 240; i++) { R.input(r, {}); R.stepRace(r, 1 / 60); }
+  p.h = p.vh = 0; p.yawV = 0;
+  for (let t = 0; t < 1.2; t += 1 / 60) { R.input(r, t < tap ? { steer: 1, ease: true } : {}); R.stepRace(r, 1 / 60); }
+  return R.angDiff(p.h, 0) * 180 / Math.PI;
+}
+
+test('steering is calm: a quick key tap nudges the car a few degrees, holding the key still turns hard', () => {
+  assert.ok(tapTurn(0.1) < 2, '0.1 s tap ' + tapTurn(0.1));
+  assert.ok(tapTurn(0.2) < 6, '0.2 s tap ' + tapTurn(0.2));
+  assert.ok(tapTurn(0.5) > 35, '0.5 s hold ' + tapTurn(0.5));
+});
+
+test('small stick moves turn gently, full lock keeps the full turn', () => {
+  const yawAt = steer => { const { p, step } = heldCar(); let y = 0; for (let i = 0; i < 60; i++) y = step({ steer }).yaw; return y / p.stats.grip; };
+  assert.ok(yawAt(0.3) < 0.2, 'yaw at 0.3 stick ' + yawAt(0.3));
+  assert.ok(yawAt(0.6) < 0.45, 'yaw at 0.6 stick ' + yawAt(0.6));
+  assert.ok(yawAt(1) > 0.9, 'yaw at full lock ' + yawAt(1));
 });

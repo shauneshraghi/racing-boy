@@ -31,7 +31,10 @@ var RB = (function () {
   var HOP_T = 0.22, HOP_H = 0.35; // pressing drift on the ground hops; the drift starts on landing
   var HOP_STEER = 0.2;          // turn rate × grip while hopping, so steering to pick the drift's side barely turns the car
   var DRIFT_TURN = 0.44, DRIFT_WIDE = 0.04; // drift turn rate × grip steering in, and with the stick fully against the drift
-  var STEER_RISE = 12, STEER_FALL = 16; // on/off steering (inp.ease: keys, ◀ ▶) eases toward full lock per second, back faster
+  var STEER_RISE = 3.5, STEER_FALL = 16, DRIFT_RISE = 12; // on/off steering (inp.ease: keys, ◀ ▶) eases toward full lock per second (a tap is a nudge; DRIFT_RISE while drifting, where keys only set how tight), back faster
+  // outside a drift the player's steer goes through a curve, STEER_LIN × s + (1 − STEER_LIN) × s³, so small stick
+  // moves and key taps make small corrections while full lock keeps the authority hairpins need (aim is not curved)
+  var STEER_LIN = 0.5;
   // weight: the yaw rate follows the steering with a lag of YAW_LAG s × √weight, and the direction of travel swings
   // toward where the car points at GRIP_BITE × grip / √weight per second (AIR_BITE × that in the air), so a turn
   // winds in, carries on a moment after letting go, and the car runs a little wide of where it points
@@ -459,6 +462,13 @@ var RB = (function () {
     }
     return inp;
   }
+  // the stick position whose curved steer (STEER_LIN) is u: the sloppy bot aims for a turn rate, as a player who has
+  // learned the stick does
+  function unshape(u) {
+    var x = u;
+    for (var i = 0; i < 6; i++) x -= (STEER_LIN * x + (1 - STEER_LIN) * x * x * x - u) / (STEER_LIN + 3 * (1 - STEER_LIN) * x * x);
+    return clamp(x, -1, 1);
+  }
   // style 'clean' drives the racing line and takes boost pads; 'sloppy' reacts late, wobbles and misses pads
   function botInput(r, car, style) {
     var inp = {}, g = r.g;
@@ -468,7 +478,7 @@ var RB = (function () {
       var ahead = car.h + car.yawV * YAW_LAG * Math.sqrt(car.stats.weight || 1);
       var want = angDiff(aimAhead(r, car, 2 + car.v * 0.25, 0), ahead) * 2.5 + Math.sin(r.t * 1.7) * 0.45 / PACE;
       car.botSteer += (clamp(want, -1, 1) - car.botSteer) * Math.min(1, DT * BOT_REACT);
-      inp.steer = car.botSteer;
+      inp.steer = unshape(car.botSteer);
     } else {
       var lane = 0;
       for (var i = 0; i < g.pads.length; i++) { var d = dS(g, g.pads[i].s, car.s); if (d > 0 && d < 14) lane = g.pads[i].off; }
@@ -503,10 +513,10 @@ var RB = (function () {
     if (itemPress && !car.air) useItem(r, car);
     else if (itemPress && car.air) useItem(r, car);
     // steering
-    var steer = inp.steer || 0;
-    if (inp.aim !== undefined && inp.aim !== null) steer = clamp(angDiff(inp.aim, car.h) * 2.5, -1, 1);
+    var steer = inp.steer || 0, aimed = inp.aim !== undefined && inp.aim !== null;
+    if (aimed) steer = clamp(angDiff(inp.aim, car.h) * 2.5, -1, 1);
     else if (inp.ease) {
-      var want = clamp(steer, -1, 1), cur = car.steerOut, sr = want * cur < 0 || Math.abs(want) < Math.abs(cur) ? STEER_FALL : STEER_RISE;
+      var want = clamp(steer, -1, 1), cur = car.steerOut, sr = want * cur < 0 || Math.abs(want) < Math.abs(cur) ? STEER_FALL : car.driftDir ? DRIFT_RISE : STEER_RISE;
       steer = cur + clamp(want - cur, -sr * DT, sr * DT);
     }
     steer = clamp(steer, -1, 1);
@@ -546,7 +556,8 @@ var RB = (function () {
     // turning
     var rate = st.grip * Math.min(1, car.v / 4) * (car.air ? 0.3 + 0.1 * (st.glide || 0) : car.hopT > 0 ? HOP_STEER : 1);
     // in a drift the car always turns its own way: steering in tightens it, steering against widens it
-    var yawWant = car.driftDir ? car.driftDir * rate * (DRIFT_WIDE + (DRIFT_TURN - DRIFT_WIDE) * (1 + steer * car.driftDir) / 2) : steer * rate;
+    var shaped = aimed ? steer : STEER_LIN * steer + (1 - STEER_LIN) * steer * steer * steer;
+    var yawWant = car.driftDir ? car.driftDir * rate * (DRIFT_WIDE + (DRIFT_TURN - DRIFT_WIDE) * (1 + steer * car.driftDir) / 2) : shaped * rate;
     var wt = Math.sqrt(st.weight || 1);
     car.yawV += (yawWant - car.yawV) * Math.min(1, DT / (YAW_LAG * wt * (car.driftDir ? DRIFT_LAG : 1)));
     car.h += car.yawV * DT;
