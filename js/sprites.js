@@ -361,15 +361,35 @@ var RBSprites = (function () {
   };
   KID_LEGS.back = KID_LEGS.front;
   var kidCache = {};
-  // facing in world radians; screen direction decides the view
-  function kid(face, walk, moving) {
+  // the palette for a kid look (s.kid): skin, hair, jacket and scarf in three tones from the chosen colours; the
+  // default of a slot keeps the hand-picked tones above. Hair style and hat stay the cap's (the 3D kid shows them)
+  var KID_TONES = { skin: [['s', 1], ['S', 0.82]], hair: [['i', 1.22], ['h', 0.88], ['H', 0.55]], jacket: [['q', 1.27], ['j', 0.82], ['J', 0.52]], scarf: [['y', 1.04], ['r', 0.86], ['R', 0.6]] };
+  function kidPal(look) {
+    if (!look || !D.kidOpt) return KID_PAL;
+    var P = null;
+    Object.keys(KID_TONES).forEach(function (k) {
+      var o = D.kidOpt(k, look[k]); if (!o || o === D.KID_OPTS[k][0]) return;
+      P = P || Object.assign({}, KID_PAL); KID_TONES[k].forEach(function (t) { P[t[0]] = shadeHex(o.c, t[1]); });
+    });
+    return P || KID_PAL;
+  }
+  function kidKey(look) { return look ? ['skin', 'hair', 'jacket', 'scarf'].map(function (k) { return look[k]; }).join(',') : ''; }
+  // the kid standing, facing the viewer, scaled up with hard pixels to fit w x h, for the character creator
+  function kidPreview(look, w, h) {
+    var c = grid(KID.front.concat(KID_LEGS.front[0]), kidPal(look), 0.18); w = w || 240; h = h || 320;
+    var k = Math.max(1, Math.floor(Math.min(w / c.width, h / c.height) * 0.9)), out = mkCanvas(w, h), x = out.getContext('2d'); x.imageSmoothingEnabled = false;
+    x.drawImage(c, (w - c.width * k) >> 1, (h - c.height * k) >> 1, c.width * k, c.height * k); return out;
+  }
+  // facing in world radians; screen direction decides the view; look: the kid's look (s.kid)
+  function kid(face, walk, moving, look) {
     var sx = Math.cos(face) - Math.sin(face), sy = Math.cos(face) + Math.sin(face); // screen-space direction
     var view = Math.abs(sx) > Math.abs(sy) * 1.2 ? 'side' : sy > 0 ? 'front' : 'back';
     var flip = view === 'side' && sx < 0;
     var phase = moving ? (Math.floor(walk * 3) % 2 ? 1 : 2) : 0;
-    var key = view + flip + phase;
+    var key = view + flip + phase + kidKey(look);
     if (!kidCache[key]) {
-      var c = grid(KID[view].concat(KID_LEGS[view][phase]), KID_PAL, 0.18); c.ay = c.height - 1;
+      if (Object.keys(kidCache).length > 60) kidCache = {};
+      var c = grid(KID[view].concat(KID_LEGS[view][phase]), kidPal(look), 0.18); c.ay = c.height - 1;
       kidCache[key] = flip ? mirror(c) : c; kidCache[key].ay = c.ay;
     }
     return kidCache[key];
@@ -594,7 +614,7 @@ var RBSprites = (function () {
   var beeC = null;
   function bee() { if (!beeC) beeC = grid(['.ww.ww.', '..ww...', 'kykyky.', 'ykykyke', 'kykyky.'], { w: '#e8f6ff', k: '#2a2630', y: '#ffd23f', e: '#2a2630' }); return beeC; }
 
-  return { HW: HW, HH: HH, BH: BH, HEADINGS: HEADINGS, car: car, carPreview: carPreview, kid: kid, scenery: scenery, crate: crate,
+  return { HW: HW, HH: HH, BH: BH, HEADINGS: HEADINGS, car: car, carPreview: carPreview, kid: kid, kidPreview: kidPreview, scenery: scenery, crate: crate,
     building: building1, windmill: windmill, bee: bee, renderModel: renderModel, box: box, crisp: crisp,
     carView: carView, gliderView: gliderView, modelView: modelView, newFrame: newFrame };
 })();

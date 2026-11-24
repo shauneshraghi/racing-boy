@@ -985,7 +985,7 @@ var RB3DModels = (function () {
     var root = new T.Group(), body = new T.Group(); root.add(body); root.name = 'car-' + id;
     var C = {
       id: id, key: id + (chunky ? 'C' : 'S'), L: M.len / 2, W: M.wid / 2, wr: wr, tw: (chunky ? 0.2 : 0.16) * Math.min(1.15, M.wid / 0.95),
-      paint: paint, trim: trim, body: body, surf: [], own: [], lights: { head: [], tail: [] }, rider: rider, bike: !!M.bike
+      paint: paint, trim: trim, body: body, surf: [], own: [], lights: { head: [], tail: [] }, rider: rider === undefined ? PLAYER : rider, bike: !!M.bike
     };
     C.ra = wr + 0.03; C.yb = wr - C.ra * 0.34; C.beltMin = wr + C.ra + 0.075;
     // closed bodies need room for the arches inside the bumpers (the old sprites let the wheels poke out)
@@ -1181,7 +1181,17 @@ var RB3DModels = (function () {
   // ---------- the kid ----------
   var KPD = { cap: '#b84a38', capDark: '#7e2e24', strap: '#3e3028', lens: '#7fb0b4', hair: '#8a4e2a', skin: '#f0c49c', eye: '#2a1e24',
     mouth: '#a85a4a', scarf: '#e0aa4e', jacket: '#4a6c80', shirt: '#e8dcc0', glove: '#7a5236', trousers: '#5e4838', boot: '#3a2a22' };
-  // pal: colour overrides for KP (a rival kid)
+  // the player's look (RB's s.kid: option ids) as a kid() palette: skin, hair, jacket and scarf colours, hair style, hat
+  function kidPal(look) {
+    var P = {}; if (!look || !RB.kidOpt) return P;
+    ['skin', 'hair', 'jacket', 'scarf'].forEach(function (k) { var o = RB.kidOpt(k, look[k]); if (o) P[k] = o.c; });
+    ['style', 'hat'].forEach(function (k) { if (RB.kidOpt(k, look[k])) P[k] = look[k]; });
+    return P;
+  }
+  // the player's kid, who drives every car built with rider undefined (setPlayer(s.kid) whenever the look may change)
+  var PLAYER = undefined, playerKey = '';
+  function setPlayer(look) { var P = kidPal(look), k = JSON.stringify(P); if (k !== playerKey) { PLAYER = P; playerKey = k; } return playerKey; }
+  // pal: overrides for KP (colours, and style / hat; a rival kid passes colours only and keeps the cap)
   function kid(pal) {
     var g = new T.Group(), root = new T.Group(); g.add(root);
     var KP = pal ? Object.assign({}, KPD, pal) : KPD;
@@ -1241,22 +1251,88 @@ var RB3DModels = (function () {
     });
     ball(skin, head, 0.13, 0.12, 0, 0.018, 0.016, 0.018, 10);
     var mouth = box(0.01, 0.008, 0.035, 0.004, mattMat(KP.mouth), head, 0.118, 0.085, 0); mouth.rotation.y = 0;
-    var hair = mesh(G('khair', function () { return new T.SphereGeometry(1, 22, 14, 0, PI * 2, 0, PI * 0.62); }), cloth(KP.hair), head, -0.012, 0.15, 0);
+    // hair: a dome over the skull, then the style (short: a fringe and side tufts; curly: curls all round; pony: a
+    // ponytail out the back; spiky: spikes). Under a hat, only the parts below the hat's band show
+    var style = KP.style || 'short', hat = KP.hat || 'cap', hairM = cloth(KP.hair), HC = V(-0.012, 0.15, 0);
+    var hair = mesh(G('khair', function () { return new T.SphereGeometry(1, 22, 14, 0, PI * 2, 0, PI * 0.62); }), hairM, head, HC.x, HC.y, HC.z);
     hair.scale.set(0.134, 0.138, 0.132); hair.rotation.z = 0.55;
-    [-1, 0, 1].forEach(function (k) { var f = ball(cloth(KP.hair), head, 0.095, 0.215, k * 0.045, 0.03, 0.02, 0.03, 10); f.rotation.z = -0.5; });
-    [-1, 1].forEach(function (sd) { ball(cloth(KP.hair), head, 0.035, 0.155, sd * 0.112, 0.03, 0.045, 0.016, 10); });
-    var crown = mesh(G('kcrown', function () { return new T.SphereGeometry(1, 22, 10, 0, PI * 2, 0, PI / 2); }), cloth(KP.cap), head, -0.005, 0.2, 0); crown.scale.set(0.138, 0.1, 0.136);
-    mesh(cyl(22), cloth(KP.capDark), head, -0.005, 0.2, 0).scale.set(0.139, 0.02, 0.137);
-    var brim = mesh(G('kbrim', function () { return new T.CylinderGeometry(1, 1, 1, 20, 1, false, 0, PI); }), cloth(KP.capDark), head, 0.06, 0.195, 0);
-    brim.scale.set(0.13, 0.012, 0.12); brim.rotation.set(0, PI / 2 - PI / 2, -0.12);
-    ball(cloth(KP.capDark), head, -0.005, 0.3, 0, 0.016, 0.01, 0.016); // button
-    var strap = mesh(G('kstrap', function () { return new T.TorusGeometry(1, 0.1, 6, 24); }), mattMat(KP.strap), head, -0.005, 0.225, 0); strap.rotation.x = PI / 2; strap.scale.set(0.141, 0.139, 0.14);
-    var lens = Mt('klens', function () { return phys({ color: new T.Color(KP.lens), roughness: 0.05, metalness: 0.3, clearcoat: 1 }); });
-    [-1, 1].forEach(function (sd) {
-      var gg = new T.Group(); gg.position.set(0.1, 0.24, sd * 0.045); gg.rotation.set(0, 0, -0.35); head.add(gg);
-      var ring = mesh(G('kgring', function () { return new T.TorusGeometry(0.03, 0.009, 6, 16); }), mat('alu'), gg); ring.rotation.y = PI / 2;
-      ball(lens, gg, 0.003, 0, 0, 0.012, 0.028, 0.028, 14);
-    });
+    // a point on the hair dome at elevation el (0 = level, PI/2 = top) and bearing az (0 = front, PI/2 = right)
+    function onHair(el, az, r) { r = r || 0.134; return V(HC.x + Math.cos(el) * Math.cos(az) * r, HC.y + Math.sin(el) * r, HC.z + Math.cos(el) * Math.sin(az) * r); }
+    var UP = V(0, 1, 0), dir = V(0, 0, 0);
+    function spike(p, len, rad) {
+      var c = mesh(G('kspike', function () { var g = new T.ConeGeometry(1, 1, 7); g.translate(0, 0.5, 0); return g; }), hairM, head, p.x, p.y, p.z);
+      dir.copy(p).sub(HC).normalize(); c.quaternion.setFromUnitVectors(UP, dir); c.scale.set(rad || 0.026, len, rad || 0.026); return c;
+    }
+    var hatTop = hat === 'none' ? 9 : hat === 'helmet' ? 0.06 : 0.175; // curls and spikes above this would poke through the hat
+    if (style === 'curly') {
+      for (var ri = 0; ri < 5; ri++) {
+        var el = -0.15 + ri * 0.34, n = Math.max(1, Math.round(11 * Math.cos(el)));
+        for (var ci = 0; ci < n; ci++) {
+          var az = ci / n * PI * 2 + ri * 0.4, p = onHair(el, az, 0.132);
+          if (p.y > hatTop - 0.01 || (Math.cos(az) > 0.55 && el < 0.5) || p.y < 0.07) continue; // keep the face and forehead clear
+          ball(hairM, head, p.x, p.y, p.z, 0.036, 0.034, 0.036, 8);
+        }
+      }
+      [-1, 0, 1].forEach(function (k) { ball(hairM, head, 0.1, 0.205, k * 0.05, 0.03, 0.026, 0.03, 8); });
+      [-1, 1].forEach(function (sd) { ball(hairM, head, 0.03, 0.16, sd * 0.116, 0.034, 0.05, 0.022, 8); });
+    } else if (style === 'spiky') {
+      if (hat === 'none') {
+        [[1.35, 0], [1.05, 0], [1.05, 1.6], [1.05, -1.6], [1.05, 3.14], [0.75, 0.75], [0.75, -0.75], [0.75, 2.3], [0.75, -2.3], [0.45, 3.14], [0.4, 2.0], [0.4, -2.0]].forEach(function (e) {
+          spike(onHair(e[0], e[1], 0.12), 0.1 - Math.abs(e[0] - 1) * 0.02);
+        });
+      } else {
+        if (hat !== 'helmet') [[0.2, 2.6], [0.2, -2.6], [0.15, 3.14], [0.35, 2.1], [0.35, -2.1]].forEach(function (e) { spike(onHair(e[0], e[1], 0.12), 0.06); });
+      }
+      [-0.06, -0.02, 0.02, 0.06].forEach(function (z, k) { var c = spike(V(0.08, 0.205, z), 0.06, 0.02); c.quaternion.setFromUnitVectors(UP, V(0.8, -0.35, z * 4).normalize()); });
+      [-1, 1].forEach(function (sd) { ball(hairM, head, 0.035, 0.155, sd * 0.112, 0.03, 0.045, 0.016, 10); });
+    } else {
+      [-1, 0, 1].forEach(function (k) { var f = ball(hairM, head, 0.095, 0.215, k * 0.045, 0.03, 0.02, 0.03, 10); f.rotation.z = -0.5; });
+      [-1, 1].forEach(function (sd) { ball(hairM, head, 0.035, 0.155, sd * 0.112, 0.03, 0.045, 0.016, 10); });
+      if (style === 'pony') {
+        ball(cloth(KP.scarf), head, -0.138, 0.13, 0, 0.026, 0.03, 0.03, 10); // the hair tie
+        var tg = new T.Group(); tg.position.set(-0.15, 0.13, 0); tg.rotation.z = -0.5; head.add(tg);
+        limb(hairM, tg, -0.07, 0.036, 0.1).scale.set(1, 1, 0.85);
+        ball(hairM, tg, 0, -0.15, 0, 0.026, 0.04, 0.024, 10);
+        if (hat === 'none') ball(hairM, head, -0.1, 0.24, 0, 0.06, 0.04, 0.07, 10).rotation.z = 0.6; // pulled back over the top
+      }
+    }
+    // hats
+    if (hat === 'cap') {
+      var crown = mesh(G('kcrown', function () { return new T.SphereGeometry(1, 22, 10, 0, PI * 2, 0, PI / 2); }), cloth(KP.cap), head, -0.005, 0.2, 0); crown.scale.set(0.138, 0.1, 0.136);
+      mesh(cyl(22), cloth(KP.capDark), head, -0.005, 0.2, 0).scale.set(0.139, 0.02, 0.137);
+      var brim = mesh(G('kbrim', function () { return new T.CylinderGeometry(1, 1, 1, 20, 1, false, 0, PI); }), cloth(KP.capDark), head, 0.06, 0.195, 0);
+      brim.scale.set(0.13, 0.012, 0.12); brim.rotation.set(0, PI / 2 - PI / 2, -0.12);
+      ball(cloth(KP.capDark), head, -0.005, 0.3, 0, 0.016, 0.01, 0.016); // button
+      var strap = mesh(G('kstrap', function () { return new T.TorusGeometry(1, 0.1, 6, 24); }), mattMat(KP.strap), head, -0.005, 0.225, 0); strap.rotation.x = PI / 2; strap.scale.set(0.141, 0.139, 0.14);
+      var lens = Mt('klens', function () { return phys({ color: new T.Color(KP.lens), roughness: 0.05, metalness: 0.3, clearcoat: 1 }); });
+      [-1, 1].forEach(function (sd) {
+        var gg = new T.Group(); gg.position.set(0.1, 0.24, sd * 0.045); gg.rotation.set(0, 0, -0.35); head.add(gg);
+        var ring = mesh(G('kgring', function () { return new T.TorusGeometry(0.03, 0.009, 6, 16); }), mat('alu'), gg); ring.rotation.y = PI / 2;
+        ball(lens, gg, 0.003, 0, 0, 0.012, 0.028, 0.028, 14);
+      });
+    } else if (hat === 'helmet') {
+      // an open-face race helmet: a glossy white shell, a stripe in the jacket colour over the top, a smoked visor
+      // tipped up on the brow, and ear pads
+      var shellM = Mt('khelm', function () { return phys({ color: 0xf2f0ea, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.08, side: T.DoubleSide }); });
+      var stripeM = Mt('khstripe' + KP.jacket, function () { return phys({ color: new T.Color(KP.jacket), roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1 }); });
+      var HY = 0.15;
+      var dome = mesh(G('khdome', function () { return new T.SphereGeometry(1, 24, 10, 0, PI * 2, 0, PI * 0.42); }), shellM, head, -0.005, HY, 0); dome.scale.set(0.158, 0.162, 0.156);
+      var back = mesh(G('khback', function () { return new T.SphereGeometry(1, 24, 6, PI + 0.95, PI * 2 - 1.9, PI * 0.42, PI * 0.24); }), shellM, head, -0.005, HY, 0); back.scale.set(0.158, 0.162, 0.156);
+      var rim = mesh(G('khrim', function () { return new T.TorusGeometry(1, 0.075, 6, 24, PI * 2 - 1.9); }), mattMat('#2a2a30'), head, -0.005, HY + 0.162 * Math.cos(PI * 0.66), 0);
+      rim.rotation.set(PI / 2, 0, 0.95); rim.scale.set(0.158 * Math.sin(PI * 0.66), 0.156 * Math.sin(PI * 0.66), 0.16);
+      var st = mesh(G('khstripe', function () { return new T.TorusGeometry(1, 0.08, 6, 20, PI * 0.82); }), stripeM, head, -0.005, HY, 0); st.scale.setScalar(0.16); st.rotation.z = 0.45;
+      [-1, 1].forEach(function (sd) { var e = mesh(cyl(16), stripeM, head, -0.01, HY - 0.035, sd * 0.152); e.rotation.x = PI / 2; e.scale.set(0.045, 0.014, 0.045); });
+      var visorM = Mt('kvisor', function () { return phys({ color: 0x2a3440, roughness: 0.04, metalness: 0.4, clearcoat: 1, transparent: true, opacity: 0.85, side: T.DoubleSide }); });
+      var vis = mesh(G('kvis', function () { return new T.SphereGeometry(1, 16, 6, PI - 0.9, 1.8, PI * 0.3, PI * 0.14); }), visorM, head, -0.005, HY, 0); vis.scale.set(0.168, 0.17, 0.166);
+      ball(mat('alu'), head, 0.02, HY + 0.07, 0.158, 0.012, 0.012, 0.006, 8); ball(mat('alu'), head, 0.02, HY + 0.07, -0.158, 0.012, 0.012, 0.006, 8); // visor pivots
+    } else if (hat === 'beanie') {
+      // a knitted beanie in the scarf's colour: a dome, a rolled cuff and a bobble
+      var knit = cloth(KP.scarf), cuffM = cloth(shade(KP.scarf, 0.82));
+      var bd = mesh(G('kbeanie', function () { return new T.SphereGeometry(1, 22, 10, 0, PI * 2, 0, PI / 2); }), knit, head, -0.008, 0.19, 0); bd.scale.set(0.142, 0.13, 0.14);
+      for (var rb = 0; rb < 10; rb++) { var ra = rb / 10 * PI * 2, rr = mesh(G('krib', function () { return new T.TorusGeometry(1, 0.06, 4, 10, PI / 2); }), cuffM, head, -0.008, 0.19, 0); rr.rotation.set(0, ra, PI / 2 - 0.02); rr.scale.set(0.131, 0.142, 0.142); }
+      var cuff = mesh(G('kcuff', function () { return new T.TorusGeometry(1, 0.2, 8, 26); }), cuffM, head, -0.008, 0.19, 0); cuff.rotation.x = PI / 2; cuff.scale.set(0.142, 0.14, 0.12);
+      ball(cloth(shade(KP.scarf, 1.15)), head, -0.015, 0.325, 0, 0.032, 0.03, 0.032, 10);
+    }
     root.traverse(function (o) { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     var base = { ty: torso.position.y };
     g.userData = {
@@ -1332,7 +1408,7 @@ var RB3DModels = (function () {
   }
   function preview(id, look, heading, w, h) {
     look = lookOf(id, look); w = w || 240; h = h || 160; heading = heading || 0;
-    var key = [id, look.paint, look.trim, look.wheels, look.spoiler, look.exhaust, heading.toFixed(3), w, h].join('|');
+    var key = [id, look.paint, look.trim, look.wheels, look.spoiler, look.exhaust, heading.toFixed(3), w, h, playerKey].join('|');
     if (previews[key]) return previews[key];
     var kit = previewKit(); if (!kit) return null;
     var c = car(id, look); c.rotation.y = -heading; kit.scene.add(c);
@@ -1350,6 +1426,29 @@ var RB3DModels = (function () {
     return out;
   }
 
-  var api = { car: car, crate: crate, chest: chest, coin: coin, bee: bee, goo: goo, kid: kid, preview: preview, envMap: envMap, _tris: triCount, _lookOf: lookOf, _geo: GEO };
+  // the kid alone in the studio, three-quarters on (turn: extra yaw), for the character creator
+  var kidPreviews = {}, kidPreviewN = 0;
+  function kidPreview(look, w, h, turn) {
+    w = w || 240; h = h || 320; turn = turn || 0;
+    var P = kidPal(look), key = [JSON.stringify(P), w, h, turn.toFixed(3)].join('|');
+    if (kidPreviews[key]) return kidPreviews[key];
+    var kit = previewKit(); if (!kit) return null;
+    var k = kid(P); k.rotation.y = 0.55 + turn; kit.scene.add(k);
+    k.updateMatrixWorld(true);
+    var box3 = new T.Box3().setFromObject(k), c = box3.getCenter(V(0, 0, 0)), sz = box3.getSize(V(0, 0, 0)), cam = kit.cam;
+    cam.aspect = w / h; cam.updateProjectionMatrix();
+    var fov = cam.fov * PI / 180, hfov = 2 * Math.atan(Math.tan(fov / 2) * cam.aspect);
+    var dist = Math.max(sz.y * 1.04 / 2 / Math.tan(fov / 2), Math.min(sz.x, sz.z) * 1.3 / 2 / Math.tan(hfov / 2)) + 0.05;
+    var dir = V(1, 0.22, 0).normalize();
+    cam.position.copy(c).addScaledVector(dir, dist); cam.lookAt(c);
+    kit.r.setSize(w, h, false); kit.r.render(kit.scene, cam);
+    var out = canvas(w, h); out.getContext('2d').drawImage(kit.r.domElement, 0, 0);
+    kit.scene.remove(k);
+    if (++kidPreviewN > 40) { kidPreviews = {}; kidPreviewN = 0; }
+    kidPreviews[key] = out;
+    return out;
+  }
+
+  var api = { kidPal: kidPal, setPlayer: setPlayer, kidPreview: kidPreview, car: car, crate: crate, chest: chest, coin: coin, bee: bee, goo: goo, kid: kid, preview: preview, envMap: envMap, _tris: triCount, _lookOf: lookOf, _geo: GEO };
   return api;
 })();

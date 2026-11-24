@@ -8,8 +8,10 @@
   var DEV = params.get('dev') === '1', FRESH = params.get('fresh') === '1', NOSAVE = DEV || FRESH;
 
   // ---------- state and saving ----------
+  var newGame = false; // no save was found: the character creator opens once after the splash
   function load() {
     try { var raw = FRESH ? null : localStorage.getItem(SAVE_KEY); if (raw) { var s = D.deserialize(raw); if (s) return s; } } catch (e) {}
+    newGame = true;
     return D.newState(+(params.get('seed')) || (Date.now() % 1e9));
   }
   var S = load();
@@ -27,6 +29,7 @@
   function fmt(n) { n = Math.floor(n); if (n < 10000) return '' + n; if (n < 1e6) return (n / 1000).toFixed(n < 1e5 ? 1 : 0) + 'K'; return (n / 1e6).toFixed(1) + 'M'; }
   function fmtT(t) { var m = Math.floor(t / 60), s = t - m * 60; return m + ':' + (s < 10 ? '0' : '') + s.toFixed(1); }
   function ord(n) { return n + (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'); }
+  function esc(t) { return String(t).replace(/[&<>"']/g, function (c) { return '&#' + c.charCodeAt(0) + ';'; }); }
   function ordSmall(n) { return n + '<small>' + (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th') + '</small>'; }
   function audio() { try { A.init(); } catch (e) {} }
   function toast(html, ms) {
@@ -76,11 +79,12 @@
     $('hParts').innerHTML = D.PARTS.map(function (p, i) { return S.parts[i] || i === 0 ? p.icon + ' ' + fmt(S.parts[i]) : ''; }).filter(Boolean).join(' &nbsp;');
   }
   var station = null, fromMenu = false, tab = { paint: 'paint' }, panelKey = '';
-  var TITLES = { garage: '🔧 Garage', paint: '🎨 Paint shop', lot: '🚗 Car lot', track: '🏁 Races', menu: '☰ Menu' };
+  var TITLES = { garage: '🔧 Garage', paint: '🎨 Paint shop', lot: '🚗 Car lot', track: '🏁 Races', menu: '☰ Menu', kid: '🧒 Your racer' };
   function openStation(st) {
     if (station === st) return;
     station = st; panelKey = ''; fromMenu = false;
     $('panel').classList.toggle('show', !!st);
+    $('panel').classList.toggle('tall', st === 'kid');
     $('hubHint').classList.toggle('show', mode === 'hub' && !st);
     if (st) { A.sfx('panel'); renderPanel(); }
     fitView();
@@ -113,6 +117,56 @@
     for (var t = 0; t < top; t++) { btn(t, t + 1); btn(t + 1, t); }
     body.appendChild(grid);
   }
+  // the character creator: a big preview of the kid, a row of swatches or buttons per slot, a name box and Done.
+  // Shown as its own panel (from the menu, and once on a new game) and as the Paint shop's Kid tab
+  var KID_ROWS = [['skin', 'Skin'], ['hair', 'Hair colour'], ['style', 'Hair style'], ['hat', 'Hat'], ['jacket', 'Jacket'], ['scarf', 'Scarf']];
+  var KID_ICONS = { cap: '🧢', helmet: '🏁', beanie: '🧶', none: '✖', short: '✂️', curly: '➰', pony: '🎀', spiky: '⚡' };
+  var kidTurn = 0;
+  function kidCreator(body) {
+    var wrap = document.createElement('div'); wrap.className = 'kidMaker';
+    var stage = document.createElement('div'); stage.className = 'kidStage';
+    var pv = SP.kidPreview(S.kid, 300, 380, kidTurn); pv.className = 'kidPv'; stage.appendChild(pv);
+    [['◀', 0.8, 'Turn left'], ['▶', -0.8, 'Turn right']].forEach(function (t, i) {
+      var b = document.createElement('button'); b.className = 'kidTurn ' + (i ? 'r' : 'l'); b.textContent = t[0]; b.setAttribute('aria-label', t[2]);
+      b.onclick = function () { kidTurn = (kidTurn + t[1]) % (Math.PI * 2); A.sfx('click'); refresh(); }; stage.appendChild(b);
+    });
+    wrap.appendChild(stage);
+    var opts = document.createElement('div'); opts.className = 'kidOpts';
+    var nm = document.createElement('label'); nm.className = 'kidName';
+    nm.innerHTML = '<span>Name</span>';
+    var inp = document.createElement('input'); inp.type = 'text'; inp.maxLength = 12; inp.placeholder = 'You'; inp.value = S.kid.name; inp.autocomplete = 'off'; inp.spellcheck = false;
+    inp.oninput = function () { D.setKid(S, 'name', inp.value); };
+    inp.onchange = function () { D.setKid(S, 'name', inp.value); inp.value = S.kid.name; save(); };
+    inp.onkeydown = function (e) { if (e.key === 'Enter') inp.blur(); };
+    nm.appendChild(inp); opts.appendChild(nm);
+    KID_ROWS.forEach(function (r) {
+      var k = r[0], row = document.createElement('div'); row.className = 'kidRow';
+      var cur = D.kidOpt(k, S.kid[k]);
+      row.innerHTML = '<h4>' + r[1] + ' <small>' + (cur ? cur.name : '') + '</small></h4>';
+      var list = document.createElement('div'); list.className = 'kidList';
+      D.KID_OPTS[k].forEach(function (o) {
+        var on = S.kid[k] === o.id, b = document.createElement('button');
+        b.setAttribute('aria-label', o.name); b.title = o.name; b.setAttribute('aria-pressed', on);
+        if (o.c) { b.className = 'kidSw' + (on ? ' on' : ''); b.style.background = o.c; }
+        else { b.className = 'kidBtn' + (on ? ' on' : ''); b.innerHTML = '<span>' + (KID_ICONS[o.id] || '') + '</span>' + o.name; }
+        b.onclick = function () { if (D.setKid(S, k, o.id)) { A.sfx('click'); save(); refresh(); } };
+        list.appendChild(b);
+      });
+      row.appendChild(list); opts.appendChild(row);
+    });
+    var btns = document.createElement('div'); btns.className = 'kidBtns';
+    var rnd = document.createElement('button'); rnd.className = 'btn'; rnd.textContent = '🎲 Surprise me';
+    rnd.onclick = function () {
+      D.KID_KEYS.forEach(function (k) { var L = D.KID_OPTS[k]; D.setKid(S, k, L[Math.floor(Math.random() * L.length)].id); });
+      A.sfx('click'); save(); refresh();
+    };
+    var done = document.createElement('button'); done.className = 'btn go'; done.textContent = '✓ Done';
+    done.onclick = function () { D.setKid(S, 'name', inp.value); save(); A.sfx('buy'); toast('Looking good, ' + esc(D.kidName(S)) + '!'); if (station === 'paint') { tab.paint = 'paint'; renderPanel(); } else closePanel(); };
+    btns.appendChild(rnd); btns.appendChild(done); opts.appendChild(btns);
+    wrap.appendChild(opts); body.appendChild(wrap);
+    function refresh() { var y = body.scrollTop; renderPanel(); $('pBody').scrollTop = y; }
+  }
+  function openKid() { station = null; openStation('kid'); fromMenu = true; }
   function renderPanel() {
     var body = $('pBody'), tabs = $('pTabs');
     $('pTitle').textContent = TITLES[station] || '';
@@ -150,10 +204,11 @@
       });
     } else if (station === 'paint') {
       var slots = { paint: '🎨 Paint', trim: '✏️ Trim', wheels: '🛞 Wheels', spoiler: '🪽 Spoiler', exhaust: '💨 Exhaust', horn: '📯 Horn', trail: '✨ Boost trail' };
-      D.LOOK_KEYS.forEach(function (k) {
-        var t = document.createElement('button'); t.textContent = slots[k]; t.className = tab.paint === k ? 'on' : '';
+      D.LOOK_KEYS.concat(['kid']).forEach(function (k) {
+        var t = document.createElement('button'); t.textContent = k === 'kid' ? '🧒 Kid' : slots[k]; t.className = tab.paint === k ? 'on' : '';
         t.onclick = function () { tab.paint = k; A.sfx('click'); renderPanel(); }; tabs.appendChild(t);
       });
+      if (tab.paint === 'kid') { kidCreator(body); return; }
       var look = S.cars[car].look;
       body.appendChild(previewCanvas(car, look, 0.6 + (tab.paint === 'spoiler' || tab.paint === 'exhaust' ? 2.4 : 0)));
       var grid = document.createElement('div'); grid.className = 'grid';
@@ -186,8 +241,10 @@
         });
       });
       body.insertAdjacentHTML('beforeend', '<p class="note">Only a 1st place opens the next track. Every finish pays coins and parts.</p>');
+    } else if (station === 'kid') {
+      kidCreator(body);
     } else if (station === 'menu') {
-      [['🔧 Garage', 'garage'], ['🎨 Paint shop', 'paint'], ['🚗 Car lot', 'lot'], ['🏁 Races', 'track']].forEach(function (p) {
+      [['🧒 Your racer', 'kid'], ['🔧 Garage', 'garage'], ['🎨 Paint shop', 'paint'], ['🚗 Car lot', 'lot'], ['🏁 Races', 'track']].forEach(function (p) {
         var b = document.createElement('button'); b.className = 'btn'; b.style.cssText = 'width:100%;margin-bottom:8px'; b.textContent = p[0];
         b.onclick = function () { station = null; openStation(p[1]); fromMenu = true; }; body.appendChild(b);
       });
@@ -292,7 +349,7 @@
     var r = race, res = D.finishRace(S, r);
     results = res; save();
     A.setMood('results', res.place === 1); A.setEngine(false, 0, false);
-    var rows = r.order.map(function (c) { return '<tr class="' + (c.i === 0 ? 'me' : '') + '"><td>' + ord(c.place) + '</td><td>' + c.name + '</td><td>' + D.CARS[c.carId].name + '</td><td>' + fmtT(c.finishT) + '</td></tr>'; }).join('');
+    var rows = r.order.map(function (c) { return '<tr class="' + (c.i === 0 ? 'me' : '') + '"><td>' + ord(c.place) + '</td><td>' + esc(c.name) + '</td><td>' + D.CARS[c.carId].name + '</td><td>' + fmtT(c.finishT) + '</td></tr>'; }).join('');
     var parts = res.parts.map(function (n, i) { return n ? D.PARTS[i].icon + ' +' + n : ''; }).filter(Boolean).join(' ');
     var el = $('results');
     el.innerHTML = '<h2>' + D.TRACKS[r.id].name + '</h2><div class="place">' + ord(res.place) + '</div>' +
@@ -474,16 +531,18 @@
     var c = $('splashCar'), x = c.getContext('2d'), pv = SP.carPreview(S.car, S.cars[S.car].look, 0.6, 5);
     x.imageSmoothingEnabled = false; x.drawImage(pv, (c.width - pv.width) / 2, (c.height - pv.height) / 2);
   })();
-  function start() { audio(); $('splash').classList.add('hide'); }
+  // a new game opens the character creator once, right after the splash (?kid=1 opens it anyway)
+  var firstKid = (newGame && !DEV) || params.get('kid') === '1';
+  function start() { audio(); $('splash').classList.add('hide'); if (firstKid && mode === 'hub') { firstKid = false; openKid(); } }
   $('bStart').onclick = start;
-  if (params.get('nosplash') === '1') $('splash').classList.add('hide');
   setMode('hub'); updateHubHud();
+  if (params.get('nosplash') === '1') { $('splash').classList.add('hide'); if (firstKid && !params.has('race')) { firstKid = false; openKid(); } }
   if (params.has('race') && D.TRACKS[params.get('race')]) { $('splash').classList.add('hide'); startRace(params.get('race')); }
   requestAnimationFrame(frame);
 
   window.__game = {
     get S() { return S; }, D: D, get race() { return race; }, get hub() { return hub; },
     step: function (sec) { var n = Math.ceil(sec / 0.05); for (var i = 0; i < n; i++) advance(0.05, i === n - 1); },
-    startRace: startRace, goHome: goHome, openStation: openStation
+    startRace: startRace, goHome: goHome, openStation: openStation, openKid: openKid
   };
 })();
