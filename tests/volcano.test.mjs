@@ -152,10 +152,10 @@ test('world 4 pays chips, and a win pays crystals, both real part tiers', () => 
   const s = R.newState(1), r = R.startRace(s, 'cinder'); r.cars[0].place = 1; r.cars[0].finishT = 150;
   const res = R.finishRace(s, r);
   assert.ok(res.parts[3] > 0 && res.parts[4] > 0, JSON.stringify(res.parts));
-  // the gate level and the next are bought with gears (world 2's parts); springs only start at level 7
-  for (const lv of [GATE_LEVEL, GATE_LEVEL + 1]) {
+  // the gate level is bought in the snow with springs (world 3's parts), the next one here with chips
+  for (const [lv, tier] of [[GATE_LEVEL, 2], [GATE_LEVEL + 1, 3]]) {
     const c = R.upgradeCost(gateState(1, lv - 1), 'pip', 'engine');
-    assert.ok(c.parts[1] > 0 && c.parts[2] === 0, `level ${lv} costs gears ${JSON.stringify(c.parts)}`);
+    assert.ok(c.parts[tier] > 0 && c.parts.every((n, i) => i === tier || n === 0), `level ${lv} costs ${R.PARTS[tier].id}s ${JSON.stringify(c.parts)}`);
   }
 });
 

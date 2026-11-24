@@ -96,6 +96,14 @@ var RB = (function () {
   // parts swap at the garage: PART_UP of a tier buy one of the next, one of a tier breaks into PART_DOWN of the one
   // below, so racing any track can earn the tier an upgrade needs (a round trip loses parts)
   var PART_UP = 3, PART_DOWN = 2;
+  // what an upgrade level costs in parts, by the level it starts from: [tier, count]. Each level is bought with the
+  // tier the world where a player normally buys it pays (world gates: canyon at level 2, snow 4, lava 5, moon 6), so
+  // just racing on pays for the next upgrade; levels past the table cost crystals, one more each level
+  var UP_PARTS = [[0, 1], [0, 1], [1, 2], [1, 3], [2, 4], [3, 4], [4, 5], [4, 6], [4, 7]];
+  // coin exchange at the garage: buy a part of a tier the player has reached (up to the best world opened) for
+  // `buy` coins, sell any part for `sell`. Dearer than the race money that comes with a part, so racing stays the
+  // main path; a buy, swap and sell never turns a profit
+  var EXCHANGE = { buy: [40, 80, 150, 250, 400], sell: [10, 20, 35, 60, 100] };
   var FIRST_WIN = { coins: 100, parts: 3 }; // the first win of a track: coins × the world's pay, and parts of the next tier
   var PARTS = [
     { id: 'bolt', name: 'Bolts', icon: '🔩' }, { id: 'gear', name: 'Gears', icon: '⚙️' },
@@ -1191,12 +1199,34 @@ var RB = (function () {
     s.parts[from] -= give; s.parts[to] = (s.parts[to] || 0) + get;
     return true;
   }
+  // the best part tier on sale at the exchange: the best world opened
+  function exchangeTop(s) {
+    var top = 0;
+    for (var w = 1; w < WORLDS.length && w < PARTS.length; w++) if (WORLDS[w].tracks.length && worldUnlocked(s, w)) top = w;
+    return top;
+  }
+  // coins for one part of a tier: buy is null for a tier not yet on sale
+  function exchangeRate(s, tier) {
+    if (!(tier >= 0 && tier < PARTS.length) || tier !== Math.floor(tier)) return null;
+    return { buy: tier <= exchangeTop(s) ? EXCHANGE.buy[tier] : null, sell: EXCHANGE.sell[tier] };
+  }
+  function exchangeBuy(s, tier, n) {
+    var rate = exchangeRate(s, tier);
+    if (!rate || rate.buy == null || !(n >= 1) || n !== Math.floor(n) || s.coins < rate.buy * n) return false;
+    s.coins -= rate.buy * n; s.parts[tier] = (s.parts[tier] || 0) + n;
+    return true;
+  }
+  function exchangeSell(s, tier, n) {
+    var rate = exchangeRate(s, tier);
+    if (!rate || !(n >= 1) || n !== Math.floor(n) || (s.parts[tier] || 0) < n) return false;
+    s.parts[tier] -= n; s.coins += rate.sell * n;
+    return true;
+  }
   function upgradeCost(s, id, key) {
     var c = s.cars[id]; if (!c) return null;
     var L = c.up[key]; if (L >= CARS[id].caps[key]) return null;
-    var tier = Math.min(4, Math.floor(L / 3)), parts = [0, 0, 0, 0, 0];
-    parts[tier] = 2 + L;
-    if (tier > 0) parts[tier - 1] += 2 * L;
+    var last = UP_PARTS[UP_PARTS.length - 1], row = UP_PARTS[L] || [last[0], last[1] + L - UP_PARTS.length + 1], parts = [0, 0, 0, 0, 0];
+    parts[row[0]] = row[1];
     return { coins: Math.round(60 * Math.pow(1.5, L) * CARS[id].price / 5) * 5, parts: parts };
   }
   function buyUpgrade(s, id, key) {
@@ -1336,7 +1366,8 @@ var RB = (function () {
 
   return {
     DT: DT, PACE: PACE, DRIFT_TIERS: DRIFT_TIERS, RUNOFF: RUNOFF, RAMP_LEN: RAMP_LEN, PAD_LEN: PAD_LEN, PAD_W: PAD_W, MAGNET_R: MAGNET_R, ROLL_T: ROLL_T, START_CAR: START_CAR,
-    PLACE_PAY: PLACE_PAY, PART_PAY: PART_PAY, PART_UP: PART_UP, PART_DOWN: PART_DOWN, tradeParts: tradeParts, PARTS: PARTS, ITEMS: ITEMS, ITEM_KEYS: ITEM_KEYS, UPGRADES: UPGRADES, UP_KEYS: UP_KEYS,
+    PLACE_PAY: PLACE_PAY, PART_PAY: PART_PAY, PART_UP: PART_UP, PART_DOWN: PART_DOWN, tradeParts: tradeParts, UP_PARTS: UP_PARTS, EXCHANGE: EXCHANGE,
+    exchangeTop: exchangeTop, exchangeRate: exchangeRate, exchangeBuy: exchangeBuy, exchangeSell: exchangeSell, PARTS: PARTS, ITEMS: ITEMS, ITEM_KEYS: ITEM_KEYS, UPGRADES: UPGRADES, UP_KEYS: UP_KEYS,
     PERKS: PERKS, CARS: CARS, LOOKS: LOOKS, LOOK_KEYS: LOOK_KEYS, TRACKS: TRACKS, WORLDS: WORLDS, HUB: HUB,
     BRIDGE_CLEAR: BRIDGE_CLEAR, EDGE: EDGE, onBridge: onBridge,
     rng: rng, angDiff: angDiff, clamp: clamp, track: track, pointAt: pointAt, groundAt: groundAt, slopeAt: slopeAt, headingAt: headingAt, lookOpt: lookOpt,
