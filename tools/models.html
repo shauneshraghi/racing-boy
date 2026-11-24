@@ -76,6 +76,21 @@
   var kd = place('kid', RB3DModels.kid(), 4, 6); kd.rotation.y = -0.4;
   var kd2 = place('kid-idle', RB3DModels.kid(), 4.8, 6.8); kd2.rotation.y = -1.2;
   anim.push(function (t) { kd.userData.anim(t, true); kd2.userData.anim(t, false); be.userData.flap(t); });
+  // character-creator looks (s.kid option ids), standing and at the wheel
+  var kidLooks = [
+    ['kid-helmet', { hat: 'helmet', style: 'pony', skin: 'umber', hair: 'black', jacket: 'red', scarf: 'white' }, 'pip'],
+    ['kid-beanie', { hat: 'beanie', style: 'curly', skin: 'rose', hair: 'ginger', jacket: 'green', scarf: 'violet' }, 'rumble'],
+    ['kid-bare', { hat: 'none', style: 'spiky', skin: 'honey', hair: 'teal', jacket: 'charcoal', scarf: 'orange' }, 'zip'],
+    ['kid-curly', { hat: 'none', style: 'curly', skin: 'cocoa', hair: 'black', jacket: 'purple', scarf: 'lime' }, 'bolt'],
+    ['kid-pony', { hat: 'none', style: 'pony', skin: 'tan', hair: 'blond', jacket: 'pink', scarf: 'sky' }, 'comet'],
+    ['kid-cap-spiky', { hat: 'cap', style: 'spiky', skin: 'peach', hair: 'brown', jacket: 'navy', scarf: 'red' }, 'hopper']
+  ];
+  kidLooks.forEach(function (k, i) {
+    var o = place(k[0], RB3DModels.kid(RB3DModels.kidPal(k[1])), 7, -6 + i * 1.6); o.rotation.y = -0.4;
+    RB3DModels.setPlayer(k[1]);
+    if (RB.CARS[k[2]]) place('drive-' + k[0].slice(4), RB3DModels.car(k[2]), 10, -7.5 + i * 2.5).rotation.y = 0;
+  });
+  RB3DModels.setPlayer(null);
   console.log('build ms', Math.round(performance.now() - t0), JSON.stringify(tris));
 
   var cam = new T.PerspectiveCamera(34, 1, 0.05, 200), target = new T.Vector3(0, 0.3, 0), orbit = { yaw: 0.9, pitch: 0.42, dist: 20 };

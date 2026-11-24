@@ -700,7 +700,7 @@ var RB = (function () {
       var ai = c > 0, id = ai ? carIds[Math.floor(R() * carIds.length)] : s.car;
       var look = ai ? newCar(id).look : s.cars[s.car].look;
       if (ai) { look = JSON.parse(JSON.stringify(look)); look.paint = paints[Math.floor(R() * paints.length)]; }
-      var car = { i: c, ai: ai, name: ai ? names[c - 1] : 'You', carId: id, look: look,
+      var car = { i: c, ai: ai, name: ai ? names[c - 1] : kidName(s), carId: id, look: look,
         stats: ai ? statsFor(id) : carStats(s, id), skill: ai ? W.skill[c - 1] : 1, lane: ai ? (R() * 2 - 1) * 1.6 : 0,
         x: 0, z: 0, h: 0, v: 0, y: 0, vy: 0, gy: 0, gvy: 0, air: false, s: 0, prog: 0, lap: 1, place: c + 1, done: false, finishT: 0,
         boostT: 0, slowT: 0, shieldT: 0, magnetT: 0, drift: 0, driftDir: 0, driftReady: false, slip: 0, slipDir: 0, hopT: 0, hopY: 0, trick: false, trickT: 0, fallT: 0, onRamp: -1,
@@ -1344,6 +1344,48 @@ var RB = (function () {
     return true;
   }
 
+  // ---------- the kid's look (the character creator) ----------
+  // every option is free; the first of each slot is the default and reproduces the original kid
+  var KID_OPTS = {
+    skin: [
+      { id: 'peach', name: 'Peach', c: '#f0c49c' }, { id: 'rose', name: 'Rose', c: '#f8d8c4' }, { id: 'honey', name: 'Honey', c: '#dca878' },
+      { id: 'tan', name: 'Tan', c: '#c48a5c' }, { id: 'umber', name: 'Umber', c: '#8e5a3a' }, { id: 'cocoa', name: 'Cocoa', c: '#5e3a28' }
+    ],
+    hair: [
+      { id: 'chestnut', name: 'Chestnut', c: '#8a4e2a' }, { id: 'black', name: 'Black', c: '#221a16' }, { id: 'brown', name: 'Brown', c: '#4e3222' },
+      { id: 'blond', name: 'Blond', c: '#e0b860' }, { id: 'ginger', name: 'Ginger', c: '#c0582a' }, { id: 'silver', name: 'Silver', c: '#c8c6cc' },
+      { id: 'teal', name: 'Teal', c: '#2f9a96' }
+    ],
+    style: [
+      { id: 'short', name: 'Short' }, { id: 'curly', name: 'Curly' }, { id: 'pony', name: 'Ponytail' }, { id: 'spiky', name: 'Spiky' }
+    ],
+    hat: [
+      { id: 'cap', name: 'Aviator cap' }, { id: 'helmet', name: 'Race helmet' }, { id: 'beanie', name: 'Beanie' }, { id: 'none', name: 'No hat' }
+    ],
+    jacket: [
+      { id: 'slate', name: 'Slate', c: '#4a6c80' }, { id: 'red', name: 'Red', c: '#c0443a' }, { id: 'green', name: 'Green', c: '#4a8a4e' },
+      { id: 'purple', name: 'Purple', c: '#7a5ab8' }, { id: 'orange', name: 'Orange', c: '#e0802a' }, { id: 'navy', name: 'Navy', c: '#2e3a5e' },
+      { id: 'pink', name: 'Pink', c: '#d870a8' }, { id: 'charcoal', name: 'Charcoal', c: '#34323a' }
+    ],
+    scarf: [
+      { id: 'mustard', name: 'Mustard', c: '#e0aa4e' }, { id: 'red', name: 'Red', c: '#e5483a' }, { id: 'sky', name: 'Sky', c: '#5ab0e8' },
+      { id: 'lime', name: 'Lime', c: '#8ac83a' }, { id: 'white', name: 'White', c: '#f4f1ea' }, { id: 'pink', name: 'Pink', c: '#f08ab8' },
+      { id: 'violet', name: 'Violet', c: '#9a6ad8' }, { id: 'orange', name: 'Orange', c: '#ff8a1c' }
+    ]
+  };
+  var KID_KEYS = ['skin', 'hair', 'style', 'hat', 'jacket', 'scarf'], KID_NAME_MAX = 12;
+  function kidOpt(slot, id) { var L = KID_OPTS[slot]; if (!L) return null; for (var i = 0; i < L.length; i++) if (L[i].id === id) return L[i]; return null; }
+  function newKid() { var k = {}; KID_KEYS.forEach(function (key) { k[key] = KID_OPTS[key][0].id; }); k.name = ''; return k; }
+  // a name: printable text, trimmed, at most KID_NAME_MAX characters ('' shows as You)
+  function cleanName(v) { return String(v).replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, KID_NAME_MAX).trim(); }
+  function setKid(s, key, value) {
+    if (!s.kid) s.kid = newKid();
+    if (key === 'name') { if (typeof value !== 'string') return false; s.kid.name = cleanName(value); return true; }
+    if (KID_KEYS.indexOf(key) < 0 || !kidOpt(key, value)) return false;
+    s.kid[key] = value; return true;
+  }
+  function kidName(s) { return (s && s.kid && s.kid.name) || 'You'; }
+
   // ---------- state and saving ----------
   var VERSION = 1;
   function newState(seed) {
@@ -1351,11 +1393,11 @@ var RB = (function () {
     LOOK_KEYS.forEach(function (k) { looks[k] = LOOKS[k].filter(function (o) { return o.cost === 0; }).map(function (o) { return o.id; }); });
     var cars = {}; cars[START_CAR] = newCar(START_CAR);
     return { v: VERSION, seed: seed | 0, coins: 0, parts: [0, 0, 0, 0, 0], owned: [START_CAR], car: START_CAR, cars: cars,
-      looks: looks, best: {}, bestT: {}, wins: {}, races: 0, world: 0, race: null };
+      looks: looks, best: {}, bestT: {}, wins: {}, races: 0, world: 0, race: null, kid: newKid() };
   }
   function serialize(s) {
     return JSON.stringify({ v: VERSION, seed: s.seed, coins: s.coins, parts: s.parts, owned: s.owned, car: s.car, cars: s.cars,
-      looks: s.looks, best: s.best, bestT: s.bestT, wins: s.wins, races: s.races, world: s.world });
+      looks: s.looks, best: s.best, bestT: s.bestT, wins: s.wins, races: s.races, world: s.world, kid: s.kid });
   }
   function deserialize(raw) {
     var o; try { o = JSON.parse(raw); } catch (e) { return null; }
@@ -1375,6 +1417,7 @@ var RB = (function () {
     if (o.best) for (var t in o.best) if (TRACKS[t]) s.best[t] = o.best[t];
     if (o.bestT) for (var u in o.bestT) if (TRACKS[u]) s.bestT[u] = o.bestT[u];
     if (o.wins) for (var w in o.wins) if (TRACKS[w] && typeof o.wins[w] === 'number') s.wins[w] = o.wins[w];
+    if (o.kid && typeof o.kid === 'object') { KID_KEYS.forEach(function (k) { setKid(s, k, o.kid[k]); }); setKid(s, 'name', o.kid.name); }
     for (var b in s.best) if (s.best[b] === 1 && !(s.wins[b] > 0)) s.wins[b] = 1; // a save from before wins were kept: a won track has had its first win
     return s;
   }
@@ -1391,6 +1434,7 @@ var RB = (function () {
     worldUnlocked: worldUnlocked, canAfford: canAfford, upgradeCost: upgradeCost, buyUpgrade: buyUpgrade, buyCar: buyCar,
     selectCar: selectCar, carUnlocked: carUnlocked, carLockReason: carLockReason, buyLook: buyLook, equip: equip, newState: newState, serialize: serialize, deserialize: deserialize,
     newHub: newHub, hubStep: hubStep, hubWalkTo: hubWalkTo, hubStation: hubStation, hubOpen: hubOpen, hubCell: hubCell,
+    KID_OPTS: KID_OPTS, KID_KEYS: KID_KEYS, kidOpt: kidOpt, newKid: newKid, setKid: setKid, kidName: kidName,
     _place: place, _record: record, _newCar: newCar
   };
 })();

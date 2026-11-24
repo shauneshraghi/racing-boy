@@ -359,6 +359,8 @@
 
     // ---------- cars ----------
     function lookKey(id, look) { return id + '|' + JSON.stringify(look || {}); }
+    // the player's kid look (s.kid) for every model built with no rider; returns a key that changes with the look
+    function setPlayer(s) { var f = MD('setPlayer'); return f ? f(s && s.kid) : ''; }
     // rival drivers: kids in their own clothes (the player is the plaza kid)
     var RIDERS = [
       { cap: '#2f6fd0', capDark: '#1f4a8c', jacket: '#d8a02a', scarf: '#e5483a', hair: '#2a1e18', skin: '#c98e62', trousers: '#3a4250' },
@@ -485,7 +487,7 @@
     };
     function drawRace(r, dt) {
       if (failed) return OLD.drawRace(r, dt);
-      var R = buildRace(r.id), sc = R.scene, g = r.g, p = r.cars[0];
+      var R = buildRace(r.id), sc = R.scene, g = r.g, p = r.cars[0], pk = setPlayer(r.s);
       time += dt; stepParts(dt);
       R.world.update(time);
       // camera: swings round behind the car with a lag, rises on jumps, pulls back and widens when boosting
@@ -510,7 +512,7 @@
       var camFwd = V2.set(fx, 0, fz), playerDepth = dist;
       // cars
       r.cars.forEach(function (c, i) {
-        var st = R.cars[i], key = lookKey(c.carId, c.look);
+        var st = R.cars[i], key = lookKey(c.carId, c.look) + (i ? '' : pk); // the player's car carries the kid's look
         if (!st || st.key !== key) { if (st) freeCar(st.obj); st = R.cars[i] = { obj: newCarObj(c.carId, c.look, i > 0, i), key: key, spin: 0, pitchS: 0, alpha: 1 }; sc.add(st.obj); }
         poseCar(st, c, dt, raceCam.position, camFwd, playerDepth, r);
         if (dt > 0) carEmit(c, st, r, dt);
@@ -649,8 +651,6 @@
       if (hubS) return hubS;
       var w = W3.hub(D.HUB), sc = sceneFor(w);
       hubS = { world: w, scene: sc, parked: [], key: '', kid: null, cam: { x: 0, z: 0, init: false } };
-      var kid = make('kid', stubKid); kid.traverse(function (m) { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
-      if (kid.userData && typeof kid.userData.anim === 'function') { var dk = movers(kid, kid.userData.anim); dk.add(kid); compact(kid, dk); } sc.add(kid); hubS.kid = kid;
       // a soft glow under the selected car
       var sel = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.95, 40), new THREE.MeshBasicMaterial({ color: col('#ffd23f'), transparent: true, opacity: 0.5, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending }));
       sel.rotation.x = -Math.PI / 2; sel.visible = false; sc.add(sel); hubS.sel = sel;
@@ -660,6 +660,15 @@
       if (failed) return OLD.drawHub(S0, h, dt);
       var H = buildHub(), sc = H.scene, w = H.world;
       time += dt; stepParts(dt); w.update(time);
+      // the plaza kid, rebuilt when the character creator changes the look
+      var pk = setPlayer(S0);
+      if (!H.kid || H.kidKey !== pk) {
+        if (H.kid) { H.kid.removeFromParent(); (H.kidOwn || []).forEach(function (g) { g.dispose(); }); }
+        var kd = MD('kidPal'), kid = make('kid', stubKid, [kd ? kd(S0.kid) : undefined]); kid.traverse(function (m) { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+        H.kidOwn = [];
+        if (kid.userData && typeof kid.userData.anim === 'function') { var dk = movers(kid, kid.userData.anim); dk.add(kid); compact(kid, dk, H.kidOwn); } sc.add(kid);
+        H.kid = kid; H.kidKey = pk;
+      }
       // owned cars parked in the lot's bays, nose to the plaza
       var key = S0.owned.map(function (id) { return lookKey(id, S0.cars[id] && S0.cars[id].look); }).join(';');
       if (key !== H.key) {
@@ -727,7 +736,17 @@
   SPR.carPreview = function (id, look, h, scale) {
     var base = oldPreview(id, look, h, scale);
     if (!active || typeof RB3DModels === 'undefined' || typeof RB3DModels.preview !== 'function') return base;
-    try { var c = RB3DModels.preview(id, look, h, base.width, base.height); if (c) { var cp = document.createElement('canvas'); cp.width = c.width; cp.height = c.height; cp.getContext('2d').drawImage(c, 0, 0); return cp; } } catch (e) { console.error('RB3DModels.preview:', e); }
+    try {
+      var gm = window.__game; if (gm && gm.S && typeof RB3DModels.setPlayer === 'function') RB3DModels.setPlayer(gm.S.kid); // the kid at the wheel
+      var c = RB3DModels.preview(id, look, h, base.width, base.height); if (c) { var cp = document.createElement('canvas'); cp.width = c.width; cp.height = c.height; cp.getContext('2d').drawImage(c, 0, 0); return cp; } } catch (e) { console.error('RB3DModels.preview:', e); }
     return base;
+  };
+  // the kid for the character creator: a 3D studio render in place of the pixel sprite
+  var oldKidPreview = SPR.kidPreview;
+  SPR.kidPreview = function (look, w, h, turn) {
+    if (active && typeof RB3DModels !== 'undefined' && typeof RB3DModels.kidPreview === 'function') {
+      try { var c = RB3DModels.kidPreview(look, w, h, turn); if (c) { var cp = document.createElement('canvas'); cp.width = c.width; cp.height = c.height; cp.getContext('2d').drawImage(c, 0, 0); return cp; } } catch (e) { console.error('RB3DModels.kidPreview:', e); }
+    }
+    return oldKidPreview(look, w, h);
   };
 })();

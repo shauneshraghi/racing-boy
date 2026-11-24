@@ -157,3 +157,25 @@ button { font:inherit; }
 #splash.hide { display:none; }
 #confirm { margin-top:8px; display:flex; gap:6px; }
 #confirm input { flex:1; font:inherit; font-size:18px; padding:6px 10px; border-radius:10px; border:2px solid var(--bad); background:#000; color:var(--ink); }
+
+/* the character creator: a big preview of the kid that stays in view while the option rows scroll under it */
+#panel.tall { max-height:88%; }
+.kidMaker { display:flex; flex-direction:column; gap:6px; }
+.kidStage { position:sticky; top:0; z-index:1; display:flex; justify-content:center; align-items:center; height:clamp(150px, 27vh, 300px); border-radius:16px; background:radial-gradient(ellipse at 50% 70%, #4a3f66, #1c1629 75%); box-shadow:0 6px 12px -6px #000c; }
+.kidPv { height:100%; width:auto; max-width:100%; object-fit:contain; image-rendering:auto; }
+.kidTurn { position:absolute; top:50%; transform:translateY(-50%); width:44px; height:44px; border:none; border-radius:50%; background:#0007; color:var(--ink); font-size:20px; cursor:pointer; }
+.kidTurn.l { left:8px; } .kidTurn.r { right:8px; }
+.kidOpts { display:flex; flex-direction:column; gap:4px; padding:4px 2px; }
+.kidName { display:flex; align-items:center; gap:10px; font-size:17px; font-weight:600; margin:4px 0; }
+.kidName input { flex:1; min-width:0; font:inherit; font-size:19px; padding:8px 12px; border-radius:12px; border:2px solid var(--panel2); background:#120e1a; color:var(--ink); user-select:text; -webkit-user-select:text; }
+.kidName input:focus { outline:none; border-color:var(--gold); }
+.kidRow h4 { margin:6px 2px 4px; font-size:16px; }
+.kidRow h4 small { color:var(--muted); font-weight:500; margin-left:4px; }
+.kidList { display:flex; flex-wrap:wrap; gap:8px; }
+.kidSw { width:40px; height:40px; border-radius:50%; border:3px solid #0008; cursor:pointer; padding:0; box-shadow:inset 0 -6px 8px #0003, inset 0 4px 6px #fff3; }
+.kidSw.on { outline:3px solid var(--gold); outline-offset:2px; }
+.kidBtn { display:flex; align-items:center; gap:6px; min-height:44px; padding:6px 12px; border:none; border-radius:12px; background:var(--panel2); color:var(--ink); font-size:15px; font-weight:600; cursor:pointer; }
+.kidBtn.on { background:var(--gold); color:#3a1d00; }
+.kidBtns { display:flex; gap:8px; justify-content:space-between; margin:10px 0 4px; }
+.kidBtns .btn { flex:1; }
+@media (min-aspect-ratio: 1/1) and (min-width: 700px) { #panel.tall { max-height:none; } .kidStage { height:clamp(200px, 38vh, 340px); } }
