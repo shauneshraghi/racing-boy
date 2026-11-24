@@ -486,7 +486,7 @@ var RB3DModels = (function () {
   // { hip, knee, lean, arm, elbow (radians), spread (hip half-gap in kid units), bars: handlebars instead of a wheel,
   // seat: false (no seat), head: head scale }. The steering wheel or handlebars go where the hands land
   function driver(C, x, y, z, s, o) {
-    o = o || {}; s = (s || 1) * 0.62;
+    o = o || {}; s = (s || 1) * 0.74; // chunky, so the driver reads from the chase camera
     var g = new T.Group(); g.position.set(x, y, z); C.body.add(g);
     if (o.seat !== false) {
       box(0.2, 0.06, 0.26, 0.03, mat('seat'), g, -0.03, 0.0, 0);
@@ -500,7 +500,7 @@ var RB3DModels = (function () {
       l.rotation.z = o.hip !== undefined ? o.hip : 1.5; l.rotation.x = -sd * (o.splay || 0); l.userData.knee.rotation.z = o.knee !== undefined ? o.knee : -0.35;
     });
     u.torso.rotation.z = o.lean !== undefined ? o.lean : 0.12;
-    u.head.scale.setScalar(o.head || 1.25); u.head.rotation.z = -(o.lean || 0.12) * 0.6;
+    u.head.scale.setScalar(o.head || 1.5); u.head.rotation.z = -(o.lean || 0.12) * 0.6;
     u.arms.forEach(function (a, i) { var sd = i ? 1 : -1; a.rotation.z = o.arm !== undefined ? o.arm : 1.15; a.rotation.x = -sd * 0.12; a.userData.elbow.rotation.z = o.elbow !== undefined ? o.elbow : 0.35; });
     g.updateMatrixWorld(true);
     var hands = u.arms.map(function (a) { return g.worldToLocal(a.userData.elbow.localToWorld(V(0, -0.15, 0))); });
@@ -663,10 +663,10 @@ var RB3DModels = (function () {
     box(0.03, 0.025, hw * 1.76, 0.01, tm, ws, 0, wh, 0);
     [-1, 1].forEach(function (sd) { box(0.03, wh, 0.025, 0.01, tm, ws, 0, wh / 2, sd * hw * 0.87); });
     // the roll hoop
-    var hx = x0 + 0.05, ht = Math.min(roof, belt + 0.3), hz = hw * 0.62;
+    var hx = x0 + 0.05, ht = Math.min(roof, belt + 0.36), hz = hw * 0.62;
     tube([[hx, belt, -hz], [hx, ht - 0.05, -hz], [hx, ht, -hz * 0.6], [hx, ht, hz * 0.6], [hx, ht - 0.05, hz], [hx, belt, hz]], 0.022, tm, C.body, 18);
     driver(C, o.x !== undefined ? o.x : x0 + 0.2, belt - 0.1, 0, o.s || 1.05, { hip: 1.45, knee: -0.5, arm: 1.1, elbow: 0.45, lean: 0.2 });
-    C.top = belt + 0.6;
+    C.top = belt + 0.75;
     return ht;
   }
   // the dark underbody that fills the wheel arches between the wheels
@@ -931,7 +931,7 @@ var RB3DModels = (function () {
     var tl = lamp('rect', 0.08, 0.04, C.tailMat, C.body); tl.position.set(-0.63, 0.63, 0); tl.rotation.y = PI; C.lights.tail.push(tl.children[1]);
     plate('ZIP 1', C.body, 0.13); var pl = C.body.children[C.body.children.length - 1]; pl.position.set(-0.62, 0.52, 0); pl.rotation.y = PI;
     // the rider astride: knees round the tank, feet back on the pegs, leaning onto the bars
-    driver(C, -0.2, seatY + 0.03, 0, 1.05, { seat: false, bars: true, spread: 0.19, splay: 0.12, hip: 1.0, knee: -1.75, lean: -0.42, arm: 1.0, elbow: 0.55, head: 1.25 });
+    driver(C, -0.2, seatY + 0.02, 0, 1.0, { seat: false, bars: true, spread: 0.19, splay: 0.12, hip: 1.0, knee: -1.75, lean: -0.42, arm: 1.0, elbow: 0.55, head: 1.45 });
     [-1, 1].forEach(function (sd) { rod([-0.08, 0.3, sd * 0.07], [-0.08, 0.3, sd * 0.16], 0.014, mat('alu'), C.body); });
     if (C.bars) rod([0.33, 0.82, 0], [C.bars.x, C.bars.y - 0.01, 0], 0.018, mat('chrome'), C.body);
     C.top = 1.18; C.pipeX = -0.2; C.pipeY = 0.3; C.stackX = -0.3; C.stackY0 = 0.45; C.stackZ = 0.1; C.stackTop = 0.85;
