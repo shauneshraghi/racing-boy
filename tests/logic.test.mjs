@@ -338,9 +338,9 @@ test('only a win unlocks the next track; winning all three opens world 2', () =>
   assert.equal(s.best[W1[0]], 1, 'best place kept');
 });
 
-test('cars: five starter cars plus faster ones to unlock, one owned at start, buy with coins and parts', () => {
+test('cars: six starter cars plus faster ones to unlock, one owned at start, buy with coins and parts', () => {
   const ids = Object.keys(R.CARS);
-  assert.equal(ids.filter(i => !R.CARS[i].unlock).length, 5);
+  assert.equal(ids.filter(i => !R.CARS[i].unlock).length, 6);
   assert.ok(ids.length >= 7);
   const perks = new Set(ids.map(id => R.CARS[id].perk));
   assert.ok(perks.size >= 4);
@@ -844,4 +844,48 @@ test('the clean bot steers round hazards; rivals mostly do', () => {
   assert.ok(hits[0] === 0, 'the clean bot hit ' + hits[0]);
   const rivals = hits.slice(1).reduce((a, b) => a + b, 0);
   assert.ok(rivals >= 1 && rivals <= 12, 'rivals mostly dodge but bonk now and then: ' + rivals);
+});
+
+test('the starter is a motorbike with the stock stats; older saves get it free and keep their car', () => {
+  assert.ok(R.CARS[R.START_CAR].model.bike, 'START_CAR is a motorbike');
+  assert.ok(!R.CARS[R.START_CAR].unlock);
+  const old = R.newState(1); old.owned = ['pip']; old.car = 'pip'; old.cars = { pip: R._newCar('pip') };
+  const s = R.deserialize(R.serialize(old));
+  assert.ok(s.owned.includes(R.START_CAR) && s.owned.includes('pip'));
+  assert.equal(s.car, 'pip');
+});
+
+test('treasure chests: the middle crate of each row is gold, gives a strong item and coins, and comes back slower', () => {
+  for (const id of W1) {
+    const g = R.track(id);
+    assert.ok(g.boxes.some(b => b.gold) && g.boxes.some(b => !b.gold), id);
+  }
+  const rng = R.rng(9), got = {};
+  for (let i = 0; i < 3000; i++) { const k = R.rollItem(rng, 3, 6, false, true); got[k] = (got[k] || 0) + 1; }
+  assert.ok(!got.goo && !got.magnet, 'no weak items from a chest');
+  assert.ok(got.turbo3 > 0, 'chests can hold the triple turbo');
+  const { r } = freshRace(W1[0]);
+  r.phase = 'race'; r.cars.length = 1;
+  const p = r.cars[0], bi = r.g.boxes.findIndex(b => b.gold), b = r.g.boxes[bi];
+  R._place(r, p, b.s - 1.5, b.off); p.v = 8;
+  for (let i = 0; i < 30; i++) { R.input(r, { aim: R.headingAt(r.g, p.s) }); R.stepRace(r, 1 / 60); }
+  assert.ok(p.item && !['goo', 'magnet'].includes(p.item), 'strong item ' + p.item);
+  assert.ok(p.coins >= R.CHEST_COINS, 'chest coins');
+  assert.ok(r.boxes[bi].t > R.BOX_RESPAWN, 'gold comes back slower');
+  assert.ok(r.events.some(e => e.type === 'box' && e.gold));
+});
+
+test('the triple turbo boosts three times before it is used up', () => {
+  const { r } = freshRace(W1[0]);
+  r.phase = 'race'; r.cars.length = 1;
+  const p = r.cars[0];
+  p.item = 'turbo3'; p.itemN = 3;
+  for (let k = 3; k >= 1; k--) {
+    p.boostT = 0;
+    R.input(r, { item: true }); R.stepRace(r, 1 / 60); R.input(r, {});
+    assert.ok(p.boostT > 0, 'boost ' + k);
+    assert.equal(p.item, k > 1 ? 'turbo3' : null);
+    assert.equal(p.itemN, k - 1);
+  }
+  assert.ok(R.ITEMS.turbo3 && R.ITEM_KEYS.includes('turbo3'));
 });

@@ -17,7 +17,7 @@ const IDS = ['cinder', 'basalt', 'caldera'];
 const GATE_LEVEL = 5;
 function gateState(seed, level = GATE_LEVEL) {
   const s = R.newState(seed);
-  for (const k of R.UP_KEYS) s.cars.pip.up[k] = Math.min(level, R.CARS.pip.caps[k]);
+  for (const k of R.UP_KEYS) s.cars[R.START_CAR].up[k] = Math.min(level, R.CARS[R.START_CAR].caps[k]);
   return s;
 }
 // race the bot to the end; records the player's place, time, the gap to the next finisher, any jump in progress,
@@ -154,7 +154,7 @@ test('world 4 pays chips, and a win pays crystals, both real part tiers', () => 
   assert.ok(res.parts[3] > 0 && res.parts[4] > 0, JSON.stringify(res.parts));
   // the gate level and the next are bought with gears (world 2's parts); springs only start at level 7
   for (const lv of [GATE_LEVEL, GATE_LEVEL + 1]) {
-    const c = R.upgradeCost(gateState(1, lv - 1), 'pip', 'engine');
+    const c = R.upgradeCost(gateState(1, lv - 1), R.START_CAR, 'engine');
     assert.ok(c.parts[1] > 0 && c.parts[2] === 0, `level ${lv} costs gears ${JSON.stringify(c.parts)}`);
   }
 });

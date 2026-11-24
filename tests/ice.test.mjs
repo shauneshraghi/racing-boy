@@ -17,7 +17,7 @@ const ICE = ['pines', 'skijump', 'glacier'];
 const GATE_LEVEL = 4;
 function gateState(seed, level = GATE_LEVEL) {
   const s = R.newState(seed);
-  for (const k of R.UP_KEYS) s.cars.pip.up[k] = Math.min(level, R.CARS.pip.caps[k]);
+  for (const k of R.UP_KEYS) s.cars[R.START_CAR].up[k] = Math.min(level, R.CARS[R.START_CAR].caps[k]);
   return s;
 }
 // race the bot to the end; records the player's place, time, the gap to the next finisher, any jump in progress,

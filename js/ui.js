@@ -243,7 +243,7 @@
       if (!me) return;
       if (e.type === 'boost') A.sfx('boost', e.from, e.tier);
       else if (e.type === 'coin') A.sfx('coin');
-      else if (e.type === 'box') A.sfx('box');
+      else if (e.type === 'box') { A.sfx('box'); r.cars[0].itemGold = !!e.gold; if (e.gold) A.sfx('coin'); }
       else if (e.type === 'boxEmpty') A.sfx('boxEmpty');
       else if (e.type === 'putback') A.sfx('putback');
       else if (e.type === 'pass') { A.sfx('pass'); banner('Up to ' + ord(e.place) + '!'); }
@@ -273,9 +273,19 @@
     $('hRaceCoins').textContent = '🪙 ' + p.coins;
     var bi = $('bItem');
     bi.classList.toggle('empty', !p.item); bi.classList.toggle('rolling', !!p.item && p.rollT > 0); bi.classList.toggle('ready', !!p.item && p.rollT <= 0);
+    var many = p.item && p.itemN > 1 ? ' ×' + p.itemN : '';
     if (p.item && p.rollT > 0) { var keys = D.ITEM_KEYS, k = keys[Math.floor(Date.now() / 90) % keys.length]; $('itemIcon').textContent = D.ITEMS[k].icon; $('itemName').textContent = '…'; }
-    else if (p.item) { $('itemIcon').textContent = D.ITEMS[p.item].icon; $('itemName').textContent = D.ITEMS[p.item].name; }
+    else if (p.item) { $('itemIcon').textContent = D.ITEMS[p.item].icon; $('itemName').textContent = D.ITEMS[p.item].name + many; }
     else { $('itemIcon').textContent = ''; $('itemName').textContent = 'no item'; }
+    // the big slot at the top: empty, rolling, then ready (it pops when the roulette stops)
+    var sl = $('itemSlot'), state = !p.item ? 'empty' : p.rollT > 0 ? 'rolling' : 'ready';
+    if (sl.dataset.state !== state) {
+      sl.className = state + (p.itemGold ? ' gold' : '');
+      if (state === 'ready') { void sl.offsetWidth; sl.classList.add('got'); setTimeout(function () { sl.classList.remove('got'); }, 450); }
+      sl.dataset.state = state;
+    }
+    $('slotIcon').textContent = state === 'empty' ? '?' : state === 'rolling' ? $('itemIcon').textContent : D.ITEMS[p.item].icon;
+    var sn = $('slotN'); sn.textContent = many ? '×' + p.itemN : ''; sn.classList.toggle('on', !!many && state === 'ready');
     R.drawMinimap($('mini'), r);
   }
   function showResults() {
@@ -343,6 +353,7 @@
   }
   holdBtn('bLeft', 'left'); holdBtn('bRight', 'right'); holdBtn('bDrift', 'drift');
   $('bItem').addEventListener('pointerdown', function (e) { e.preventDefault(); audio(); itemTap = true; });
+  $('itemSlot').addEventListener('pointerdown', function (e) { e.preventDefault(); audio(); itemTap = true; });
   // the scene. In a race the screen is split: a finger on the left half is a joystick that appears where it lands
   // (left and right steer), and a finger on the right half is the drift button (a press hops, held while steering it drifts, trick in the air).
   // On the plaza a tap walks there and a finger drag brings up the stick. The stick and the split are touch only: a

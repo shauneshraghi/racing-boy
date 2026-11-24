@@ -30,6 +30,8 @@ var RB = (function () {
   var SLOPE_K = 0.6;
   var PAD_LEN = 2.4, PAD_W = 2.4;
   var BOX_RESPAWN = 10, BOX_R = 1.1, ROLL_T = 0.9;
+  // the middle crate of each row is a golden treasure chest: a strong item, CHEST_COINS coins, back after CHEST_RESPAWN s
+  var CHEST_RESPAWN = 22, CHEST_COINS = 5;
   var COIN_R = 0.9, MAGNET_R = 5, COIN_RESPAWN = 8;
   var CAR_R = 0.55;
   var BOOST_MUL = 1.4, BOOST_ACC = 4;
@@ -106,20 +108,24 @@ var RB = (function () {
   // ---------- items ----------
   var ITEMS = {
     turbo: { name: 'Rocket Pop', icon: '🚀', desc: 'A big burst of speed' },
+    turbo3: { name: 'Triple Turbo', icon: '🚀', n: 3, desc: 'Three bursts of speed, one per press' },
     shield: { name: 'Bubble Shield', icon: '🫧', desc: 'Blocks the next hit' },
     magnet: { name: 'Coin Magnet', icon: '🧲', desc: 'Pulls in coins for a while' },
     goo: { name: 'Goo Blob', icon: '🟢', desc: 'Drop a sticky puddle behind you' },
     bee: { name: 'Buzzy Bee', icon: '🐝', desc: 'Chases the racer ahead of you' }
   };
-  var ITEM_KEYS = ['turbo', 'shield', 'magnet', 'goo', 'bee'];
+  var ITEM_KEYS = ['turbo', 'turbo3', 'shield', 'magnet', 'goo', 'bee'];
   // pos runs 0 (leading) to 1 (last); the back of the pack gets the strong items
   function itemWeights(pos) {
-    return { turbo: 10 + 40 * pos, shield: 30 - 10 * pos, magnet: 25 - 10 * pos, goo: 35 - 20 * pos, bee: pos < 0.3 ? 0 : 14 * pos };
+    return { turbo: 10 + 40 * pos, turbo3: pos < 0.2 ? 0 : 22 * pos, shield: 30 - 10 * pos, magnet: 25 - 10 * pos, goo: 35 - 20 * pos, bee: pos < 0.3 ? 0 : 14 * pos };
   }
-  function rollItem(r, place, n, luck) {
+  // gold: a treasure chest, which rolls as if a little further back and never holds the weak items (goo, magnet)
+  function rollItem(r, place, n, luck, gold) {
     var pos = n > 1 ? (place - 1) / (n - 1) : 0;
     if (luck) pos = Math.min(1, pos + 0.4);
+    if (gold) pos = Math.min(1, pos + 0.15);
     var w = itemWeights(pos), tot = 0, k;
+    if (gold) { w.goo = 0; w.magnet = 0; if (place > 1) w.bee = Math.max(w.bee, 8); }
     for (k in w) tot += w[k];
     var x = r() * tot;
     for (var i = 0; i < ITEM_KEYS.length; i++) { k = ITEM_KEYS[i]; x -= w[k]; if (x < 0) return k; }
@@ -145,9 +151,15 @@ var RB = (function () {
   };
   // body: length, width, height of the body box; cab: cabin box (or helmet for open cars); colours are defaults
   var CARS = {
-    pip: { name: 'Pip', kind: 'hatchback', desc: 'A cheerful little hatchback. Good at everything.', perk: 'start',
+    // the starter: a motorbike (model.bike: two wheels, the rider leans into turns) with the stock stats
+    zip: { name: 'Zip', kind: 'motorbike', desc: 'A zippy little motorbike. You can see the rider leaning into every turn.', perk: 'start',
       base: { speed: 9, accel: 6, grip: 2.4, weight: 1 }, caps: { engine: 6, turbo: 5, tires: 6, boost: 6, glider: 4, armor: 6 },
       cost: { coins: 0, parts: [0, 0, 0, 0, 0] }, price: 1,
+      model: { len: 1.45, wid: 0.5, h: 0.3, cab: { x: -0.15, len: 0.36, wid: 0.36, h: 0.38 }, wheel: 0.3, open: true, bike: true },
+      look: { paint: 'sky', trim: 'snow', wheels: 'stock', spoiler: 'none', exhaust: 'pipe', horn: 'beep', trail: 'flame' } },
+    pip: { name: 'Pip', kind: 'hatchback', desc: 'A cheerful little hatchback. Good at everything.', perk: 'start',
+      base: { speed: 9, accel: 6, grip: 2.4, weight: 1 }, caps: { engine: 6, turbo: 5, tires: 6, boost: 6, glider: 4, armor: 6 },
+      cost: { coins: 150, parts: [0, 0, 0, 0, 0] }, price: 1,
       model: { len: 1.5, wid: 0.95, h: 0.42, cab: { x: -0.1, len: 0.8, wid: 0.8, h: 0.36 }, wheel: 0.26, open: false },
       look: { paint: 'cherry', trim: 'snow', wheels: 'stock', spoiler: 'none', exhaust: 'none', horn: 'beep', trail: 'flame' } },
     rumble: { name: 'Rumble', kind: 'truck', desc: 'A big friendly pickup. Slow to start, hard to stop.', perk: 'tough',
@@ -182,7 +194,7 @@ var RB = (function () {
       model: { len: 1.95, wid: 1.0, h: 0.28, cab: { x: -0.3, len: 0.36, wid: 0.36, h: 0.32 }, wheel: 0.25, open: true, nose: true },
       look: { paint: 'grape', trim: 'sun', wheels: 'gold', spoiler: 'tall', exhaust: 'stack', horn: 'tune', trail: 'stars' } }
   };
-  var START_CAR = 'pip';
+  var START_CAR = 'zip';
 
   // ---------- customisation ----------
   var LOOKS = {
@@ -355,7 +367,7 @@ var RB = (function () {
     // off its edge, down the ledge road with an open drop on the right, over the railed bridge above the start straight
     // and down round the ice blocks home
     glacier: {
-      name: 'Icefall Glacier', world: 2, laps: 2, hw: 4.2, scale: 0.83, ai: 1.025,
+      name: 'Icefall Glacier', world: 2, laps: 2, hw: 4.2, scale: 0.83, ai: 1.03,
       pts: [[45, 250], [100, 250], [150, 250], [205, 248], [255, 235], [280, 205], [282, 165], [268, 130], [225, 118], [175, 122], [148, 118], [134, 100], [148, 82], [175, 79], [230, 78], [272, 58], [255, 25], [200, 18], [140, 20], [90, 28], [60, 55], [58, 100], [62, 160], [72, 210], [78, 250], [85, 290], [70, 325], [30, 330], [5, 300], [10, 262]],
       elev: [[0, 0], [0.2, 0], [0.21, 1.4], [0.22, 0], [0.23, 1.4], [0.24, 0], [0.26, 0], [0.33, 4], [0.36, 5], [0.44, 11], [0.47, 12], [0.618, 12], [0.623, 10], [0.66, 9.5], [0.78, 6.5], [0.85, 6.5], [0.96, 0]],
       bridges: [[0.79, 0.845, 'rail']], drops: [[0.7, 0.75, 1]],
@@ -567,7 +579,7 @@ var RB = (function () {
     });
     g.ramps = T.ramps.map(function (m) { return { s: m.u * L, len: RAMP_LEN, gap: m.gap, h: RAMP_H }; });
     g.boxes = [];
-    T.boxes.forEach(function (u) { [-0.55, 0, 0.55].forEach(function (f) { g.boxes.push(feature(g, u * L, f * T.hw)); }); });
+    T.boxes.forEach(function (u) { [-0.55, 0, 0.55].forEach(function (f) { var b = feature(g, u * L, f * T.hw); b.gold = f === 0; g.boxes.push(b); }); });
     g.coins = [];
     T.coins.forEach(function (c) { for (var m = 0; m < c.n; m++) g.coins.push(feature(g, c.u * L + m * 1.3, c.off)); });
     g.pads.forEach(function (p) { var f = feature(g, p.s, p.off); p.x = f.x; p.z = f.z; p.h = f.h; });
@@ -684,7 +696,7 @@ var RB = (function () {
         stats: ai ? statsFor(id) : carStats(s, id), skill: ai ? W.skill[c - 1] : 1, lane: ai ? (R() * 2 - 1) * 1.6 : 0,
         x: 0, z: 0, h: 0, v: 0, y: 0, vy: 0, gy: 0, gvy: 0, air: false, s: 0, prog: 0, lap: 1, place: c + 1, done: false, finishT: 0,
         boostT: 0, slowT: 0, shieldT: 0, magnetT: 0, drift: 0, driftDir: 0, driftReady: false, slip: 0, slipDir: 0, hopT: 0, hopY: 0, trick: false, trickT: 0, fallT: 0, onRamp: -1,
-        item: null, rollT: 0, itemDelay: 0, coins: 0, inp: {}, prevDrift: false, prevItem: false, pad: -1, bumpT: 0, steerOut: 0, botSteer: 0,
+        item: null, itemN: 0, rollT: 0, itemDelay: 0, coins: 0, inp: {}, prevDrift: false, prevItem: false, pad: -1, bumpT: 0, steerOut: 0, botSteer: 0,
         vh: 0, yawV: 0, roll: 0, rollV: 0, pitch: 0, pitchV: 0, dip: 0, dipV: 0, wheel: 0 };
       var slot = gridOrder[c], row = Math.floor(slot / 2), col = slot % 2;
       place(r, car, -2.5 - row * 2.6 - col * 1.3, col ? 1.5 : -1.5);
@@ -734,7 +746,8 @@ var RB = (function () {
     var it = car.item; if (!it || car.rollT > 0) return;
     car.item = null;
     var fx = Math.cos(car.h), fz = Math.sin(car.h);
-    if (it === 'turbo') car.boostT = Math.max(car.boostT, 1.6 * car.stats.boostDur);
+    if (ITEMS[it].n) { car.itemN = (car.itemN || ITEMS[it].n) - 1; if (car.itemN > 0) { car.item = it; car.itemDelay = 0.7; } else car.itemN = 0; }
+    if (it === 'turbo' || it === 'turbo3') car.boostT = Math.max(car.boostT, 1.6 * car.stats.boostDur);
     else if (it === 'shield') car.shieldT = 10;
     else if (it === 'magnet') car.magnetT = 8;
     else if (it === 'goo') r.goos.push({ x: car.x - fx * 1.6, z: car.z - fz * 1.6, s: wrapS(r.g, car.s - 1.6), y: groundAt(r.g, car.s - 1.6), t: GOO_LIFE, owner: car.i, safe: 0.6 });
@@ -785,7 +798,7 @@ var RB = (function () {
       if (car.itemDelay <= 0) {
         var it = car.item, behind = false, ahead = false;
         r.cars.forEach(function (o) { if (o !== car) { var d = dS(r.g, o.s, car.s); if (d < 0 && d > -7) behind = true; if (o.place === car.place - 1) ahead = true; } });
-        if (it === 'turbo' || it === 'shield' || it === 'magnet' || (it === 'goo' && behind) || (it === 'bee' && ahead)) inp.item = true;
+        if (it === 'turbo' || it === 'turbo3' || it === 'shield' || it === 'magnet' || (it === 'goo' && behind) || (it === 'bee' && ahead)) inp.item = true;
         else if (car.itemDelay < -6) inp.item = true;
       }
     }
@@ -987,13 +1000,15 @@ var RB = (function () {
       var bx = g.boxes[bi], bs = r.boxes[bi];
       if (bs.t > 0 || car.y > 1.2 || Math.abs(car.gy - groundAt(g, bx.s)) > 2) continue;
       if ((car.x - bx.x) * (car.x - bx.x) + (car.z - bx.z) * (car.z - bx.z) < BOX_R * BOX_R) {
-        bs.t = BOX_RESPAWN;
+        bs.t = bx.gold ? CHEST_RESPAWN : BOX_RESPAWN;
         if (!car.item) {
-          car.item = rollItem(r.rng, car.place, r.cars.length, st.perk === 'luck');
+          car.item = rollItem(r.rng, car.place, r.cars.length, st.perk === 'luck', bx.gold);
+          car.itemN = ITEMS[car.item].n || 0;
           car.rollT = ROLL_T; car.itemDelay = 1 + r.rng() * 2;
-          ev(r, 'box', car, { item: car.item });
-        } else ev(r, 'boxEmpty', car);
-        if (st.perk === 'luck' && !car.ai) { car.coins += 3; ev(r, 'coin', car, { n: 3 }); }
+          ev(r, 'box', car, { item: car.item, gold: !!bx.gold });
+        } else ev(r, 'boxEmpty', car, { gold: !!bx.gold });
+        var bonus = (st.perk === 'luck' ? 3 : 0) + (bx.gold ? CHEST_COINS : 0);
+        if (bonus && !car.ai) { car.coins += bonus; ev(r, 'coin', car, { n: bonus }); }
       }
     }
     // coins: the player's only
@@ -1336,7 +1351,7 @@ var RB = (function () {
 
   return {
     DT: DT, PACE: PACE, DRIFT_TIERS: DRIFT_TIERS, RUNOFF: RUNOFF, RAMP_LEN: RAMP_LEN, PAD_LEN: PAD_LEN, PAD_W: PAD_W, MAGNET_R: MAGNET_R, ROLL_T: ROLL_T, START_CAR: START_CAR,
-    PLACE_PAY: PLACE_PAY, PART_PAY: PART_PAY, PART_UP: PART_UP, PART_DOWN: PART_DOWN, tradeParts: tradeParts, PARTS: PARTS, ITEMS: ITEMS, ITEM_KEYS: ITEM_KEYS, UPGRADES: UPGRADES, UP_KEYS: UP_KEYS,
+    PLACE_PAY: PLACE_PAY, BOX_RESPAWN: BOX_RESPAWN, CHEST_RESPAWN: CHEST_RESPAWN, CHEST_COINS: CHEST_COINS, PART_PAY: PART_PAY, PART_UP: PART_UP, PART_DOWN: PART_DOWN, tradeParts: tradeParts, PARTS: PARTS, ITEMS: ITEMS, ITEM_KEYS: ITEM_KEYS, UPGRADES: UPGRADES, UP_KEYS: UP_KEYS,
     PERKS: PERKS, CARS: CARS, LOOKS: LOOKS, LOOK_KEYS: LOOK_KEYS, TRACKS: TRACKS, WORLDS: WORLDS, HUB: HUB,
     BRIDGE_CLEAR: BRIDGE_CLEAR, EDGE: EDGE, onBridge: onBridge,
     rng: rng, angDiff: angDiff, clamp: clamp, track: track, pointAt: pointAt, groundAt: groundAt, slopeAt: slopeAt, headingAt: headingAt, lookOpt: lookOpt,

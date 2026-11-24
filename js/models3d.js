@@ -141,7 +141,7 @@ var RB3DModels = (function () {
     caliper: function () { return std({ color: 0xc0242c, roughness: 0.35, metalness: 0.2 }); },
     amber: function () { return std({ color: 0xffa21a, emissive: 0xff8a00, emissiveIntensity: 0.6, roughness: 0.2 }); },
     lensGlass: function () { return phys({ color: 0xffffff, roughness: 0.05, transparent: true, opacity: 0.35, clearcoat: 1, depthWrite: false }); },
-    glass: function () { return phys({ color: 0x18222b, metalness: 0.2, roughness: 0.04, clearcoat: 1, clearcoatRoughness: 0.02, transparent: true, opacity: 0.82, envMapIntensity: 1.5 }); },
+    glass: function () { return phys({ color: 0x2a3a48, metalness: 0.1, roughness: 0.04, clearcoat: 1, clearcoatRoughness: 0.02, transparent: true, opacity: 0.4, envMapIntensity: 1.2, depthWrite: false }); },
     visor: function () { return phys({ color: 0x14100c, metalness: 0.6, roughness: 0.05, clearcoat: 1, iridescence: 0.8, iridescenceIOR: 1.6 }); },
     grille: function () { return std({ color: 0xffffff, map: grilleTex(), roughness: 0.5, metalness: 0.4 }); },
     liner: function () { return std({ color: 0x18191c, roughness: 0.95 }); },
@@ -482,28 +482,40 @@ var RB3DModels = (function () {
     box(0.06, 0.055, 0.08, 0.022, trimMat(C.trim), g, 0, 0, 0);
     var gl = box(0.004, 0.044, 0.066, 0, mat('chrome'), g, -0.03, 0, 0); gl.castShadow = false;
   }
-  // a driver for an open car: seat, suit, arms on a steering wheel, a helmet with a visor
-  function driver(C, x, y, z, s) {
-    s = s || 1;
-    var g = new T.Group(); g.position.set(x, y, z); g.scale.setScalar(s); C.body.add(g);
-    var suit = mattMat(shade(C.paint, 0.75));
-    box(0.2, 0.07, 0.26, 0.03, mat('seat'), g, -0.02, 0.0, 0);
-    box(0.06, 0.3, 0.24, 0.03, mat('seat'), g, -0.11, 0.14, 0).rotation.z = 0.2;
-    var torso = mesh(G('torso', function () { return new T.CapsuleGeometry(0.075, 0.12, 4, 10); }), suit, g, -0.04, 0.16, 0); torso.rotation.z = 0.25; torso.scale.set(1, 1, 1.35);
-    [-1, 1].forEach(function (sd) {
-      rod([-0.03, 0.23, sd * 0.1], [0.1, 0.17, sd * 0.09], 0.028, suit, g);
-      rod([0.1, 0.17, sd * 0.09], [0.17, 0.2, sd * 0.06], 0.025, suit, g);
-      ball(mat('glove'), g, 0.18, 0.2, sd * 0.055, 0.03);
+  // the driver: the kid (or a rival kid in C.rider's colours; nobody if C.rider is false) seated at (x, y, z) at scale s, posed by o:
+  // { hip, knee, lean, arm, elbow (radians), spread (hip half-gap in kid units), bars: handlebars instead of a wheel,
+  // seat: false (no seat), head: head scale }. The steering wheel or handlebars go where the hands land
+  function driver(C, x, y, z, s, o) {
+    o = o || {}; s = (s || 1) * 0.62;
+    var g = new T.Group(); g.position.set(x, y, z); C.body.add(g);
+    if (o.seat !== false) {
+      box(0.2, 0.06, 0.26, 0.03, mat('seat'), g, -0.03, 0.0, 0);
+      box(0.05, 0.14, 0.22, 0.025, mat('seat'), g, -0.12, 0.07, 0).rotation.z = 0.25; // a low back, so the kid shows from behind
+    }
+    var k = kid(C.rider), u = k.userData, kg = new T.Group(); kg.add(k); g.add(kg);
+    // the kid's hips pivot 0.5 up: sit them on the seat
+    k.scale.setScalar(s); k.position.y = -0.46 * s + 0.03;
+    u.legs.forEach(function (l, i) {
+      var sd = i ? 1 : -1; if (o.spread) l.position.z = sd * o.spread;
+      l.rotation.z = o.hip !== undefined ? o.hip : 1.5; l.rotation.x = -sd * (o.splay || 0); l.userData.knee.rotation.z = o.knee !== undefined ? o.knee : -0.35;
     });
-    var sw = mesh(G('swheel', function () { return new T.TorusGeometry(0.06, 0.012, 6, 16); }), mat('plastic'), g, 0.19, 0.2, 0); sw.rotation.y = PI / 2; sw.rotation.x = 0; sw.rotation.z = 0;
-    sw.rotation.set(0, PI / 2, 0); sw.rotateX(-0.5);
-    rod([0.19, 0.2, 0], [0.3, 0.12, 0], 0.012, mat('plastic'), g);
-    ball(mattMat('#e7c09a'), g, 0.0, 0.31, 0, 0.04); // neck
-    var helm = new T.Group(); helm.position.set(0.0, 0.38, 0); g.add(helm);
-    ball(trimMat(C.trim), helm, 0, 0, 0, 0.1, 0.1, 0.094, 16);
-    ball(paintMat(C.paint), helm, -0.005, 0.005, 0, 0.101, 0.098, 0.03, 14); // a stripe over the crown
-    var vis = ball(mat('visor'), helm, 0.032, -0.008, 0, 0.074, 0.05, 0.08, 14); vis.castShadow = false;
-    box(0.03, 0.03, 0.09, 0.012, mat('plastic'), helm, 0.07, -0.07, 0); // chin
+    u.torso.rotation.z = o.lean !== undefined ? o.lean : 0.12;
+    u.head.scale.setScalar(o.head || 1.25); u.head.rotation.z = -(o.lean || 0.12) * 0.6;
+    u.arms.forEach(function (a, i) { var sd = i ? 1 : -1; a.rotation.z = o.arm !== undefined ? o.arm : 1.15; a.rotation.x = -sd * 0.12; a.userData.elbow.rotation.z = o.elbow !== undefined ? o.elbow : 0.35; });
+    g.updateMatrixWorld(true);
+    var hands = u.arms.map(function (a) { return g.worldToLocal(a.userData.elbow.localToWorld(V(0, -0.15, 0))); });
+    var hx = (hands[0].x + hands[1].x) / 2, hy = (hands[0].y + hands[1].y) / 2;
+    if (C.rider === false) g.remove(kg); // an empty car: the seat and wheel only
+    if (o.wheel === false) {} else if (o.bars) {
+      var w = Math.abs(hands[0].z - hands[1].z) / 2 + 0.03;
+      rod([hx, hy, -w], [hx, hy, w], 0.012, mat('chrome'), g);
+      [-1, 1].forEach(function (sd) { mesh(cyl(10), mat('black'), g, hx, hy, sd * (w - 0.025)).rotation.x = PI / 2; g.children[g.children.length - 1].scale.set(0.017, 0.06, 0.017); });
+      C.bars = g.localToWorld(V(hx, hy, 0));
+    } else {
+      var sw = mesh(G('swheel', function () { return new T.TorusGeometry(0.06, 0.012, 6, 16); }), mat('plastic'), g, hx + 0.01, hy, 0);
+      sw.rotation.set(0, PI / 2, 0); sw.rotateX(-0.5); sw.scale.setScalar(Math.max(1, Math.abs(hands[0].z - hands[1].z) / 0.12));
+      rod([hx + 0.01, hy, 0], [hx + 0.12, hy - 0.08, 0], 0.012, mat('plastic'), g);
+    }
     C.driver = g;
     return g;
   }
@@ -634,6 +646,29 @@ var RB3DModels = (function () {
     if (!o.noRear) band(poly[3], poly[0], r[3] + 0.015, r[0] + 0.015, 0.04, 'rw');
     return g;
   }
+  // an open top in place of a cabin, so the kid shows (as in a go-kart): a dark cockpit tub, a raked windscreen in a
+  // trim frame from the front of poly ([rear-bottom, front-bottom, front-top, rear-top]), a roll hoop as tall as the old
+  // roof behind the seat, and the kid. Returns the hoop's top
+  function openTop(C, poly, hw, o) {
+    o = o || {};
+    var belt = C.belt, roof = Math.max(poly[2][1], poly[3][1]), x0 = poly[0][0], x1 = poly[1][0], tm = C.trimM();
+    var tubL = (x1 - x0) * 0.8, tubX = (x0 + x1) / 2 - 0.02;
+    var tub = box(tubL, 0.04, hw * 1.5, 0.02, mat('liner'), C.body, tubX, belt - 0.005, 0); tub.castShadow = false;
+    tube([[tubX - tubL / 2, belt + 0.012, -hw * 0.75], [tubX + tubL / 2, belt + 0.012, -hw * 0.75]], 0.018, mat('black'), C.body, 4);
+    tube([[tubX - tubL / 2, belt + 0.012, hw * 0.75], [tubX + tubL / 2, belt + 0.012, hw * 0.75]], 0.018, mat('black'), C.body, 4);
+    // the windscreen leans back along the old A-pillar
+    var dx = poly[2][0] - x1, dy = poly[2][1] - poly[1][1], ang = Math.atan2(dy, dx), wh = o.screen || 0.17;
+    var ws = new T.Group(); ws.position.set(x1 - 0.02, belt + 0.005, 0); ws.rotation.z = ang - PI / 2; C.body.add(ws);
+    var gl = box(0.012, wh, hw * 1.7, 0.01, mat('glass'), ws, 0, wh / 2, 0); gl.castShadow = false;
+    box(0.03, 0.025, hw * 1.76, 0.01, tm, ws, 0, wh, 0);
+    [-1, 1].forEach(function (sd) { box(0.03, wh, 0.025, 0.01, tm, ws, 0, wh / 2, sd * hw * 0.87); });
+    // the roll hoop
+    var hx = x0 + 0.05, ht = Math.min(roof, belt + 0.3), hz = hw * 0.62;
+    tube([[hx, belt, -hz], [hx, ht - 0.05, -hz], [hx, ht, -hz * 0.6], [hx, ht, hz * 0.6], [hx, ht - 0.05, hz], [hx, belt, hz]], 0.022, tm, C.body, 18);
+    driver(C, o.x !== undefined ? o.x : x0 + 0.2, belt - 0.1, 0, o.s || 1.05, { hip: 1.45, knee: -0.5, arm: 1.1, elbow: 0.45, lean: 0.2 });
+    C.top = belt + 0.6;
+    return ht;
+  }
   // the dark underbody that fills the wheel arches between the wheels
   function underbody(C, top) {
     var zw = C.wz - C.tw / 2 - 0.015, y1 = top || C.belt - 0.07, y0 = C.yb + 0.01;
@@ -673,16 +708,15 @@ var RB3DModels = (function () {
     C.f = bodyF(C, 0.13, 0.22, 0.16, 0.3, 0.22);
     C.deco = { yb: yb, side: [belt - 0.1, belt - 0.075], sideW: C.W, doors: [[0.2, -0.24, yb + 0.03, belt]] };
     C.shellMesh = mesh(G('body' + C.key, function () { return shell(s, C.W, { bt: 0.12, bs: 0.08, f: C.f }); }), C.paintM(), C.body); C.surf.push(C.shellMesh);
-    cabin(C, [[-L + 0.06, belt + 0.02], [0.22, belt], [-0.1, roof], [-L + 0.13, roof - 0.015]], C.W * 0.86, 0.2, C.paintM(), [-0.27], { round: [0.03, 0.03, 0.12, 0.08] });
+    openTop(C, [[-L + 0.06, belt + 0.02], [0.22, belt], [-0.1, roof], [-L + 0.13, roof - 0.015]], C.W * 0.86, { x: -0.3 });
     underbody(C);
     headTail(C, [{ y: belt - 0.13, z: C.W * 0.56, w: 0.085, h: 0.05, kind: 'oval' }], [{ y: belt - 0.06, z: C.W * 0.62, w: 0.06, h: 0.055, kind: 'rect' }]);
     grille(C, yb + 0.12, 0.34, 0.07);
     var lip = box(0.06, 0.025, C.W * 1.5, 0.012, trimMat(C.trim), C.body); onFront(C, lip, yb + 0.03, 0, 0.0);
     plate('PIP 01', C.body, 0.2); onRear(C, C.body.children[C.body.children.length - 1], yb + 0.2, 0, 0.003);
     mirror(C, 0.12, belt + 0.035, 1); mirror(C, 0.12, belt + 0.035, -1);
-    C.top = roof; C.pipeY = yb + 0.02; C.stackX = -L + 0.12; C.stackY0 = belt - 0.15; C.stackTop = roof + 0.1;
-    C.spoilerX = -L + 0.13; C.spoilerDeck = roof;
-    helmetHead(C, -0.22, belt + 0.06, -0.12);
+    C.pipeY = yb + 0.02; C.stackX = -L + 0.12; C.stackY0 = belt - 0.15; C.stackTop = roof + 0.1;
+    C.spoilerX = -L + 0.13;
   };
   BUILD.rumble = function (C) {
     var L = C.L, yb = C.yb, belt = C.belt = Math.max(yb + 0.36, C.wr + C.ra + 0.2), roof = belt + 0.32, floor = belt - 0.17, cabR = -0.235, cabF = 0.52;
@@ -700,7 +734,7 @@ var RB3DModels = (function () {
     var tg = box(0.05, belt - floor + 0.02, 2 * C.W * C.f(-L, belt - 0.05) - 0.02, 0.015, C.paintM(), C.body, -L + 0.03, (belt + floor) / 2, 0); C.surf.push(tg);
     var lw = 2 * (C.W * C.f(-0.5, belt - 0.05) - 0.06);
     for (var i = 0; i < 6; i++) box(L + cabR - 0.1, 0.014, 0.03, 0, mat('plastic'), C.body, (cabR - 0.03 - L + 0.06) / 2, floor + 0.006, -lw / 2 + 0.05 + i * (lw - 0.1) / 5);
-    cabin(C, [[cabR, belt], [cabF, belt], [0.29, roof], [cabR + 0.03, roof]], C.W * 0.88, 0.12, C.paintM(), [], { round: [0.02, 0.03, 0.1, 0.06] });
+    var hoop = openTop(C, [[cabR, belt], [cabF, belt], [0.29, roof], [cabR + 0.03, roof]], C.W * 0.88, { x: cabR + 0.24, s: 1.0 });
     underbody(C, floor - 0.03);
     flares(C, mat('plastic'), 0.0);
     headTail(C, [{ y: belt - 0.1, z: C.W * 0.56, w: 0.13, h: 0.075, kind: 'rect', out: 0.005 }], [{ y: belt - 0.07, z: C.W * 0.82, w: 0.04, h: 0.12, kind: 'rect' }]);
@@ -709,13 +743,12 @@ var RB3DModels = (function () {
     var fb = box(0.07, 0.07, C.W * 1.85, 0.025, mat('chrome'), C.body); onFront(C, fb, yb + 0.06, 0, 0.012);
     var rb = box(0.06, 0.06, C.W * 1.85, 0.022, mat('chrome'), C.body); onRear(C, rb, yb + 0.06, 0, 0.012);
     plate('RMBL 2', C.body, 0.2); onRear(C, C.body.children[C.body.children.length - 1], floor - 0.08, 0, 0.004);
-    box(0.06, 0.04, 0.5, 0.015, mat('plastic'), C.body, 0.12, roof + 0.03, 0);
-    for (i = 0; i < 4; i++) { var a = lamp('round', 0.03, 0.022, mat('amber'), C.body); a.position.set(0.155, roof + 0.03, -0.18 + i * 0.12); }
+    box(0.06, 0.04, 0.5, 0.015, mat('plastic'), C.body, cabR + 0.05, hoop + 0.03, 0);
+    for (i = 0; i < 4; i++) { var a = lamp('round', 0.03, 0.022, mat('amber'), C.body); a.position.set(cabR + 0.085, hoop + 0.03, -0.18 + i * 0.12); }
     [-1, 1].forEach(function (sd) { box(0.5, 0.02, 0.07, 0.01, mat('alu'), C.body, 0.12, yb - 0.02, sd * (C.W - 0.02)); });
     mirror(C, cabF - 0.1, belt + 0.06, 1); mirror(C, cabF - 0.1, belt + 0.06, -1);
-    C.top = roof + 0.05; C.pipeX = -L + 0.12; C.pipeY = yb + 0.0; C.stackX = cabR - 0.07; C.stackZ = C.W - 0.04; C.stackY0 = floor; C.stackTop = roof + 0.12;
+    C.top = Math.max(C.top, hoop + 0.05); C.pipeX = -L + 0.12; C.pipeY = yb + 0.0; C.stackX = cabR - 0.07; C.stackZ = C.W - 0.04; C.stackY0 = floor; C.stackTop = roof + 0.12;
     C.spoilerX = -L + 0.09;
-    helmetHead(C, 0.08, belt + 0.06, -0.15);
   };
   BUILD.clover = function (C) {
     var L = C.L, yb = C.yb, belt = C.belt = Math.max(yb + 0.27, C.beltMin), roof = belt + 0.45;
@@ -743,7 +776,11 @@ var RB3DModels = (function () {
     mirror(C, L - 0.14, belt + 0.05, 1); mirror(C, L - 0.14, belt + 0.05, -1);
     C.top = roof + 0.16; C.stackX = -L + 0.15; C.stackY0 = belt - 0.1; C.stackTop = roof + 0.08; C.stackZ = C.W + 0.03;
     C.spoilerX = -L + 0.12;
-    helmetHead(C, 0.33, belt + 0.12, -0.18);
+    // the kid stands up through a sunroof over the front seats, hands on the roof
+    var sr = mesh(G('sunroof', function () { return new T.TorusGeometry(1, 0.12, 6, 24); }), mat('black'), C.body, 0.24, roof + 0.005, 0); sr.rotation.x = PI / 2; sr.scale.set(0.2, 0.2, 0.2);
+    mesh(cyl(24), mat('liner'), C.body, 0.24, roof - 0.004, 0).scale.set(0.2, 0.02, 0.2);
+    driver(C, 0.22, roof - 0.13, 0, 1.05, { seat: false, wheel: false, hip: 0.2, knee: -0.2, arm: 1.35, elbow: 0.15, lean: 0.05 });
+    C.top = Math.max(C.top, roof + 0.35);
   };
   BUILD.bolt = function (C) {
     var L = C.L, yb = C.yb, belt = C.belt = Math.max(yb + 0.29, C.beltMin), roof = belt + 0.25;
@@ -752,7 +789,7 @@ var RB3DModels = (function () {
     C.f = bodyF(C, 0.14, 0.24, 0.14, 0.32, 0.2);
     C.deco = { yb: yb, center: true, side: [yb + 0.07, yb + 0.1], sideW: C.W, doors: [[0.24, -0.2, yb + 0.03, belt]], number: { x: 0.02, y: belt - 0.13, r: 0.085, n: 7 } };
     C.shellMesh = mesh(G('body' + C.key, function () { return shell(s, C.W, { bt: 0.12, bs: 0.08, f: C.f }); }), C.paintM(), C.body); C.surf.push(C.shellMesh);
-    cabin(C, [[-L + 0.13, belt + 0.02], [0.26, belt], [-0.02, roof], [-0.4, roof - 0.01]], C.W * 0.82, 0.22, C.paintM(), [-0.22], { round: [0.04, 0.03, 0.1, 0.1] });
+    openTop(C, [[-L + 0.13, belt + 0.02], [0.26, belt], [-0.02, roof], [-0.4, roof - 0.01]], C.W * 0.82, { x: -0.22 });
     underbody(C);
     flares(C, C.paintM(), 0.0);
     headTail(C, [{ y: belt - 0.11, z: C.W * 0.6, w: 0.11, h: 0.04, kind: 'oval' }], [{ y: belt - 0.04, z: C.W * 0.62, w: 0.09, h: 0.04, kind: 'rect' }]);
@@ -764,14 +801,12 @@ var RB3DModels = (function () {
     onFront(C, pod, yb + 0.16, 0, 0.035);
     var hs = hit(C.surf, [0.45, 3, 0], [0, -1, 0]);
     if (hs) { var sc = box(0.2, 0.05, 0.2, 0.025, C.paintM(), C.body, 0.45, hs.point.y + 0.005, 0); sc.rotation.z = -0.1; box(0.02, 0.03, 0.16, 0.008, mat('black'), C.body, 0.55, hs.point.y + 0.012, 0); }
-    box(0.16, 0.03, 0.14, 0.015, C.paintM(), C.body, -0.18, roof + 0.008, 0);
     [-1, 1].forEach(function (sd) { box(0.012, 0.09, 0.14, 0.004, mat('plastic'), C.body, -C.wx - C.wr - 0.04, yb + 0.0, sd * (C.W - 0.1)); });
     var dif = box(0.08, 0.035, C.W * 1.4, 0.012, mat('plastic'), C.body); onRear(C, dif, yb + 0.03, 0, 0.0);
     plate('BOLT 7', C.body, 0.19); onRear(C, C.body.children[C.body.children.length - 1], yb + 0.14, 0, 0.003);
     mirror(C, 0.16, belt + 0.03, 1); mirror(C, 0.16, belt + 0.03, -1);
-    C.top = roof; C.pipeY = yb + 0.02; C.stackX = -0.48; C.stackTop = roof + 0.12;
+    C.pipeY = yb + 0.02; C.stackX = -0.48; C.stackTop = roof + 0.12;
     C.spoilerX = -L + 0.1;
-    helmetHead(C, -0.12, belt + 0.03, -0.12);
   };
   BUILD.comet = function (C) {
     var L = C.L, belt = C.belt = 0.3, yb = C.yb = 0.06;
@@ -865,6 +900,43 @@ var RB3DModels = (function () {
     C.top = 0.62; C.pipeX = -L + 0.2; C.pipeY = yc - 0.1; C.stackX = -0.56; C.stackY0 = yc; C.stackZ = 0.13; C.stackTop = 0.7;
     C.spoilerX = -L + 0.2; C.open = true;
   };
+  // the motorbike: a tube frame, engine, tank, seat and tail, a fork to the front wheel; the kid sits astride it
+  BUILD.zip = function (C) {
+    var L = C.L, wr = C.wr, wx = C.wx, seatY = 0.6, pm = paintMat(C.paint), tm = C.trimM(), fm = mat('darkmetal');
+    C.yb = 0.2; C.belt = 0.62;
+    // frame and swingarm
+    tube([[0.3, 0.8, 0], [0.18, 0.62, 0], [0.04, 0.38, 0], [-0.12, 0.3, 0]], 0.025, fm, C.body, 16);
+    tube([[0.3, 0.78, 0], [0.0, 0.66, 0], [-0.32, 0.6, 0]], 0.022, fm, C.body, 16);
+    [-1, 1].forEach(function (sd) { rod([-0.12, 0.32, sd * 0.055], [-wx, wr, sd * 0.055], 0.022, fm, C.body); });
+    var shock = rod([-0.2, 0.6, 0], [-0.3, 0.36, 0], 0.018, mat('caliper'), C.body);
+    // engine: block, cylinder fins, a sprocket cover
+    box(0.26, 0.2, 0.16, 0.04, fm, C.body, 0.0, 0.3, 0);
+    for (var i = 0; i < 4; i++) box(0.12, 0.012, 0.15, 0.004, mat('alu'), C.body, 0.08, 0.4 + i * 0.03, 0).rotation.z = -0.4;
+    mesh(cyl(16), mat('alu'), C.body, -0.08, 0.3, 0.09).rotation.x = PI / 2; C.body.children[C.body.children.length - 1].scale.set(0.07, 0.02, 0.07);
+    // tank, seat, tail and a number on the tail
+    var tank = ball(pm, C.body, 0.12, 0.66, 0, 0.2, 0.1, 0.13, 20); C.surf.push(tank);
+    ball(tm, C.body, 0.13, 0.7, 0, 0.17, 0.07, 0.135, 18);
+    box(0.36, 0.06, 0.2, 0.03, mat('seat'), C.body, -0.17, seatY, 0);
+    var tail = ball(pm, C.body, -0.44, 0.63, 0, 0.2, 0.07, 0.1, 18); tail.rotation.z = -0.15; C.surf.push(tail);
+    // the front: fork to the axle, a mudguard, a round fairing with the headlight
+    [-1, 1].forEach(function (sd) { rod([0.33, 0.82, sd * 0.06], [wx + 0.02, wr, sd * 0.06], 0.02, mat('chrome'), C.body); });
+    var guard = mesh(G('mguard', function () { var q = new T.CylinderGeometry(1, 1, 1, 18, 1, true, -0.2, PI * 0.75); q.rotateX(PI / 2); return q; }), pm, C.body, wx, wr, 0);
+    guard.scale.set(wr + 0.04, wr + 0.04, 0.1); guard.rotation.z = PI / 2;
+    var cowl = ball(pm, C.body, 0.38, 0.8, 0, 0.11, 0.12, 0.13, 18); C.surf.push(cowl);
+    var hl = lamp('round', 0.06, 0.06, C.headMat, C.body); hl.position.set(0.48, 0.8, 0); C.lights.head.push(hl.children[1]);
+    var scr = ball(mat('glass'), C.body, 0.36, 0.93, 0, 0.04, 0.09, 0.11, 14); scr.rotation.z = 0.5; scr.castShadow = false;
+    // the rear: a fender over the wheel, a tail light, a plate
+    var rg = mesh(G('rguard', function () { var q = new T.CylinderGeometry(1, 1, 1, 18, 1, true, 0, PI * 0.6); q.rotateX(PI / 2); return q; }), pm, C.body, -wx, wr, 0);
+    rg.scale.set(wr + 0.05, wr + 0.05, 0.11); rg.rotation.z = PI / 2 + 0.2;
+    var tl = lamp('rect', 0.08, 0.04, C.tailMat, C.body); tl.position.set(-0.63, 0.63, 0); tl.rotation.y = PI; C.lights.tail.push(tl.children[1]);
+    plate('ZIP 1', C.body, 0.13); var pl = C.body.children[C.body.children.length - 1]; pl.position.set(-0.62, 0.52, 0); pl.rotation.y = PI;
+    // the rider astride: knees round the tank, feet back on the pegs, leaning onto the bars
+    driver(C, -0.2, seatY + 0.03, 0, 1.05, { seat: false, bars: true, spread: 0.19, splay: 0.12, hip: 1.0, knee: -1.75, lean: -0.42, arm: 1.0, elbow: 0.55, head: 1.25 });
+    [-1, 1].forEach(function (sd) { rod([-0.08, 0.3, sd * 0.07], [-0.08, 0.3, sd * 0.16], 0.014, mat('alu'), C.body); });
+    if (C.bars) rod([0.33, 0.82, 0], [C.bars.x, C.bars.y - 0.01, 0], 0.018, mat('chrome'), C.body);
+    C.top = 1.18; C.pipeX = -0.2; C.pipeY = 0.3; C.stackX = -0.3; C.stackY0 = 0.45; C.stackZ = 0.1; C.stackTop = 0.85;
+    C.spoilerX = -0.42; C.open = true;
+  };
   BUILD.hopper = function (C) {
     var L = C.L, yb = C.yb = 0.2, belt = C.belt = yb + 0.2, hw = 0.27;
     var s = profile([[-L + 0.1, yb, 0.03], [L - 0.14, yb, 0.03], [L - 0.02, yb + 0.12, 0.05], [L - 0.1, yb + 0.23, 0.06], [0.14, yb + 0.21, 0.04], [0.06, yb + 0.15, 0.03],
@@ -897,13 +969,6 @@ var RB3DModels = (function () {
     C.top = ft + 0.06; C.pipeX = -L + 0.04; C.pipeY = yb + 0.08; C.stackX = -0.44; C.stackZ = 0.2; C.stackY0 = yb + 0.25; C.stackTop = 0.9;
     C.spoilerX = -L + 0.12; C.open = true;
   };
-  // a head behind the glass of a closed car: the kid in a helmet
-  function helmetHead(C, x, y, z) {
-    var g = new T.Group(); g.position.set(x, y, z); C.body.add(g);
-    ball(mattMat('#3c5a6e'), g, -0.02, 0.0, 0, 0.07, 0.05, 0.09);
-    ball(trimMat(C.trim), g, 0, 0.13, 0, 0.085, 0.085, 0.08, 12);
-  }
-
   function lookOf(id, look) {
     var d = RB.CARS[id].look, o = {};
     ['paint', 'trim', 'wheels', 'spoiler', 'exhaust'].forEach(function (k) { o[k] = look && look[k] && RB.lookOpt(k, look[k]) ? look[k] : d[k]; });
@@ -911,7 +976,8 @@ var RB3DModels = (function () {
   }
 
   // ---------- public: a car ----------
-  function car(id, look) {
+  // rider: undefined for the kid, a KP palette for a rival kid, false for an empty car
+  function car(id, look, rider) {
     var def = RB.CARS[id], M = def.model; look = lookOf(id, look);
     var paint = RB.lookOpt('paint', look.paint).c, trim = RB.lookOpt('trim', look.trim).c;
     var chunky = look.wheels === 'chunky', open = !!M.open;
@@ -919,12 +985,13 @@ var RB3DModels = (function () {
     var root = new T.Group(), body = new T.Group(); root.add(body); root.name = 'car-' + id;
     var C = {
       id: id, key: id + (chunky ? 'C' : 'S'), L: M.len / 2, W: M.wid / 2, wr: wr, tw: (chunky ? 0.2 : 0.16) * Math.min(1.15, M.wid / 0.95),
-      paint: paint, trim: trim, body: body, surf: [], own: [], lights: { head: [], tail: [] }
+      paint: paint, trim: trim, body: body, surf: [], own: [], lights: { head: [], tail: [] }, rider: rider, bike: !!M.bike
     };
     C.ra = wr + 0.03; C.yb = wr - C.ra * 0.34; C.beltMin = wr + C.ra + 0.075;
     // closed bodies need room for the arches inside the bumpers (the old sprites let the wheels poke out)
     C.wx = C.L - Math.max(0.24, wr * 0.95); if (!open) C.wx = Math.min(C.wx, C.L - C.ra - 0.075);
-    C.wz = C.W - C.tw / 2 - (open ? 0 : 0.02);
+    C.wz = C.bike ? 0 : C.W - C.tw / 2 - (open ? 0 : 0.02);
+    if (C.bike) C.tw = 0.1;
     C.headMat = phys({ color: 0xdfe6ee, emissive: 0xfff1d0, emissiveIntensity: 0.45, roughness: 0.05, metalness: 0.2, clearcoat: 1, transmission: 0 });
     C.tailMat = phys({ color: 0x7a0a0a, emissive: 0xff2414, emissiveIntensity: 0.6, roughness: 0.1, clearcoat: 1 });
     C.own.push(C.headMat, C.tailMat);
@@ -938,7 +1005,7 @@ var RB3DModels = (function () {
     if (!tips.length) tips.push(V(-C.L - 0.03, C.yb + 0.05, 0));
     // wheels
     var wheels = [];
-    [1, -1].forEach(function (fx) { [-1, 1].forEach(function (sd) { wheels.push(addWheel(root, fx * C.wx, sd * C.wz, wr, C.tw, look.wheels, trim, fx > 0, !chunky)); }); });
+    [1, -1].forEach(function (fx) { (C.bike ? [1] : [-1, 1]).forEach(function (sd) { wheels.push(addWheel(root, fx * C.wx, sd * C.wz, wr, C.tw, look.wheels, trim, fx > 0, !chunky)); }); });
     if (id === 'nova') wheels.forEach(function (w) { if (w.front) mesh(C.fender, paintMat(paint), w.pivot); });
     // the shield bubble around the car (measured before the glider is added)
     var bb = new T.Box3().setFromObject(root), sz = bb.getSize(V()), ctr = bb.getCenter(V());
@@ -952,7 +1019,7 @@ var RB3DModels = (function () {
     body.children.forEach(function (m) { if (m.material === C.headMat) C.lights.head = [m]; if (m.material === C.tailMat) C.lights.tail = [m]; });
     var count = triCount(root) - triCount(shield) + 0;
     root.userData = {
-      id: id, look: look, wheels: wheels, body: body, glider: gl, shield: shield, lights: C.lights, exhaust: tips,
+      id: id, look: look, wheels: wheels, body: body, bike: C.bike, glider: gl, shield: shield, lights: C.lights, exhaust: tips,
       len: M.len, wid: M.wid, height: bb.max.y, tris: count - triCount(gl),
       dispose: function () { C.own.forEach(function (r) { r.dispose(); }); }
     };
@@ -995,6 +1062,54 @@ var RB3DModels = (function () {
     var top = mesh(pg, em, g, 0, h - 0.005, 0); top.rotation.x = -PI / 2; top.castShadow = false;
     var bot = mesh(pg, em, g, 0, -h + 0.005, 0); bot.rotation.x = PI / 2; bot.castShadow = false;
     g.userData = { size: s };
+    return g;
+  }
+  // a treasure chest (the middle crate of each row): dark red wood, a domed lid, gold bands and corners, a glowing star
+  // lock; userData.lid is the lid's hinge (rotation.z opens it), userData.size its width
+  function chest() {
+    var g = new T.Group(), w = 0.86, d = 0.62, h = 0.46, lr = d / 2;
+    var wood = Mt('chestWood', function () {
+      var cv = canvas(256, 256), x = cv.getContext('2d');
+      x.fillStyle = '#7a2e1c'; x.fillRect(0, 0, 256, 256);
+      for (var i = 0; i < 5; i++) {
+        var y0 = i * 51; x.fillStyle = ['#84321e', '#70291a', '#7e301d', '#6c2818', '#82311e'][i]; x.fillRect(0, y0 + 2, 256, 48);
+        for (var k = 0; k < 10; k++) { x.strokeStyle = 'rgba(40,10,4,' + (0.15 + 0.12 * Math.random()) + ')'; x.lineWidth = 1 + Math.random(); x.beginPath(); var yy = y0 + 5 + Math.random() * 42; x.moveTo(0, yy); for (var u = 0; u <= 256; u += 32) x.lineTo(u, yy + Math.sin(u * 0.03 + k) * 2); x.stroke(); }
+        x.fillStyle = '#2a0e06'; x.fillRect(0, y0, 256, 3);
+      }
+      var t = texOf(cv, true); return std({ map: t, roughness: 0.6, bumpMap: t, bumpScale: 1.2 });
+    });
+    var gold = Mt('chestGold', function () { return std({ color: 0xf2c040, metalness: 1, roughness: 0.22, emissive: 0x5a3800, emissiveIntensity: 0.5 }); });
+    var glow = Mt('chestGlow', function () { return std({ color: 0xfff0a0, emissive: 0xffc030, emissiveIntensity: 2.2, roughness: 0.3 }); });
+    var dark = Mt('chestInside', function () { return std({ color: 0x1a0a04, emissive: 0xffa020, emissiveIntensity: 0.9, roughness: 0.9 }); });
+    // the box
+    box(w, h, d, 0.03, wood, g, 0, h / 2, 0);
+    box(w * 0.96, 0.02, d * 0.92, 0.005, dark, g, 0, h - 0.005, 0);
+    // the lid: a half cylinder on a hinge along the back edge
+    var hinge = new T.Group(); hinge.position.set(0, h, -lr); g.add(hinge);
+    var lid = new T.Group(); lid.position.set(0, 0, lr); hinge.add(lid);
+    var dome = mesh(G('chestLid', function () { var q = new T.CylinderGeometry(1, 1, 1, 20, 1, false, 0, PI); q.rotateZ(PI / 2); return q; }), wood, lid);
+    dome.scale.set(w, lr, lr); dome.rotation.x = 0;
+    var cap = G('chestCap', function () { var q = new T.CircleGeometry(1, 20, 0, PI); return q; });
+    [-1, 1].forEach(function (sd) { var c = mesh(cap, wood, lid, sd * w / 2, 0, 0); c.scale.set(lr, lr, 1); c.rotation.y = sd * PI / 2; });
+    // gold bands over the lid and down the front and back, gold corners, a rim
+    [-0.3, 0.3].forEach(function (bx) {
+      var band = mesh(G('chestBand', function () { var q = new T.TorusGeometry(1, 0.06, 6, 20, PI); q.rotateY(PI / 2); return q; }), gold, lid, bx * w, 0, 0); band.scale.set(1, lr + 0.012, lr + 0.012); band.rotation.x = 0;
+      band.scale.set(1.2, lr + 0.01, lr + 0.01);
+      box(0.06, h, d + 0.02, 0.012, gold, g, bx * w, h / 2, 0);
+    });
+    box(w + 0.02, 0.05, d + 0.02, 0.015, gold, g, 0, h - 0.025, 0);
+    box(w + 0.02, 0.05, d + 0.02, 0.015, gold, g, 0, 0.025, 0);
+    [-1, 1].forEach(function (a) { [-1, 1].forEach(function (b) { box(0.09, h + 0.02, 0.09, 0.02, gold, g, a * (w / 2 - 0.03), h / 2, b * (d / 2 - 0.03)); }); });
+    // the lock: a gold plate with a glowing star, front and back so it shows from any side as it turns
+    var star = G('chestStar', function () {
+      var sh = new T.Shape(); for (var i = 0; i < 10; i++) { var a = PI / 2 + i * PI / 5, r = i % 2 ? 0.045 : 0.1; if (i) sh.lineTo(r * Math.cos(a), r * Math.sin(a)); else sh.moveTo(r * Math.cos(a), r * Math.sin(a)); }
+      sh.closePath(); return new T.ExtrudeGeometry(sh, { depth: 0.015, bevelEnabled: true, bevelThickness: 0.008, bevelSize: 0.008, bevelSegments: 1 });
+    });
+    [-1, 1].forEach(function (sd) {
+      box(0.2, 0.2, 0.03, 0.03, gold, g, 0, h - 0.06, sd * (d / 2 + 0.01));
+      var st = mesh(star, glow, g, 0, h - 0.06, sd * (d / 2 + 0.025)); st.rotation.y = sd > 0 ? 0 : PI; st.castShadow = false;
+    });
+    g.userData = { size: w, lid: hinge };
     return g;
   }
   function coin() {
@@ -1064,12 +1179,14 @@ var RB3DModels = (function () {
   }
 
   // ---------- the kid ----------
-  var KP = { cap: '#b84a38', capDark: '#7e2e24', strap: '#3e3028', lens: '#7fb0b4', hair: '#8a4e2a', skin: '#f0c49c', eye: '#2a1e24',
+  var KPD = { cap: '#b84a38', capDark: '#7e2e24', strap: '#3e3028', lens: '#7fb0b4', hair: '#8a4e2a', skin: '#f0c49c', eye: '#2a1e24',
     mouth: '#a85a4a', scarf: '#e0aa4e', jacket: '#4a6c80', shirt: '#e8dcc0', glove: '#7a5236', trousers: '#5e4838', boot: '#3a2a22' };
-  function kid() {
+  // pal: colour overrides for KP (a rival kid)
+  function kid(pal) {
     var g = new T.Group(), root = new T.Group(); g.add(root);
+    var KP = pal ? Object.assign({}, KPD, pal) : KPD;
     function cloth(hex, side) { return Mt('k' + hex + (side || ''), function () { return phys({ color: new T.Color(hex), roughness: 0.85, sheen: 0.6, sheenColor: new T.Color(shade(hex, 1.5)), side: side ? T.DoubleSide : T.FrontSide }); }); }
-    var skin = Mt('kskin', function () { return phys({ color: new T.Color(KP.skin), roughness: 0.6, sheen: 0.4, sheenColor: new T.Color('#ffc8b0') }); });
+    var skin = Mt('kskin' + KP.skin, function () { return phys({ color: new T.Color(KP.skin), roughness: 0.6, sheen: 0.4, sheenColor: new T.Color('#ffc8b0') }); });
     // a limb from its joint down: a capsule whose rounded ends overlap the joints above and below
     function limb(m, parent, y, r, len) { return mesh(G('kl' + r + ',' + len, function () { return new T.CapsuleGeometry(r, len, 4, 10); }), m, parent, 0, y, 0); }
     // legs: hip > thigh, knee > shin, boot
@@ -1233,6 +1350,6 @@ var RB3DModels = (function () {
     return out;
   }
 
-  var api = { car: car, crate: crate, coin: coin, bee: bee, goo: goo, kid: kid, preview: preview, envMap: envMap, _tris: triCount, _lookOf: lookOf, _geo: GEO };
+  var api = { car: car, crate: crate, chest: chest, coin: coin, bee: bee, goo: goo, kid: kid, preview: preview, envMap: envMap, _tris: triCount, _lookOf: lookOf, _geo: GEO };
   return api;
 })();

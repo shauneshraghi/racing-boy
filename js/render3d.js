@@ -207,7 +207,10 @@
         if (e.type === 'boost' && c.i === 0 && e.from === 'trick') floater(c.x, gy + 1.6, c.z, 'Trick boost!', '#8fd8ff');
         if (e.type === 'boost' && c.i === 0 && e.from === 'glide') floater(c.x, gy + 1.6, c.z, 'Glide boost!', '#ffd23f');
         if (e.type === 'boost' && c.i === 0 && e.from === 'drift') floater(c.x, gy + 1.6, c.z, ['Drift boost!', 'Super drift!', 'Ultra drift!'][e.tier - 1], ['#8fd8ff', '#ff8a1c', '#ff7ae0'][e.tier - 1]);
-        if (e.type === 'box') burst(c.x, gy + 0.8, c.z, ['#ffd23f', '#c9853a', '#fff3b0'], 14, 2.5, 0.14, true);
+        if (e.type === 'box' || e.type === 'boxEmpty') {
+          if (e.gold) { burst(c.x, gy + 0.8, c.z, ['#ffd23f', '#fff3b0', '#ffb547', '#ffffff'], 36, 4, 0.18, true); if (c.i === 0) floater(c.x, gy + 1.9, c.z, 'Treasure!', '#ffd23f'); }
+          else burst(c.x, gy + 0.8, c.z, ['#ffd23f', '#c9853a', '#fff3b0'], 18, 3, 0.14, true);
+        }
         if (e.type === 'wall') { if (c.i === 0) shake = Math.max(shake, 0.18); for (var w = 0; w < 4; w++) puff(c.x, gy + 0.2, c.z, landDust(r), 0.6, 0.5, 0.4); }
       });
     }
@@ -356,8 +359,16 @@
 
     // ---------- cars ----------
     function lookKey(id, look) { return id + '|' + JSON.stringify(look || {}); }
-    function newCarObj(id, look, cheap) {
-      var o = make('car', stubCar, [id, look]), ud = o.userData || (o.userData = {});
+    // rival drivers: kids in their own clothes (the player is the plaza kid)
+    var RIDERS = [
+      { cap: '#2f6fd0', capDark: '#1f4a8c', jacket: '#d8a02a', scarf: '#e5483a', hair: '#2a1e18', skin: '#c98e62', trousers: '#3a4250' },
+      { cap: '#3f9f4a', capDark: '#2a6a32', jacket: '#8a5ad8', scarf: '#ffd23f', hair: '#e0b060', skin: '#f4d0b0', trousers: '#4a3a5a' },
+      { cap: '#e07ab8', capDark: '#a04a80', jacket: '#3fa8a0', scarf: '#f4f1ea', hair: '#5a2a1a', skin: '#8a5a3a', trousers: '#2e3a44' },
+      { cap: '#f4f1ea', capDark: '#a8a49a', jacket: '#e5483a', scarf: '#3fa8ff', hair: '#1a1410', skin: '#e8b890', trousers: '#2a2a30' },
+      { cap: '#ff8a1c', capDark: '#b05a10', jacket: '#3a3644', scarf: '#9ad13a', hair: '#b04a20', skin: '#f6d4b8', trousers: '#5a4630' }
+    ];
+    function newCarObj(id, look, cheap, i) {
+      var o = make('car', stubCar, [id, look, i === -1 ? false : i ? RIDERS[(i - 1) % RIDERS.length] : undefined]), ud = o.userData || (o.userData = {});
       if (!ud.wheels) ud.wheels = []; if (!ud.lights) ud.lights = { head: [], tail: [] };
       o.traverse(function (m) { if (m.isMesh) { if (m.castShadow === undefined || m !== ud.shield) m.castShadow = m !== ud.shield; m.receiveShadow = true; } });
       if (ud.glider) ud.glider.visible = false; if (ud.shield) ud.shield.visible = false;
@@ -393,8 +404,10 @@
       else if (c.air) want = Math.max(-0.35, Math.min(0.35, Math.atan2(c.vy, Math.max(4, c.v)) * 0.6));
       else if (D.slopeAt) { var sq = r.g.query(c.x, c.z, c.s); want = Math.atan(D.slopeAt(r.g, c.s) * (Math.cos(c.h) * sq.tx + Math.sin(c.h) * sq.tz)); }
       st.pitchS += (want - st.pitchS) * Math.min(1, dt * 12);
-      if (ud.body) { ud.body.rotation.x = c.roll || 0; ud.body.rotation.z = (c.pitch || 0) + st.pitchS * 0.0; ud.body.position.y = -Math.max(0, c.dip || 0); }
+      if (ud.body) { ud.body.rotation.x = ud.bike ? 0 : c.roll || 0; ud.body.rotation.z = (c.pitch || 0) + st.pitchS * 0.0; ud.body.position.y = -Math.max(0, c.dip || 0); }
       o.rotation.z = st.pitchS; o.rotation.order = 'YXZ';
+      // a motorbike leans into the turn (the car body's roll leans out of it), more in a drift
+      if (ud.bike) { st.lean = (st.lean || 0) + ((-(c.roll || 0) * 3.4 + (c.driftDir ? c.driftDir * 0.18 : 0)) - (st.lean || 0)) * Math.min(1, dt * 10); o.rotation.x = st.lean; }
       st.spin += (c.v || 0) * dt;
       (ud.wheels || []).forEach(function (w) {
         if (w.spin) { if (w._z0 === undefined) w._z0 = w.spin.rotation.z; w.spin.rotation.z = w._z0 + st.spin / (w.r || 0.25); }
@@ -445,6 +458,9 @@
       var g = D.track(id), w = W3.race(id, g, worldIdOf(id)), sc = sceneFor(w);
       race = { id: id, world: w, scene: sc, g: g, cars: [], cam: { init: false, yaw: 0, lift: 0, boost: 0, x: 0, y: 0, z: 0 } };
       race.crates = instancify(compactAll(make('crate', stubCrate)), g.boxes.length, sc);
+      // the golden treasure chests, with the lid a little open and light spilling out
+      var chestP = make('chest', stubCrate); if (chestP.userData && chestP.userData.lid) chestP.userData.lid.rotation.x = -0.16;
+      race.chests = instancify(compactAll(chestP), g.boxes.length, sc); race.pop = g.boxes.map(function () { return 0; });
       race.coins = instancify(make('coin', stubCoin), g.coins.length, sc);
       race.crateS = g.boxes.map(function () { return 1; });
       race.goos = []; race.bees = [];
@@ -453,7 +469,7 @@
     }
     function disposeRace() {
       race.cars.forEach(function (st) { freeCar(st.obj); });
-      race.crates.remove(); race.coins.remove();
+      race.crates.remove(); race.chests.remove(); race.coins.remove();
       race.goos.concat(race.bees).forEach(function (o) { o.removeFromParent(); });
       race.world.dispose();
       if (race.world.env && race.world.env !== envTex) race.world.env.dispose();
@@ -463,8 +479,8 @@
     function warm(id) { if (failed) return OLD.warm(id); if (D.TRACKS[id]) buildRace(id); }
 
     var CAM = {
-      land: { dist: 6.0, height: 2.3, ahead: 4.0, lookY: 0.6, fov: 54 },
-      tall: { dist: 6.3, height: 3.0, ahead: 3.5, lookY: 0.4, fov: 72 },
+      land: { dist: 4.0, height: 1.6, ahead: 4.0, lookY: 0.8, fov: 56 },
+      tall: { dist: 4.4, height: 2.1, ahead: 3.5, lookY: 0.65, fov: 72 },
       follow: 6, boostFov: 9, boostPull: 0.14
     };
     function drawRace(r, dt) {
@@ -495,20 +511,27 @@
       // cars
       r.cars.forEach(function (c, i) {
         var st = R.cars[i], key = lookKey(c.carId, c.look);
-        if (!st || st.key !== key) { if (st) freeCar(st.obj); st = R.cars[i] = { obj: newCarObj(c.carId, c.look, i > 0), key: key, spin: 0, pitchS: 0, alpha: 1 }; sc.add(st.obj); }
+        if (!st || st.key !== key) { if (st) freeCar(st.obj); st = R.cars[i] = { obj: newCarObj(c.carId, c.look, i > 0, i), key: key, spin: 0, pitchS: 0, alpha: 1 }; sc.add(st.obj); }
         poseCar(st, c, dt, raceCam.position, camFwd, playerDepth, r);
         if (dt > 0) carEmit(c, st, r, dt);
       });
       for (var k = r.cars.length; k < R.cars.length; k++) if (R.cars[k]) { freeCar(R.cars[k].obj); R.cars[k] = null; }
-      // crates bob and turn; they pop back in after their respawn time
+      // crates bob and turn; a taken one swells and spins away (pop), and they grow back after their respawn time.
+      // The middle crate of each row is a golden chest: bigger, slower, ringed with sparkles
       g.boxes.forEach(function (b, i) {
-        var want = r.boxes[i].t > 0 ? 0 : 1; R.crateS[i] += (want - R.crateS[i]) * Math.min(1, dt * (want ? 6 : 20));
-        var s = R.crateS[i] < 0.02 ? 0 : R.crateS[i];
-        var by = D.groundAt ? D.groundAt(g, b.s) : 0;
-        M4.compose(V.set(b.x, by + 0.62 + Math.sin(time * 3 + i) * 0.12, b.z), QT.setFromAxisAngle(UP, time * 1.5 + i), S1.set(s, s, s)); R.crates.set(i, M4);
-        if (s > 0.5 && Math.random() < dt * 2) instant.push({ x: b.x, y: by + 0.7, z: b.z, col: '#ffe9a0', size: 1.6, glow: true, a: 0.25 });
+        var gone = r.boxes[i].t > 0;
+        if (gone && R.crateS[i] > 0.9 && !R.pop[i]) R.pop[i] = 0.28;
+        if (R.pop[i] > 0) R.pop[i] = Math.max(0, R.pop[i] - dt);
+        var want = gone ? 0 : 1; if (R.pop[i] <= 0) R.crateS[i] += (want - R.crateS[i]) * Math.min(1, dt * (want ? 6 : 20));
+        var s = R.crateS[i] < 0.02 ? 0 : R.crateS[i] * (R.pop[i] > 0 ? 1 + (0.28 - R.pop[i]) * 2.5 : 1);
+        var by = D.groundAt ? D.groundAt(g, b.s) : 0, spin = time * (b.gold ? 1 : 1.5) + i + (R.pop[i] > 0 ? (0.28 - R.pop[i]) * 30 : 0);
+        var yy = by + (b.gold ? 0.32 : 0.62) + Math.sin(time * 3 + i) * (b.gold ? 0.06 : 0.12), sg = s * (b.gold ? 1.25 : 1);
+        M4.compose(V.set(b.x, yy, b.z), QT.setFromAxisAngle(UP, spin), b.gold ? S1.set(sg, sg, sg) : S1.set(s, s, s)); (b.gold ? R.chests : R.crates).set(i, M4);
+        M4.makeScale(0, 0, 0); (b.gold ? R.crates : R.chests).set(i, M4);
+        if (s > 0.5 && Math.random() < dt * 2) instant.push({ x: b.x, y: by + 0.7, z: b.z, col: b.gold ? '#ffd23f' : '#ffe9a0', size: b.gold ? 2.4 : 1.6, glow: true, a: b.gold ? 0.35 : 0.25 });
+        if (b.gold && s > 0.5) for (var sp = 0; sp < 3; sp++) { var sa = time * 2.2 + sp * 2.09 + i; instant.push({ x: b.x + Math.cos(sa) * 0.75, y: by + 0.55 + Math.sin(time * 3 + sp) * 0.25, z: b.z + Math.sin(sa) * 0.75, col: '#fff3b0', size: 0.28, glow: true }); }
       });
-      R.crates.done();
+      R.crates.done(); R.chests.done();
       g.coins.forEach(function (cn, i) {
         var s = r.coins[i].t > 0 ? 0 : 1;
         M4.compose(V.set(cn.x, (D.groundAt ? D.groundAt(g, cn.s) : 0) + 0.5 + Math.sin(time * 4 + i) * 0.06, cn.z), QT.setFromAxisAngle(UP, time * 4 + i * 0.7), S1.set(s, s, s)); R.coins.set(i, M4);
@@ -548,11 +571,40 @@
       octx.textAlign = 'center'; octx.textBaseline = 'bottom';
       r.cars.forEach(function (c) {
         if (c.i === 0) return;
-        var t = project(raceCam, c.x, (c.gy || 0) + Math.max(0, c.y) + 1.45, c.z); if (!t || t.d > 45 || c.fallT > 0) return;
+        var st = race && race.cars[c.i], t = project(raceCam, c.x, (c.gy || 0) + Math.max(0, c.y) + (st && st.obj.userData.height || 1.1) + 0.35, c.z); if (!t || t.d > 45 || c.fallT > 0) return;
         var fs = Math.round(Math.max(10 * ovr, Math.min(22 * ovr, t.k * 0.3)));
         octx.font = '600 ' + fs + 'px Fredoka, sans-serif'; octx.lineWidth = 3 * ovr; octx.strokeStyle = '#000a';
         var label = c.place + ' ' + c.name; octx.strokeText(label, t.x, t.y); octx.fillStyle = '#fff7e8'; octx.fillText(label, t.x, t.y);
       });
+      // a held item floats in a bubble over the driver's head: the roulette spins in it, then the item bobs there
+      // until it is used (the player's is big; rivals' small, and only near)
+      r.cars.forEach(function (c) {
+        if (!c.item || c.fallT > 0) return;
+        var me = c.i === 0, st = race && race.cars[c.i], top = st && st.obj.userData.height || 1.1;
+        var y = (c.gy || 0) + Math.max(0, c.y) + (c.hopY || 0) + top + (me ? 0.32 + Math.sin(time * 4) * 0.05 : 0.95);
+        var t = project(raceCam, c.x, y, c.z); if (!t || (!me && t.d > 28)) return;
+        var rolling = c.rollT > 0, rad = Math.max((me ? 20 : 9) * ovr, Math.min((me ? 40 : 18) * ovr, t.k * (me ? 0.3 : 0.2)));
+        if (me && !rolling) rad *= 1 + 0.07 * Math.sin(time * 7);
+        var key = rolling ? D.ITEM_KEYS[Math.floor(time * 12 + c.i) % D.ITEM_KEYS.length] : c.item;
+        octx.save(); octx.translate(t.x, t.y);
+        var gr = octx.createRadialGradient(0, -rad * 0.3, rad * 0.1, 0, 0, rad * 1.5);
+        gr.addColorStop(0, 'rgba(255,250,225,0.95)'); gr.addColorStop(0.6, 'rgba(255,214,90,0.55)'); gr.addColorStop(1, 'rgba(255,190,40,0)');
+        octx.fillStyle = gr; octx.beginPath(); octx.arc(0, 0, rad * 1.5, 0, Math.PI * 2); octx.fill();
+        octx.fillStyle = 'rgba(36,28,51,0.55)'; octx.beginPath(); octx.arc(0, 0, rad, 0, Math.PI * 2); octx.fill();
+        octx.lineWidth = Math.max(2, rad * 0.14); octx.strokeStyle = rolling ? '#fff3b0' : '#ffd23f';
+        if (rolling) { octx.setLineDash([rad * 0.5, rad * 0.3]); octx.lineDashOffset = -time * rad * 6; }
+        octx.beginPath(); octx.arc(0, 0, rad, 0, Math.PI * 2); octx.stroke(); octx.setLineDash([]);
+        octx.textAlign = 'center'; octx.textBaseline = 'middle'; octx.font = Math.round(rad * 1.15) + 'px sans-serif';
+        octx.fillText(D.ITEMS[key].icon, 0, rad * 0.06);
+        if (!rolling && c.itemN > 1) {
+          var bx = rad * 0.8, by = rad * 0.75, br = rad * 0.42;
+          octx.fillStyle = '#e5483a'; octx.beginPath(); octx.arc(bx, by, br, 0, Math.PI * 2); octx.fill();
+          octx.lineWidth = Math.max(1.5, br * 0.2); octx.strokeStyle = '#fff'; octx.stroke();
+          octx.fillStyle = '#fff'; octx.font = '700 ' + Math.round(br * 1.25) + 'px Fredoka, sans-serif'; octx.fillText('×' + c.itemN, bx, by + br * 0.05);
+        }
+        octx.restore();
+      });
+      octx.textAlign = 'center'; octx.textBaseline = 'bottom';
       floaters.forEach(function (f) {
         var q = project(raceCam, f.x, f.y + f.t * 1.4, f.z); if (!q) return;
         octx.globalAlpha = Math.max(0, 1 - f.t / 1.3);
@@ -613,7 +665,7 @@
       if (key !== H.key) {
         H.parked.forEach(function (o) { freeCar(o.obj); }); H.parked = [];
         S0.owned.slice(0, w.bays.length).forEach(function (id, k) {
-          var o = newCarObj(id, S0.cars[id].look), b = w.bays[k];
+          var o = newCarObj(id, S0.cars[id].look, false, -1), b = w.bays[k]; // parked: no one aboard (the kid is on the plaza)
           o.position.set(b.x, 0, b.z); o.rotation.y = -b.h; sc.add(o); H.parked.push({ id: id, obj: o });
         });
         H.key = key;

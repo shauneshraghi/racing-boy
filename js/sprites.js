@@ -143,7 +143,7 @@ var RBSprites = (function () {
     // wheels, with a hub cap on the outer face
     var wx = L - Math.max(0.24, wr * 0.95), ww = 0.2, hub = HUB_COL[look.wheels] || HUB_COL.stock;
     [-1, 1].forEach(function (fx) { [-1, 1].forEach(function (sz) {
-      var cx = fx * wx, z0 = sz > 0 ? W - ww * 0.4 : -W - ww * 0.6, z1 = z0 + ww;
+      var cx = fx * wx, z0 = M.bike ? -0.06 : sz > 0 ? W - ww * 0.4 : -W - ww * 0.6, z1 = M.bike ? 0.06 : z0 + ww; // a motorbike's one wheel each end is drawn twice in the middle
       var tyre = box(cx - wr, cx + wr, z0, z1, 0, wr * 2, TYRE);
       var hz = sz > 0 ? z1 : z0 - 0.03, cap = box(cx - wr * 0.45, cx + wr * 0.45, hz, hz + 0.03, wr * 0.55, wr * 1.45, hub);
       if (fx > 0 && steer) [tyre, cap].forEach(function (B) { B.yaw = steer * WHEEL_TURN; B.px = cx; B.pz = (z0 + z1) / 2; });

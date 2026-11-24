@@ -69,6 +69,7 @@
   var gl = place('glide', RB3DModels.car('hopper'), 4, -7.5); gl.userData.glider.visible = true; gl.position.y = 0.6;
   var sh = place('shield', RB3DModels.car('pip', { paint: 'grape' }), 4, -4.5); sh.userData.shield.visible = true;
   var cr = place('crate', RB3DModels.crate(), 4, -1.5); cr.position.y = 0.6;
+  var ch = place('chest', RB3DModels.chest(), 5.2, -1.5); ch.userData.lid.rotation.x = -0.5;
   var co = place('coin', RB3DModels.coin(), 4, 0.2); co.position.y = 0.35; co.rotation.y = 0.6;
   var be = place('bee', RB3DModels.bee(), 4, 1.6); be.position.y = 0.6; be.rotation.y = -0.5;
   place('goo', RB3DModels.goo(), 4, 3.6);
