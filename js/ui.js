@@ -280,7 +280,9 @@
         var box = document.createElement('div'); box.id = 'confirm';
         box.innerHTML = '<input id="cIn" placeholder="type yes to wipe the save"><button class="btn" id="cGo">OK</button>';
         body.appendChild(box); $('cIn').focus();
-        $('cGo').onclick = function () { if ($('cIn').value.trim().toLowerCase() === 'yes') { S = D.newState(Date.now() % 1e9); save(); station = null; openStation(null); toast('A fresh start!'); } else box.remove(); };
+        // openStation(null) closes the panel (it returns early if station is already null), then the creator opens as on a new game
+        $('cGo').onclick = function () { if ($('cIn').value.trim().toLowerCase() === 'yes') { S = D.newState(Date.now() % 1e9); save(); openStation(null); updateHubHud(); toast('A fresh start!'); openKid(); } else box.remove(); };
+        $('cIn').onkeydown = function (e) { if (e.key === 'Enter') $('cGo').click(); };
       };
       body.appendChild(so);
     }
