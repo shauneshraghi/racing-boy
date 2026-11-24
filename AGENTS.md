@@ -63,7 +63,7 @@ A browser kart-style racing game in plain HTML, CSS and JavaScript with no build
 - `.claude/settings.json` runs `.claude/hooks/session-start.sh` on startup and resume. When `CLAUDE_CODE_REMOTE=true` it runs `scripts/bootstrap.sh`, which uses the image's Chrome for Testing (`$CHROME_PATH`). The default Limited network blocks Playwright's browser CDN, so do not rely on `playwright install` there.
 - The user can't open localhost from a cloud session: verify visuals with `npm run shot`, and hand play-testing over through GitHub Pages (https://shauneshraghi.github.io/racing-boy/, deployed from `main`; bump the `?v=N` stamps).
 - The user's machine-level instructions don't reach the cloud. The ones that matter here:
-  - The user is the only contributor: commit to `main` and push, with no branch or PR, unless the session was started on a branch. Force pushes and history rewrites need the user's go-ahead.
+  - The user is the only contributor and does not merge pull requests: commit to `main` and push it, with no PR, even when the session was started on a branch (then also push that branch, and fast-forward `main` to it; merge `main` in first if it has moved). Force pushes and history rewrites need the user's go-ahead.
   - Commits, comments and other repo artifacts carry no AI identity, session links or co-author trailers.
   - Game rules are test-first: write a failing test in `tests/`, then make it pass.
   - Reports to the user lead with the answer, plainly worded, with no recap or closing offer. Name things by what they are, not by run label or issue number alone.
