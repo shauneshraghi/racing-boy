@@ -94,6 +94,27 @@
   function previewCanvas(id, look, h, scale) {
     var c = SP.carPreview(id, look, h, scale || 4); c.className = 'preview'; return c;
   }
+  // coin exchange: buy one part of a tier on sale (up to the best world opened) or sell one held, a row per tier
+  function partsExchange(body) {
+    var top = D.exchangeTop(S);
+    body.insertAdjacentHTML('beforeend', '<h3 class="swapHead">🪙 Exchange</h3><p class="note">Buy parts with coins, or sell spare ones. Racing pays better: each world pays the parts its upgrades need.</p>');
+    var box = document.createElement('div'); box.className = 'xchg';
+    D.PARTS.forEach(function (P, t) {
+      if (t > top && !(S.parts[t] > 0)) return;
+      var rate = D.exchangeRate(S, t), row = document.createElement('div'); row.className = 'xrow';
+      row.innerHTML = '<span>' + P.icon + ' ' + P.name + ' <b>' + fmt(S.parts[t] || 0) + '</b></span>';
+      [['Buy', rate.buy, function () { return D.exchangeBuy(S, t, 1); }, rate.buy != null && S.coins >= rate.buy],
+       ['Sell', rate.sell, function () { return D.exchangeSell(S, t, 1); }, S.parts[t] > 0]].forEach(function (a) {
+        var b = document.createElement('button'); b.className = 'opt';
+        b.innerHTML = a[1] == null ? '🔒 ' + a[0] : a[0] + ' 1 <small>🪙 ' + a[1] + '</small>';
+        b.disabled = !a[3];
+        b.onclick = function () { if (a[2]()) { var y = body.scrollTop; A.sfx('buy'); save(); updateHubHud(); renderPanel(); body.scrollTop = y; } else A.sfx('no'); };
+        row.appendChild(b);
+      });
+      box.appendChild(row);
+    });
+    body.appendChild(box);
+  }
   // parts swap: each next-door pair of tiers, up to one past the best tier the player holds or an upgrade asks for
   function partsSwap(body) {
     var top = 1;
@@ -120,7 +141,7 @@
     var car = S.car, C = D.CARS[car];
     if (station === 'garage') {
       body.appendChild(previewCanvas(car, S.cars[car].look, 0.6));
-      body.insertAdjacentHTML('beforeend', '<p class="note">Upgrading <b>' + C.name + '</b>. Each car keeps its own upgrades. Higher levels need better parts: swap the parts you have at the bottom. Win races to open faster cars at the car lot.</p>');
+      body.insertAdjacentHTML('beforeend', '<p class="note">Upgrading <b>' + C.name + '</b>. Each car keeps its own upgrades. Higher levels need better parts, and each world pays the ones bought there; the exchange and swap at the bottom cover a shortfall. Win races to open faster cars at the car lot.</p>');
       D.UP_KEYS.forEach(function (k) {
         var U = D.UPGRADES[k], lvl = S.cars[car].up[k], cap = C.caps[k], cost = D.upgradeCost(S, car, k);
         var pips = ''; for (var i = 0; i < cap; i++) pips += i < lvl ? '■' : '<i>■</i>';
@@ -131,6 +152,7 @@
         b.onclick = function () { if (D.buyUpgrade(S, car, k)) { A.sfx('buy'); toast(U.icon + ' ' + U.name + ' level ' + S.cars[car].up[k] + '!'); save(); renderPanel(); } else A.sfx('no'); };
         row.appendChild(b); body.appendChild(row);
       });
+      partsExchange(body);
       partsSwap(body);
     } else if (station === 'lot') {
       body.insertAdjacentHTML('beforeend', '<p class="note">Pick the car you race with. Every car has its own perk.</p>');

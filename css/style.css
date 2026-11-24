@@ -128,6 +128,10 @@ button { font:inherit; }
 .opt:disabled { opacity:.5; cursor:default; }
 .swapHead { margin:14px 2px 0; }
 .grid.swap .opt { min-height:56px; font-size:16px; }
+.xchg { display:flex; flex-direction:column; gap:6px; }
+.xrow { display:grid; grid-template-columns:1fr 92px 92px; gap:6px; align-items:center; background:var(--panel2); border-radius:12px; padding:4px 4px 4px 10px; font-size:15px; }
+.xrow span { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.xrow .opt { min-height:44px; padding:4px; gap:0; background:#ffffff14; flex-direction:row; justify-content:center; gap:6px; }
 .world { margin:6px 2px 6px; font-size:18px; color:var(--gold); }
 .world.locked { color:var(--muted); }
 .note { color:var(--muted); font-size:14px; margin:4px 2px 10px; }
