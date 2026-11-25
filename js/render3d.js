@@ -9,7 +9,13 @@
   if (typeof THREE === 'undefined' || typeof RB3DWorld === 'undefined' || typeof RB === 'undefined') return;
   var Q = new URLSearchParams(location.search);
   if (Q.get('gfx') === 'pixel' || Q.get('hd') === '0') return;
-  try { var tc = document.createElement('canvas'); if (!(tc.getContext('webgl2') || tc.getContext('webgl'))) return; } catch (e) { return; }
+  // WebGL check, and whether a half-float target can be drawn into (HDR bloom and grading need one)
+  var HDR = false;
+  try {
+    var tc = document.createElement('canvas'), tg = tc.getContext('webgl2');
+    if (tg) { HDR = !!(tg.getExtension('EXT_color_buffer_float') || tg.getExtension('EXT_color_buffer_half_float')); var lc = tg.getExtension('WEBGL_lose_context'); if (lc) lc.loseContext(); }
+    else if (!tc.getContext('webgl')) return;
+  } catch (e) { return; }
   var OLD = RBRender, SPR = RBSprites, active = false;
 
   RBRender = (function () {
@@ -53,8 +59,11 @@
     function init(canvas, overlay) {
       cv = canvas; ov = overlay; octx = ov.getContext('2d');
       phone = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+      // the post pass (bloom, vignette, boost blur) draws the scene into its own multisampled target, so the canvas
+      // itself needs no antialiasing (a second multisampled buffer the size of the screen would be wasted)
+      var usePost = HDR && Q.get('bloom') !== '0';
       try {
-        renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, powerPreference: 'high-performance', stencil: false });
+        renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: !usePost, powerPreference: 'high-performance', stencil: false });
       } catch (e) { console.error('3D renderer failed, using the pixel renderer', e); failed = true; active = false; OLD.init(canvas, overlay); return; }
       active = true;
       cv.style.imageRendering = 'auto';
@@ -65,9 +74,10 @@
       W3.setAnisotropy(Math.min(8, renderer.capabilities.getMaxAnisotropy()));
       raceCam = new THREE.PerspectiveCamera(55, 1, 0.1, 2400);
       hubCam = new THREE.PerspectiveCamera(30, 1, 0.5, 1200);
-      var want = Q.get('bloom');
-      if (renderer.capabilities.isWebGL2 && want !== '0' && (!phone || want === '1')) post = makePost();
-      console.log('Racing Boy renderer: 3D (three.js r' + THREE.REVISION + (post ? ', bloom' : '') + ')');
+      if (usePost && renderer.capabilities.isWebGL2) post = makePost();
+      if (typeof RB3DModels !== 'undefined' && typeof RB3DModels.useRenderer === 'function') RB3DModels.useRenderer(renderer); // previews share this context
+      levels();
+      console.log('Racing Boy renderer: 3D (three.js r' + THREE.REVISION + (post ? ', bloom' : '') + ', ' + (RES.fixed ? 'fixed' : 'adaptive') + ' resolution from ' + RES.list[RES.i] + 'x)');
       resize();
     }
     function resize() {
@@ -75,11 +85,51 @@
       if (!renderer) return;
       var r = cv.getBoundingClientRect();
       cssW = Math.max(1, Math.round(r.width)); cssH = Math.max(1, Math.round(r.height));
-      pr = Math.min(window.devicePixelRatio || 1, phone ? 1.5 : 2);
-      renderer.setPixelRatio(pr); renderer.setSize(cssW, cssH, false);
       ovr = Math.min(window.devicePixelRatio || 1, 2);
       ov.width = Math.round(cssW * ovr); ov.height = Math.round(cssH * ovr);
+      applyPr();
+    }
+    function applyPr() {
+      pr = RES.list[RES.i];
+      renderer.setPixelRatio(pr); renderer.setSize(cssW, cssH, false);
       if (post) post.resize(Math.round(cssW * pr), Math.round(cssH * pr));
+    }
+
+    // ---------- adaptive resolution ----------
+    // The scene's pixel ratio steps down a level when frames run slow (under ~48 fps over a second) and back up after
+    // a run of full-speed seconds, so a weak GPU stays smooth and a strong one keeps the sharp image. A step down that
+    // does not speed things up (the CPU, not the pixels, is the limit) is undone, and a level that proved too slow is
+    // not tried again for a while. ?res=<ratio> fixes the ratio.
+    var RES = { list: [1], i: 0, top: 0, fixed: false, last: 0, acc: 0, n: 0, hold: 0, good: 0, probe: null, noDown: 0, lockUp: {}, fails: 0 };
+    var SLOW = 1000 / 48, FAST = 1000 / 57;
+    function levels() {
+      var dpr = window.devicePixelRatio || 1, max = Math.min(dpr, 2), fixed = parseFloat(Q.get('res'));
+      if (fixed > 0) { RES.list = [Math.min(fixed, 3)]; RES.i = RES.top = 0; RES.fixed = true; return; }
+      var L = [max]; [2, 1.75, 1.5, 1.25, 1, 0.85, 0.75, 0.66].forEach(function (v) { if (v < max - 0.05) L.push(v); });
+      RES.list = L;
+      // a phone starts at 1.5x at most (and may climb from there); a desktop at its full ratio
+      RES.i = 0; if (phone) while (RES.i < L.length - 1 && L[RES.i] > 1.5) RES.i++;
+      RES.top = 0;
+    }
+    function holdRes(ms) { RES.hold = performance.now() + ms; RES.acc = RES.n = 0; RES.probe = null; RES.good = 0; }
+    function setRes(i, down, avg, now) { logRes(i, avg); RES.probe = { from: RES.i, to: i, down: down, avg: avg }; RES.i = i; applyPr(); RES.hold = now + 600; RES.good = 0; }
+    function logRes(i, avg, why) { console.log('Racing Boy 3D: resolution ' + RES.list[RES.i] + 'x -> ' + RES.list[i] + 'x (' + Math.round(1000 / avg) + ' fps' + (why ? ', ' + why : '') + ')'); }
+    function adapt() {
+      var now = performance.now(), dt = now - RES.last; RES.last = now;
+      if (RES.fixed || !renderer) return;
+      // a lone spike (a hitch, a hidden tab) says nothing about the load; a run of slow frames does
+      var spike = dt > 100 && dt > 3 * Math.max(RES.prev || 0, 16.7); RES.prev = dt;
+      if (spike || document.hidden) { RES.acc = RES.n = 0; return; }
+      if (now < RES.hold) return;
+      RES.acc += dt; RES.n++;
+      if (RES.acc < 1000 || RES.n < 8) return;
+      var avg = RES.acc / RES.n; RES.acc = RES.n = 0;
+      var pb = RES.probe; RES.probe = null;
+      if (pb && pb.down && avg > SLOW && avg > pb.avg * 0.93) { logRes(pb.from, avg, 'no faster, so back'); RES.i = pb.from; applyPr(); RES.noDown = now + 30000; RES.hold = now + 600; return; }
+      if (pb && !pb.down && avg > SLOW) { RES.lockUp[pb.to] = now + 30000 * Math.pow(2, Math.min(5, RES.fails++)); setRes(pb.from, true, avg, now); RES.probe = null; return; }
+      if (avg > SLOW) { RES.good = 0; if (RES.i < RES.list.length - 1 && now > RES.noDown) setRes(RES.i + 1, true, avg, now); }
+      else if (avg < FAST && RES.i > RES.top) { if (++RES.good >= 5 && !(RES.lockUp[RES.i - 1] > now)) setRes(RES.i - 1, false, avg, now); }
+      else RES.good = 0;
     }
     function setView(right, bottom) { if (failed) return OLD.setView(right, bottom); view.right = right || 0; view.bottom = bottom || 0; }
 
@@ -87,19 +137,21 @@
     var QUAD_VS = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
     function makePost() {
       var opt = { type: THREE.HalfFloatType, depthBuffer: true };
-      var scene = new THREE.WebGLRenderTarget(4, 4, Object.assign({ samples: 4 }, opt)), a = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, depthBuffer: false }), b = a.clone();
+      // bloom at three sizes (a quarter, an eighth and a sixteenth of the screen), each blurred, so a bright light gets a
+      // tight core and a wide soft halo
+      var scene = new THREE.WebGLRenderTarget(4, 4, Object.assign({ samples: 4 }, opt)), LV = [0, 1, 2].map(function () { var t = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, depthBuffer: false }); return { a: t, b: t.clone() }; });
       var cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2)), qs = new THREE.Scene(); quad.frustumCulled = false; qs.add(quad);
       var bright = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null }, uThr: { value: 1.0 } }, vertexShader: QUAD_VS, depthTest: false, depthWrite: false,
         fragmentShader: 'uniform sampler2D tDiffuse; uniform float uThr; varying vec2 vUv; void main() { vec3 c = texture2D(tDiffuse, vUv).rgb; float l = max(c.r, max(c.g, c.b)); float k = smoothstep(uThr, uThr * 2.2, l); gl_FragColor = vec4(min(c * k, vec3(12.0)), 1.0); }' });
       var blur = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null }, uDir: { value: new THREE.Vector2() } }, vertexShader: QUAD_VS, depthTest: false, depthWrite: false,
         fragmentShader: 'uniform sampler2D tDiffuse; uniform vec2 uDir; varying vec2 vUv; void main() { vec3 c = texture2D(tDiffuse, vUv).rgb * 0.227; c += (texture2D(tDiffuse, vUv + uDir * 1.385).rgb + texture2D(tDiffuse, vUv - uDir * 1.385).rgb) * 0.316; c += (texture2D(tDiffuse, vUv + uDir * 3.23).rgb + texture2D(tDiffuse, vUv - uDir * 3.23).rgb) * 0.07; gl_FragColor = vec4(c, 1.0); }' });
-      var comp = new THREE.ShaderMaterial({ uniforms: { tScene: { value: null }, tBloom: { value: null }, uBloom: { value: 0.6 }, uSpeed: { value: 0 }, uCenter: { value: new THREE.Vector2(0.5, 0.55) }, uVig: { value: 0.35 } }, vertexShader: QUAD_VS, depthTest: false, depthWrite: false,
+      var comp = new THREE.ShaderMaterial({ uniforms: { tScene: { value: null }, tBloom: { value: null }, tBloom1: { value: null }, tBloom2: { value: null }, uBloom: { value: 0.6 }, uSpeed: { value: 0 }, uCenter: { value: new THREE.Vector2(0.5, 0.55) }, uVig: { value: 0.35 } }, vertexShader: QUAD_VS, depthTest: false, depthWrite: false,
         fragmentShader: [
-          'uniform sampler2D tScene; uniform sampler2D tBloom; uniform float uBloom; uniform float uSpeed; uniform vec2 uCenter; uniform float uVig; varying vec2 vUv;',
+          'uniform sampler2D tScene; uniform sampler2D tBloom; uniform sampler2D tBloom1; uniform sampler2D tBloom2; uniform float uBloom; uniform float uSpeed; uniform vec2 uCenter; uniform float uVig; varying vec2 vUv;',
           'void main() {',
           '  vec3 c = texture2D(tScene, vUv).rgb;',
           '  if (uSpeed > 0.002) { vec2 d = vUv - uCenter; float k = uSpeed * smoothstep(0.12, 0.7, length(d)); vec3 acc = c; for (int i = 1; i < 7; i++) acc += texture2D(tScene, vUv - d * k * 0.022 * float(i)).rgb; c = acc / 7.0; }',
-          '  c += texture2D(tBloom, vUv).rgb * uBloom;',
+          '  c += (texture2D(tBloom, vUv).rgb * 0.5 + texture2D(tBloom1, vUv).rgb * 0.3 + texture2D(tBloom2, vUv).rgb * 0.2) * uBloom;',
           '  float v = smoothstep(1.2, 0.3, length((vUv - 0.5) * vec2(1.0, 0.85)));',
           '  c *= mix(1.0, v, uVig);',
           '  gl_FragColor = vec4(c, 1.0);',
@@ -108,16 +160,18 @@
           '}'].join('\n') });
       function pass(mat, target) { quad.material = mat; renderer.setRenderTarget(target); renderer.render(qs, cam); }
       return {
-        resize: function (w, h) { scene.setSize(w, h); a.setSize(Math.max(1, w >> 2), Math.max(1, h >> 2)); b.setSize(Math.max(1, w >> 2), Math.max(1, h >> 2)); },
+        target: scene,
+        resize: function (w, h) { scene.setSize(w, h); LV.forEach(function (l, k) { var lw = Math.max(1, w >> (2 + k)), lh = Math.max(1, h >> (2 + k)); l.a.setSize(lw, lh); l.b.setSize(lw, lh); }); },
         render: function (sc, camera, o) {
           renderer.setRenderTarget(scene); renderer.render(sc, camera);
-          bright.uniforms.tDiffuse.value = scene.texture; bright.uniforms.uThr.value = o.thr || 1.0; pass(bright, a);
-          var w = a.width, h = a.height;
-          [1, 2].forEach(function (k) {
-            blur.uniforms.tDiffuse.value = a.texture; blur.uniforms.uDir.value.set(k / w, 0); pass(blur, b);
-            blur.uniforms.tDiffuse.value = b.texture; blur.uniforms.uDir.value.set(0, k / h); pass(blur, a);
+          bright.uniforms.tDiffuse.value = scene.texture; bright.uniforms.uThr.value = o.thr || 1.0; pass(bright, LV[0].a);
+          // each level blurs across, reading the level above (bilinear taps shrink it), then down
+          LV.forEach(function (l, k) {
+            var src = k ? LV[k - 1].a : l.a, w = l.a.width, h = l.a.height;
+            blur.uniforms.tDiffuse.value = src.texture; blur.uniforms.uDir.value.set(1 / w, 0); pass(blur, l.b);
+            blur.uniforms.tDiffuse.value = l.b.texture; blur.uniforms.uDir.value.set(0, 1 / h); pass(blur, l.a);
           });
-          comp.uniforms.tScene.value = scene.texture; comp.uniforms.tBloom.value = a.texture; comp.uniforms.uBloom.value = o.bloom === undefined ? 0.6 : o.bloom;
+          comp.uniforms.tScene.value = scene.texture; comp.uniforms.tBloom.value = LV[0].a.texture; comp.uniforms.tBloom1.value = LV[1].a.texture; comp.uniforms.tBloom2.value = LV[2].a.texture; comp.uniforms.uBloom.value = o.bloom === undefined ? 0.6 : o.bloom;
           comp.uniforms.uSpeed.value = o.speed || 0; comp.uniforms.uVig.value = o.vig === undefined ? 0.35 : o.vig;
           if (o.center) comp.uniforms.uCenter.value.copy(o.center);
           pass(comp, null);
@@ -125,6 +179,7 @@
       };
     }
     function present(scene, camera, o) {
+      adapt();
       renderer.info.reset();
       if (post) post.render(scene, camera, o || {}); else { renderer.setRenderTarget(null); renderer.render(scene, camera); }
     }
@@ -452,6 +507,47 @@
       if (!c.air && c.fallT <= 0 && Math.abs(c.d || 0) > r.g.hw && c.v > 3 && Math.random() < (c.i === 0 ? 0.6 : 0.3)) puff(c.x - ch * len * 0.5 + (Math.random() - 0.5) * wid, gy + 0.12, c.z - sh * len * 0.5 + (Math.random() - 0.5) * wid, landDust(r), 0.6, 0.9, 0.25);
     }
 
+    // ---------- shader warm-up ----------
+    // Hand every material in the scene (hidden ones too: shields, gliders, the pooled goo and bee) to the GPU to compile
+    // at once, so the driver can build them in parallel instead of stalling a frame the first time each one shows up.
+    function warmUp(sc, cam) {
+      // compile for where the scene is really drawn (the post pass's target, where three skips tone mapping), or the
+      // programs built here would be the on-screen variants and never used
+      var prev = renderer.getRenderTarget();
+      try { if (post) renderer.setRenderTarget(post.target); renderer.compile(sc, cam); } catch (e) { console.error('shader warm-up:', e); }
+      renderer.setRenderTarget(prev);
+      holdRes(2500); // the frames right after a scene change are slow for reasons the resolution will not fix
+    }
+
+    // ---------- contact shadows ----------
+    // a soft dark patch on the ground under each car, beneath the sharp sun shadow, so the car sits on the road; in a
+    // jump it stays on the ground, fading and spreading with height
+    var blobTex = null;
+    function contactShadow(o) {
+      if (!blobTex) {
+        var c = document.createElement('canvas'); c.width = c.height = 64; var x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 2, 32, 32, 32);
+        gr.addColorStop(0, 'rgba(0,0,0,0.85)'); gr.addColorStop(0.45, 'rgba(0,0,0,0.5)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+        x.fillStyle = gr; x.fillRect(0, 0, 64, 64); blobTex = new THREE.CanvasTexture(c);
+      }
+      var ud = o.userData, m = new THREE.MeshBasicMaterial({ map: blobTex, color: 0x000000, transparent: true, depthWrite: false, opacity: 0.6, fog: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+      var g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2);
+      var b = new THREE.Mesh(g, m); b.rotation.order = 'YXZ'; b.renderOrder = 1;
+      b.userData.base = new THREE.Vector3((ud.len || 1.6) * 1.25, 1, (ud.wid || 1) * (ud.bike ? 2.2 : 1.45));
+      b.userData.dispose = function () { g.dispose(); m.dispose(); };
+      return b;
+    }
+    function poseBlob(st, c) {
+      var b = st.blob, o = st.obj; if (!b) return;
+      var gy = c.gy || 0, air = !!c.air || c.fallT > 0, lift = air ? Math.max(0, o.position.y - gy) : 0, f = Math.max(0, 1 - lift / 4);
+      if (!air) st.gp = st.pitchS;
+      b.visible = o.visible && f > 0.02 && !(c.fallT > 0);
+      if (!b.visible) return;
+      b.position.set(c.x, (air ? gy : o.position.y) + 0.03, c.z); b.rotation.set(0, o.rotation.y, air ? st.gp || 0 : st.pitchS);
+      var k = 1 + lift * 0.18; b.scale.set(b.userData.base.x * k, 1, b.userData.base.z * k);
+      b.material.opacity = 0.6 * f * (st.alpha === undefined ? 1 : st.alpha);
+    }
+    function freeSt(st) { freeCar(st.obj); if (st.blob) { st.blob.removeFromParent(); st.blob.userData.dispose(); } }
+
     // ---------- race scene ----------
     function worldIdOf(id) { var t = D.TRACKS[id], w = t && D.WORLDS[t.world]; return w ? w.id : 'hills'; }
     function buildRace(id) {
@@ -466,11 +562,12 @@
       race.coins = instancify(make('coin', stubCoin), g.coins.length, sc);
       race.crateS = g.boxes.map(function () { return 1; });
       race.goos = []; race.bees = [];
+      warmUp(sc, raceCam);
       console.log('Racing Boy 3D: built ' + id + ' in ' + w.info.build + ' ms (' + Math.round(w.info.tris / 1000) + 'k static triangles)');
       return race;
     }
     function disposeRace() {
-      race.cars.forEach(function (st) { freeCar(st.obj); });
+      race.cars.forEach(function (st) { if (st) freeSt(st); });
       race.crates.remove(); race.chests.remove(); race.coins.remove();
       race.goos.concat(race.bees).forEach(function (o) { o.removeFromParent(); });
       race.world.dispose();
@@ -513,11 +610,12 @@
       // cars
       r.cars.forEach(function (c, i) {
         var st = R.cars[i], key = lookKey(c.carId, c.look) + (i ? '' : pk); // the player's car carries the kid's look
-        if (!st || st.key !== key) { if (st) freeCar(st.obj); st = R.cars[i] = { obj: newCarObj(c.carId, c.look, i > 0, i), key: key, spin: 0, pitchS: 0, alpha: 1 }; sc.add(st.obj); }
+        if (!st || st.key !== key) { if (st) freeSt(st); st = R.cars[i] = { obj: newCarObj(c.carId, c.look, i > 0, i), key: key, spin: 0, pitchS: 0, alpha: 1 }; sc.add(st.obj); st.blob = contactShadow(st.obj); sc.add(st.blob); R.cold = true; }
         poseCar(st, c, dt, raceCam.position, camFwd, playerDepth, r);
+        poseBlob(st, c);
         if (dt > 0) carEmit(c, st, r, dt);
       });
-      for (var k = r.cars.length; k < R.cars.length; k++) if (R.cars[k]) { freeCar(R.cars[k].obj); R.cars[k] = null; }
+      for (var k = r.cars.length; k < R.cars.length; k++) if (R.cars[k]) { freeSt(R.cars[k]); R.cars[k] = null; }
       // crates bob and turn; a taken one swells and spins away (pop), and they grow back after their respawn time.
       // The middle crate of each row is a golden chest: bigger, slower, ringed with sparkles
       g.boxes.forEach(function (b, i) {
@@ -540,9 +638,9 @@
       });
       R.coins.done();
       // goo puddles and bees, pooled
-      while (R.goos.length < r.goos.length) { var go = compactAll(make('goo', stubGoo)); go.traverse(function (m) { if (m.isMesh) m.receiveShadow = true; }); sc.add(go); R.goos.push(go); }
+      while (R.goos.length < Math.max(1, r.goos.length)) { var go = compactAll(make('goo', stubGoo)); go.visible = false; R.cold = true; go.traverse(function (m) { if (m.isMesh) m.receiveShadow = true; }); sc.add(go); R.goos.push(go); }
       R.goos.forEach(function (o, i) { var gp = r.goos[i]; o.visible = !!gp; if (gp) { o.position.set(gp.x, (gp.y !== undefined ? gp.y : D.groundAt ? D.groundAt(g, g.query(gp.x, gp.z).s) : 0) + 0.005, gp.z); var s = 25 - gp.t + 0.3; o.scale.setScalar(Math.min(1, s * 3)); } });
-      while (R.bees.length < r.bees.length) { var be = make('bee', stubBee); if (be.userData && typeof be.userData.flap === 'function') { var db = movers(be, be.userData.flap); db.add(be); compact(be, db); } be.traverse(function (m) { if (m.isMesh) m.castShadow = true; }); sc.add(be); R.bees.push(be); }
+      while (R.bees.length < Math.max(1, r.bees.length)) { var be = make('bee', stubBee); be.visible = false; R.cold = true; if (be.userData && typeof be.userData.flap === 'function') { var db = movers(be, be.userData.flap); db.add(be); compact(be, db); } be.traverse(function (m) { if (m.isMesh) m.castShadow = true; }); sc.add(be); R.bees.push(be); }
       R.bees.forEach(function (o, i) {
         var b = r.bees[i]; o.visible = !!b; if (!b) return;
         o.position.set(b.x, (b.y !== undefined ? b.y : (D.groundAt ? D.groundAt(g, g.query(b.x, b.z).s) : 0) + 1) + Math.sin(time * 20 + i) * 0.08, b.z); o.rotation.y = -(b.h || 0);
@@ -556,6 +654,8 @@
       // shadows follow the player
       aimSun(R.world, p.x + fx * 10, p.z + fz * 10, phone ? 22 : 28);
       flushParts();
+      // new cars (and the pooled goo and bee) compile their shaders now, together, rather than one hitch at a time
+      if (R.cold) { R.cold = false; warmUp(sc, raceCam); }
       var o = { speed: cs.boost * 0.9, bloom: 0.5, thr: 1.5, vig: 0.3 };
       present(sc, raceCam, o);
       logOnce('race ' + r.id);
@@ -651,6 +751,7 @@
       if (hubS) return hubS;
       var w = W3.hub(D.HUB), sc = sceneFor(w);
       hubS = { world: w, scene: sc, parked: [], key: '', kid: null, cam: { x: 0, z: 0, init: false } };
+      warmUp(sc, hubCam);
       // a soft glow under the selected car
       var sel = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.95, 40), new THREE.MeshBasicMaterial({ color: col('#ffd23f'), transparent: true, opacity: 0.5, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending }));
       sel.rotation.x = -Math.PI / 2; sel.visible = false; sc.add(sel); hubS.sel = sel;
@@ -698,6 +799,7 @@
       hubCam.updateProjectionMatrix(); hubCam.updateMatrixWorld();
       aimSun(w, cs.x - 2, cs.z - 2, phone ? 16 : 20);
       flushParts();
+      if (!H.warm) { H.warm = true; warmUp(sc, hubCam); }
       present(sc, hubCam, { bloom: 0.5, thr: 1.15, vig: 0.4 });
       logOnce('plaza');
       // station icons over the pads
@@ -728,7 +830,7 @@
 
     return { setView: setView, init: init, resize: resize, drawRace: drawRace, drawHub: drawHub, drawMinimap: drawMinimap, events: events,
       screenToWorld: screenToWorld, screenDirToHeading: screenDirToHeading, warm: warm, isHD: function () { return !failed; },
-      SKY: W3.LOOK, DOF: OLD.DOF, CAM: CAM, get renderer() { return renderer; }, _scene: function () { return race ? race.scene : hubS && hubS.scene; } };
+      SKY: W3.LOOK, DOF: OLD.DOF, CAM: CAM, get renderer() { return renderer; }, get quality() { return { ratio: pr, levels: RES.list.slice(), adaptive: !RES.fixed, bloom: !!post }; }, _scene: function () { return race ? race.scene : hubS && hubS.scene; } };
   })();
 
   // car previews for the splash and the garage panels: a 3D render the size of the old pixel sprite

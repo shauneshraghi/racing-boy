@@ -1389,20 +1389,68 @@ var RB3DModels = (function () {
   }
 
   // ---------- previews ----------
-  var pv = null, previews = {};
+  // Previews draw with the game's own renderer when render3d.js hands it over (useRenderer): into an offscreen
+  // multisampled target, then a tone-mapping pass, read back into a 2D canvas. That saves a second WebGL context with
+  // its own copy of every shader and the environment map. Without it (tools/models.html) they get a small renderer.
+  var pv = null, previews = {}, shared = null;
+  function useRenderer(r) { if (!pv) shared = r; }
+  // three skips tone mapping and sRGB output when drawing into a target, so this pass does both itself (ACES filmic at
+  // exposure 1, as the game's renderer does on screen)
+  var PV_FS = [
+    'uniform sampler2D tSrc; varying vec2 vUv;',
+    'vec3 fit(vec3 v) { vec3 a = v * (v + 0.0245786) - 0.000090537; vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081; return a / b; }',
+    'void main() {',
+    '  vec4 s = texture2D(tSrc, vUv);',
+    '  vec3 c = s.a > 0.0 ? s.rgb / s.a : vec3(0.0);', // the target holds colour already multiplied by coverage
+    '  c *= 1.0 / 0.6;',
+    '  c = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777)) * c;',
+    '  c = clamp(mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602)) * fit(c), 0.0, 1.0);',
+    '  c = mix(pow(c, vec3(0.41666)) * 1.055 - vec3(0.055), c * 12.92, vec3(lessThanEqual(c, vec3(0.0031308))));',
+    '  gl_FragColor = vec4(c, s.a);',
+    '}'].join('\n');
+  function shoot(kit, cam, w, h) {
+    var out = canvas(w, h), r = kit.r;
+    if (!kit.shared) { r.setSize(w, h, false); r.render(kit.scene, cam); out.getContext('2d').drawImage(r.domElement, 0, 0); return out; }
+    if (!kit.rt || kit.rt.width !== w || kit.rt.height !== h) {
+      if (kit.rt) { kit.rt.dispose(); kit.rt8.dispose(); }
+      kit.rt = new T.WebGLRenderTarget(w, h, { type: r.capabilities.isWebGL2 ? T.HalfFloatType : T.UnsignedByteType, samples: r.capabilities.isWebGL2 ? 4 : 0 });
+      kit.rt8 = new T.WebGLRenderTarget(w, h, { depthBuffer: false }); kit.px = new Uint8Array(w * h * 4);
+    }
+    var prevT = r.getRenderTarget(), prevC = r.getClearColor(new T.Color()), prevA = r.getClearAlpha();
+    r.setRenderTarget(kit.rt); r.setClearColor(0x000000, 0); r.clear(); r.render(kit.scene, cam);
+    kit.quad.material.uniforms.tSrc.value = kit.rt.texture;
+    r.setRenderTarget(kit.rt8); r.clear(); r.render(kit.qs, kit.qc);
+    r.readRenderTargetPixels(kit.rt8, 0, 0, w, h, kit.px);
+    r.setRenderTarget(prevT); r.setClearColor(prevC, prevA);
+    var x = out.getContext('2d'), img = x.createImageData(w, h), row = w * 4;
+    for (var y = 0; y < h; y++) img.data.set(kit.px.subarray((h - 1 - y) * row, (h - y) * row), y * row); // GL rows run bottom-up
+    x.putImageData(img, 0, 0);
+    return out;
+  }
   function previewKit() {
     if (pv) return pv.ok ? pv : null;
     pv = { ok: false };
     try {
-      var r = new T.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
-      r.setPixelRatio(1); r.outputColorSpace = T.SRGBColorSpace; r.toneMapping = T.ACESFilmicToneMapping; r.toneMappingExposure = 1.0;
-      r.shadowMap.enabled = true; r.shadowMap.type = T.PCFSoftShadowMap; r.setClearColor(0x000000, 0);
+      var r = shared;
+      if (!r) {
+        r = new T.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+        r.setPixelRatio(1); r.outputColorSpace = T.SRGBColorSpace; r.toneMapping = T.ACESFilmicToneMapping; r.toneMappingExposure = 1.0;
+        r.shadowMap.enabled = true; r.shadowMap.type = T.PCFSoftShadowMap; r.setClearColor(0x000000, 0);
+      }
       var scene = new T.Scene(); scene.environment = envMap(r);
       var sun = new T.DirectionalLight(0xfff1dc, 2.2); sun.position.set(3, 6, 2); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
       var sc = sun.shadow.camera; sc.left = -2; sc.right = 2; sc.top = 2; sc.bottom = -2; sc.near = 0.5; sc.far = 15; sun.shadow.radius = 4; sun.shadow.bias = -0.0005;
       scene.add(sun); scene.add(new T.HemisphereLight(0xdfeeff, 0x6a5a40, 0.4));
       var ground = new T.Mesh(new T.PlaneGeometry(8, 8), new T.ShadowMaterial({ opacity: 0.35 })); ground.rotation.x = -PI / 2; ground.receiveShadow = true; scene.add(ground);
-      pv = { ok: true, r: r, scene: scene, cam: new T.PerspectiveCamera(26, 1, 0.05, 50) };
+      pv = { ok: true, r: r, scene: scene, cam: new T.PerspectiveCamera(26, 1, 0.05, 50), shared: !!shared };
+      if (shared) {
+        // a fog that does nothing, so the car shaders built here are the very ones the race and the plaza use (both have
+        // exponential fog): the splash preview compiles them ahead of the first race
+        scene.fog = new T.FogExp2(0x000000, 0);
+        pv.qs = new T.Scene(); pv.qc = new T.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        pv.quad = new T.Mesh(new T.PlaneGeometry(2, 2), new T.ShaderMaterial({ uniforms: { tSrc: { value: null } }, vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: PV_FS, depthTest: false, depthWrite: false, transparent: false }));
+        pv.quad.frustumCulled = false; pv.qs.add(pv.quad);
+      }
       return pv;
     } catch (e) { return null; }
   }
@@ -1419,8 +1467,7 @@ var RB3DModels = (function () {
     var fov = cam.fov * PI / 180, fit = Math.min(fov, 2 * Math.atan(Math.tan(fov / 2) * cam.aspect)), dist = bs.radius / Math.sin(fit / 2) * 0.92;
     var dir = V(1, 0.62, 1).normalize();
     cam.position.copy(bs.center).addScaledVector(dir, dist); cam.lookAt(bs.center);
-    kit.r.setSize(w, h, false); kit.r.render(kit.scene, cam);
-    var out = canvas(w, h); out.getContext('2d').drawImage(kit.r.domElement, 0, 0);
+    var out = shoot(kit, cam, w, h);
     kit.scene.remove(c); c.userData.dispose();
     previews[key] = out;
     return out;
@@ -1441,14 +1488,13 @@ var RB3DModels = (function () {
     var dist = Math.max(sz.y * 1.04 / 2 / Math.tan(fov / 2), Math.min(sz.x, sz.z) * 1.3 / 2 / Math.tan(hfov / 2)) + 0.05;
     var dir = V(1, 0.22, 0).normalize();
     cam.position.copy(c).addScaledVector(dir, dist); cam.lookAt(c);
-    kit.r.setSize(w, h, false); kit.r.render(kit.scene, cam);
-    var out = canvas(w, h); out.getContext('2d').drawImage(kit.r.domElement, 0, 0);
+    var out = shoot(kit, cam, w, h);
     kit.scene.remove(k);
     if (++kidPreviewN > 40) { kidPreviews = {}; kidPreviewN = 0; }
     kidPreviews[key] = out;
     return out;
   }
 
-  var api = { kidPal: kidPal, setPlayer: setPlayer, kidPreview: kidPreview, car: car, crate: crate, chest: chest, coin: coin, bee: bee, goo: goo, kid: kid, preview: preview, envMap: envMap, _tris: triCount, _lookOf: lookOf, _geo: GEO };
+  var api = { useRenderer: useRenderer, kidPal: kidPal, setPlayer: setPlayer, kidPreview: kidPreview, car: car, crate: crate, chest: chest, coin: coin, bee: bee, goo: goo, kid: kid, preview: preview, envMap: envMap, _tris: triCount, _lookOf: lookOf, _geo: GEO };
   return api;
 })();

@@ -366,7 +366,9 @@ var RB3DWorld = (function () {
       ' float ph = uTime * 1.7 + wp.x * 0.35 + wp.z * 0.27; float k = ' + amt.k + ' * ' + (amt.inst ? 'position.y' : '1.0') + ';' +
       ' transformed.x += sin(ph) * k + sin(ph * 2.3 + wp.y) * k * 0.4; transformed.z += cos(ph * 0.8) * k * 0.6; }');
   }
-  function addHooks(m, hooks) { m.onBeforeCompile = function (sh) { hooks.forEach(function (h) { h(sh); }); }; m.customProgramCacheKey = function () { return hooks.map(function (h) { return h.key || ''; }).join('|') + m.name; }; }
+  // The program cache key is the hooks' own source (a sway hook's amount is a literal in it), not the material's name, so
+  // materials whose shaders come out the same share one compiled program: fewer shader compiles at load.
+  function addHooks(m, hooks) { var key = hooks.map(function (h) { return h.key || String(h); }).join('|'); m.onBeforeCompile = function (sh) { hooks.forEach(function (h) { h(sh); }); }; m.customProgramCacheKey = function () { return key; }; }
   function std(o) { if (o.envMapIntensity === undefined) o.envMapIntensity = 0.3; var m = new THREE.MeshStandardMaterial(o); return m; }
   function MAT(name) {
     if (MATS[name]) return MATS[name];
@@ -830,11 +832,14 @@ var RB3DWorld = (function () {
     '  #include <colorspace_fragment>',
     '}'].join('\n');
   function sunDir(L) { return new THREE.Vector3(Math.cos(L.sunAz) * Math.cos(L.sunEl), Math.sin(L.sunEl), Math.sin(L.sunAz) * Math.cos(L.sunEl)).normalize(); }
+  // the sky draws after the opaque scene, at the far plane, so its cloud shader only runs where nothing covers it
+  // (the depth test skips the rest); anything painted over the sky without writing depth (stars) draws after it
+  var SKY_ORDER = 50;
   function makeSky(L) {
     var u = { uZenith: { value: col(L.zenith) }, uHorizon: { value: col(L.horizon) }, uGround: { value: col(L.fog) }, uSunDir: { value: sunDir(L) }, uSun: { value: col(L.sun) },
       uCloudA: { value: col(L.cloudA) }, uCloudB: { value: col(L.cloudB) }, uTime: TIME, uCover: { value: L.cover } };
     var m = new THREE.ShaderMaterial({ uniforms: u, vertexShader: SKY_VS, fragmentShader: SKY_FS, side: THREE.BackSide, depthWrite: false, fog: false });
-    var s = new THREE.Mesh(new THREE.SphereGeometry(1000, 40, 20), m); s.renderOrder = -10; s.frustumCulled = false; s.name = 'sky';
+    var s = new THREE.Mesh(new THREE.SphereGeometry(1000, 40, 20), m); s.renderOrder = SKY_ORDER; s.frustumCulled = false; s.name = 'sky';
     return s;
   }
   function lights(group, L) {
@@ -1896,7 +1901,7 @@ var RB3DWorld = (function () {
       }
       var sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(pos, 3)); sg.setAttribute('color', new THREE.BufferAttribute(cl, 3));
       var pts = new THREE.Points(sg, new THREE.PointsMaterial({ size: layer[1], sizeAttenuation: false, vertexColors: true, fog: false, toneMapped: false, depthWrite: false }));
-      pts.frustumCulled = false; pts.renderOrder = -9; group.add(pts);
+      pts.frustumCulled = false; pts.renderOrder = SKY_ORDER + 1; group.add(pts);
     });
     // the planet, lit from the sun's side, turning slowly
     var pd = new THREE.Vector3(Math.cos(-0.35) * Math.cos(0.3), Math.sin(0.3), Math.sin(-0.35) * Math.cos(0.3));
