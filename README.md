@@ -4,6 +4,8 @@ A browser kart racer in plain HTML, CSS and JavaScript, with no build step. A ki
 
 **Play:** https://shauneshraghi.github.io/racing-boy/ (GitHub Pages, deployed from `main`).
 
+**Install on iPhone:** open the link in Safari, tap Share, then Add to Home Screen. The app keeps its own save, separate from Safari's: to bring a Safari game in, open ☰ Menu → Copy code in Safari, then paste it under ☰ Menu (or the splash's "Bring a game from another device") in the app. The same code or a saved file moves a game between any two devices.
+
 ## Requirements
 
 | What | Needed for | Version |

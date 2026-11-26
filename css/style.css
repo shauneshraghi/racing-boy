@@ -179,3 +179,11 @@ button { font:inherit; }
 .kidBtns { display:flex; gap:8px; justify-content:space-between; margin:10px 0 4px; }
 .kidBtns .btn { flex:1; }
 @media (min-aspect-ratio: 1/1) and (min-width: 700px) { #panel.tall { max-height:none; } .kidStage { height:clamp(200px, 38vh, 340px); } }
+/* menu: backup and app install */
+.xsec { margin:14px 0 10px; padding-top:10px; border-top:1px solid #ffffff1a; }
+.xhead { margin:0 2px 4px; font-size:18px; }
+.xbtns { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+.xbtns .btn { flex:1 1 140px; font-size:16px; }
+.xcode { flex:1 1 200px; min-height:44px; font:inherit; font-size:14px; padding:6px 10px; border-radius:10px; border:2px solid var(--panel2); background:#000; color:var(--ink); resize:vertical; user-select:text; -webkit-user-select:text; }
+#bBring { font-size:16px; background:#0006; }
+#confirm .note { flex-basis:100%; margin:0 0 4px; }

@@ -274,7 +274,9 @@
       m.textContent = A.isMuted() ? '🔇 Sound off' : '🔊 Sound on'; m.onclick = function () { A.setMute(!A.isMuted()); renderPanel(); }; body.appendChild(m);
       volumeRows(body);
       body.insertAdjacentHTML('beforeend', '<p class="note">Keys: ← → steer · ↓ or Space hop and drift, and trick in the air · ↑ or X use item · H horn · Esc pause. On a phone, put a thumb on the left half of the screen and slide it left or right to steer; press anywhere on the right half to hop, and keep holding while steering to drift; let go for a boost (blue, then orange, then pink sparks).</p>');
-      var so = document.createElement('button'); so.className = 'btn'; so.style.cssText = 'font-size:14px;background:#5a2030'; so.textContent = 'Start over…';
+      backupRows(body);
+      appRows(body);
+      var so = document.createElement('button'); so.className = 'btn'; so.style.cssText = 'font-size:14px;background:#5a2030;margin-top:10px'; so.textContent = 'Start over…';
       so.onclick = function () {
         if ($('confirm')) return;
         var box = document.createElement('div'); box.id = 'confirm';
@@ -290,6 +292,77 @@
   function statBarsFor(id, own) {
     var st = own ? D.carStats(S, id) : D.statsFor(id), rows = [['Speed', st.speed / 12], ['Pick-up', st.accel / 9], ['Grip', st.grip / 3.2], ['Weight', st.weight / 2]];
     return rows.map(function (r) { return '<div class="stat"><span>' + r[0] + '</span><b style="width:' + Math.round(Math.min(1, r[1]) * 100) + 'px"></b></div>'; }).join('');
+  }
+  // ---------- backup and app install ----------
+  // The save as a short code or a file, to carry the game to another phone or computer, or from Safari into the
+  // installed app (on iPhone the home-screen app keeps its own storage, apart from Safari's).
+  var P = typeof RBPwa !== 'undefined' ? RBPwa : null, pendingLoad = null;
+  function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+  function noKeys(inp) { inp.addEventListener('keydown', function (e) { e.stopPropagation(); }); return inp; }
+  function saveName() { var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; }; return 'racing-boy-save-' + d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '.txt'; }
+  function saveSummary(s) {
+    var won = Object.keys(s.best).filter(function (t) { return s.best[t] === 1; }).length;
+    return esc(D.kidName(s)) + ': ' + won + (won === 1 ? ' track' : ' tracks') + ' won, ' + s.owned.length + (s.owned.length === 1 ? ' car' : ' cars') + ', ' + fmt(s.coins) + ' coins';
+  }
+  function backupRows(body) {
+    var sec = el('div', 'xsec'); sec.id = 'backup'; body.appendChild(sec);
+    sec.appendChild(el('h3', 'xhead', '📲 Move to another device'));
+    if (!P) { sec.appendChild(el('p', 'note', 'Backup is not available here.')); return; }
+    if (NOSAVE) sec.appendChild(el('p', 'note', 'This is a test game (?dev or ?fresh): it is not saved, and a loaded game lasts until the page closes.'));
+    sec.appendChild(el('p', 'note', 'Save the game as a file (or copy its code), send it to the other device, and load it there. Loading replaces the game on that device.'));
+    var row1 = el('div', 'xbtns'), fb = el('button', 'btn', '💾 Save to a file'), cb = el('button', 'btn', '📋 Copy code');
+    fb.onclick = function () { save(); P.packSave(D.serialize(S)).then(function (code) { return P.shareFile(saveName(), code).then(function (ok) { if (!ok) P.download(saveName(), code); }); }).catch(function () { toast('Could not save the file.', 1800); }); };
+    cb.onclick = function () { save(); P.packSave(D.serialize(S)).then(P.copyText).then(function (ok) { toast(ok ? '📋 Code copied. Paste it on the other device.' : 'Could not copy.', 2200); }); };
+    row1.appendChild(fb); row1.appendChild(cb); sec.appendChild(row1);
+    var file = el('input'); file.type = 'file'; file.accept = '.txt,text/plain'; file.style.display = 'none';
+    file.onchange = function () { if (file.files[0]) P.readFile(file.files[0]).then(tryLoad, function () { toast('Could not read the file.', 1800); }); file.value = ''; };
+    var row2 = el('div', 'xbtns'), ob = el('button', 'btn', '📂 Load a file'); ob.onclick = function () { file.click(); };
+    row2.appendChild(file); row2.appendChild(ob); sec.appendChild(row2);
+    var ta = noKeys(el('textarea', 'xcode')); ta.rows = 2; ta.placeholder = 'or paste a code here (it starts with RB1.)'; ta.autocomplete = 'off'; ta.spellcheck = false;
+    ta.setAttribute('autocapitalize', 'off'); ta.setAttribute('autocorrect', 'off');
+    var lb = el('button', 'btn', 'Load code'); lb.onclick = function () { tryLoad(ta.value); };
+    var row3 = el('div', 'xbtns'); row3.appendChild(ta); row3.appendChild(lb); sec.appendChild(row3);
+    if (pendingLoad) {
+      var box = el('div', ''), inp = noKeys(el('input')); box.id = 'confirm'; box.style.flexWrap = 'wrap';
+      box.appendChild(el('p', 'note', 'Found ' + saveSummary(pendingLoad) + '. Loading it replaces the game on this device. Type yes to load it.'));
+      inp.type = 'text'; inp.placeholder = 'type yes'; inp.autocomplete = 'off'; inp.setAttribute('autocapitalize', 'off');
+      var go = el('button', 'btn go', 'Load it'), no = el('button', 'btn', 'Cancel'); go.disabled = true;
+      inp.oninput = function () { go.disabled = inp.value.trim().toLowerCase() !== 'yes'; };
+      inp.onkeydown = function (e) { e.stopPropagation(); if (e.key === 'Enter' && !go.disabled) go.click(); };
+      no.onclick = function () { pendingLoad = null; renderPanel(); };
+      go.onclick = function () {
+        if (inp.value.trim().toLowerCase() !== 'yes' || !pendingLoad) return;
+        S = pendingLoad; pendingLoad = null; firstKid = false; save(); openStation(null); updateHubHud(); A.sfx('unlock'); toast('✅ Game loaded! Welcome back, ' + esc(D.kidName(S)) + '.', 2400);
+      };
+      box.appendChild(inp); box.appendChild(no); box.appendChild(go); sec.appendChild(box);
+      setTimeout(function () { try { inp.focus(); box.scrollIntoView({ block: 'nearest' }); } catch (e) {} }, 0);
+    }
+  }
+  function tryLoad(code) {
+    P.unpackSave(String(code || '')).then(function (json) {
+      var s2 = D.deserialize(json);
+      if (!s2) throw new Error('bad save');
+      pendingLoad = s2; renderPanel();
+    }).catch(function () { A.sfx('no'); toast('That is not a Racing Boy save.', 2200); });
+  }
+  function appRows(body) {
+    var sec = el('div', 'xsec'); body.appendChild(sec);
+    sec.appendChild(el('h3', 'xhead', '📱 Play as an app'));
+    if (P && P.isStandalone()) { sec.appendChild(el('p', 'note', '✓ Running as an installed app.')); return; }
+    if (P && P.canInstall()) { var ib = el('button', 'btn go', 'Install the app'); ib.onclick = function () { P.install().then(function () { renderPanel(); }); }; sec.appendChild(ib); }
+    else sec.appendChild(el('p', 'note', (P && P.installHint()) || 'Use your browser menu to add this page to the home screen.'));
+    if (P && P.isIOS()) sec.appendChild(el('p', 'note', 'On iPhone and iPad the app keeps its own save, apart from Safari\'s. To bring this game into the app, tap 📋 Copy code above first, then open the app, go to ☰ Menu and paste it.'));
+  }
+  // Ask the browser to keep the save for good, so it is not cleared to free space (asked on the first tap, since some
+  // browsers only grant it after a gesture). It does not stop Safari clearing sites unvisited for 7 days; the app does.
+  var keepAsked = false;
+  function keepSave() {
+    if (keepAsked || NOSAVE) return; keepAsked = true;
+    try {
+      var st = navigator.storage;
+      if (!st || !st.persist) return;
+      st.persisted().then(function (on) { return on || st.persist(); }).catch(function () {});
+    } catch (e) {}
   }
   $('bClose').onclick = function () { closePanel(); };
   function closePanel() { var st = station; openStation(null); if (st && st !== 'menu') hubStepOff(); }
@@ -557,8 +630,14 @@
   })();
   // a new game opens the character creator once, right after the splash (?kid=1 opens it anyway)
   var firstKid = (newGame && !DEV) || params.get('kid') === '1';
-  function start() { audio(); $('splash').classList.add('hide'); if (firstKid && mode === 'hub') { firstKid = false; openKid(); } }
+  function start() { audio(); keepSave(); $('splash').classList.add('hide'); if (firstKid && mode === 'hub') { firstKid = false; openKid(); } }
   $('bStart').onclick = start;
+  // a save brought from another device: skip the creator and open the menu at the backup section
+  $('bBring').onclick = function () {
+    audio(); keepSave(); $('splash').classList.add('hide'); firstKid = false; station = null; openStation('menu');
+    setTimeout(function () { var b = $('backup'); if (b) b.scrollIntoView({ block: 'start' }); }, 0);
+  };
+  if (P) P.register();
   setMode('hub'); updateHubHud();
   if (params.get('nosplash') === '1') { $('splash').classList.add('hide'); if (firstKid && !params.has('race')) { firstKid = false; openKid(); } }
   if (params.has('race') && D.TRACKS[params.get('race')]) { $('splash').classList.add('hide'); startRace(params.get('race')); }

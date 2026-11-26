@@ -11,7 +11,8 @@
     "test": "node --test tests/*.test.mjs",
     "serve": "node scripts/serve.mjs",
     "shot": "node scripts/shot.mjs",
-    "drift-lab": "node .claude/skills/drift-tune/drift-lab.mjs"
+    "drift-lab": "node .claude/skills/drift-tune/drift-lab.mjs",
+    "icons": "node scripts/make-icons.mjs"
   },
   "devDependencies": {
     "playwright-core": "1.65.1"
